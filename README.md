@@ -4,17 +4,19 @@ ServeGo is a platform that connects customers with trusted service providers suc
 
 ---
 
-## Team Members
+# Team Members
 
-* Member 1 :kurma
-* Member 2 :Aravind
-* Member 3 :prasad
-* Member 4 :Gupta
-* Member 5 :Purna
+| Name    | Role          |
+| ------- | ------------- |
+| Kurma   | Project Owner |
+| Aravind | Developer     |
+| Prasad  | Developer     |
+| Gupta   | Developer     |
+| Purna   | Developer     |
 
 ---
 
-## Tech Stack
+# Tech Stack
 
 ### Frontend
 
@@ -41,11 +43,11 @@ ServeGo is a platform that connects customers with trusted service providers suc
 
 ---
 
-## Initial Setup Guide
+# Prerequisites
 
-### Step 1: Install Required Software
+Before starting development, install the following software:
 
-#### Node.js (Required)
+### Node.js
 
 Download and install the latest LTS version:
 
@@ -58,7 +60,7 @@ node -v
 npm -v
 ```
 
-#### Git
+### Git
 
 Download and install Git:
 
@@ -70,7 +72,7 @@ Verify installation:
 git --version
 ```
 
-#### VS Code
+### VS Code
 
 Download:
 
@@ -85,11 +87,9 @@ Recommended Extensions:
 
 ---
 
-## Clone the Repository
+# Clone Repository
 
-Create a working folder.
-
-Example:
+Create a workspace folder:
 
 ```text
 C:\Downloads\Projects
@@ -101,13 +101,13 @@ Open Command Prompt:
 cd C:\Downloads\Projects
 ```
 
-Clone repository:
+Clone the repository:
 
 ```bash
 git clone https://github.com/ServeGo/servego-platform.git
 ```
 
-Move into project:
+Navigate to the project:
 
 ```bash
 cd servego-platform
@@ -115,7 +115,7 @@ cd servego-platform
 
 ---
 
-## Project Structure
+# Project Structure
 
 ```text
 servego-platform/
@@ -129,27 +129,15 @@ servego-platform/
 
 ---
 
-## Frontend Setup
-
-Navigate to frontend:
+# Frontend Setup
 
 ```bash
 cd frontend
-```
-
-Install dependencies:
-
-```bash
 npm install
-```
-
-Run frontend:
-
-```bash
 npm run dev
 ```
 
-Frontend URL:
+Frontend runs at:
 
 ```text
 http://localhost:5173
@@ -157,99 +145,56 @@ http://localhost:5173
 
 ---
 
-## Backend Setup
+# Backend Setup
 
-Open a new terminal.
-
-Navigate to backend:
+Open a new terminal:
 
 ```bash
 cd backend
-```
-
-Install dependencies:
-
-```bash
 npm install
-```
-
-Start backend:
-
-```bash
 npm run dev
 ```
 
-Backend URL:
+Backend runs at:
 
 ```text
 http://localhost:5000
 ```
 
----
+Backend-specific details can be found in:
 
-## Backend README
-
-Backend-specific setup, env variables, and folder structure are documented here:
-
-- `backend/README.md`
-
----
-
-## Git Workflow
-
-Never work directly on main.
-
-Create a branch:
-
-```bash
-git checkout -b bugfix/your-bugfix-name
-```
-
-Examples:
-
-```bash
-git checkout -b bugfix/homepage
-```
-
-```bash
-git checkout -b bugfix/authentication
-```
-
-```bash
-git checkout -b bugfix/provider-dashboard
+```text
+backend/README.md
 ```
 
 ---
 
-## Commit Changes
+# Environment Variables
 
-Check status:
+Create a file:
 
-```bash
-git status
+```text
+backend/.env
 ```
 
-Add files:
+Add:
 
-```bash
-git add .
+```env
+PORT=5000
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_secret_key
 ```
 
-Commit:
+Important:
 
-```bash
-git commit -m "Added login page"
-```
-
-Push:
-
-```bash
-git push origin bugfix/authentication
-```
+* Never commit `.env` files to GitHub.
+* Never share database credentials in chat or commits.
 
 ---
 
-## Pull Latest Changes
+# Daily Development Workflow
+
+## Step 1: Pull Latest Changes
 
 Before starting work every day:
 
@@ -258,53 +203,146 @@ git checkout main
 git pull origin main
 ```
 
-Switch back to your branch:
+---
+
+## Step 2: Create a New Branch
+
+Never work directly on the `main` branch.
+
+Create a branch:
+
+if you developing feature use:feature or if you fixing the feature bugs use bugfix
+```bash
+git checkout -b bugfix/your-branch-name
+```
+
+Example:
 
 ```bash
-git checkout bugfix/your-bugfix-name
+git checkout -b bugfix/update-readme
 ```
 
 ---
 
-## Important Team Rules
+## Step 3: Make Your Changes
 
-1. Never push directly to main.
-2. Always create a bugfix branch.
-3. Pull latest changes before starting work.
-4. Write meaningful commit messages.
-5. Test your code before pushing.
-6. Create a Pull Request before merging.
+Work on your assigned task.
+
+Check modified files:
+
+```bash
+git status
+```
 
 ---
 
-## Branch Naming Convention
+## Step 4: Add Changes
+
+```bash
+git add .
+```
+
+---
+
+## Step 5: Commit Changes
+
+```bash
+git commit -m "your commit message"
+```
+
+Example:
+
+```bash
+git commit -m "update README with project setup instructions"
+```
+
+---
+
+## Step 6: Push Your Branch
+
+```bash
+git push -u origin bugfix/your-branch-name
+```
+
+Example:
+
+```bash
+git push -u origin bugfix/update-readme
+```
+
+---
+
+## Step 7: Create a Pull Request
+
+After pushing, GitHub will display a link similar to:
+
+```text
+Create a pull request for 'bugfix/update-readme'
+```
+
+Open the link and create a Pull Request.
+
+---
+
+## Step 8: Review and Merge
+
+The Project Owner (Kurma) will review the Pull Request and merge it into the `main` branch.
+
+Contributors should not merge their own Pull Requests unless instructed.
+
+---
+
+## Step 9: Sync After Merge
+
+After the Pull Request is merged:
+
+```bash
+git checkout main
+git pull origin main
+```
+
+---
+
+# Branch Naming Convention
+
+Examples:
 
 ```text
 bugfix/homepage
 bugfix/authentication
-bugfix/services
 bugfix/provider-dashboard
+bugfix/services
 bugfix/bookings
-bugfix/login-issue
+bugfix/update-readme
 ```
+
+Choose a branch name that clearly describes the work being done.
 
 ---
 
-## Environment Variables
+# Team Rules
 
-Backend `.env`
+✅ Pull latest changes before starting work
 
-Create `backend/.env` (do not commit to git):
+✅ Create a new branch for every task
 
-```env
-PORT=5000
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
-```
+✅ Write meaningful commit messages
+
+✅ Push changes to your own branch
+
+✅ Create a Pull Request for every change
+
+✅ Test your code before pushing
+
+❌ Do not commit directly to main
+
+❌ Do not force push to main
+
+❌ Do not modify another developer's branch
 
 ---
 
-## Repository
+# Repository
 
 https://github.com/ServeGo/servego-platform
 
