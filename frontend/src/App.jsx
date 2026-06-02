@@ -1,28 +1,32 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
-import Hero from './components/Hero/Hero';
-import PopularServices from './components/PopularServices/PopularServices';
-import WhyChoose from './components/WhyChoose/WhyChoose';
-import HowItWorks from './components/HowItWorks/HowItWorks';
-import Testimonials from './components/Testimonials/Testimonials';
-import PartnerCTA from './components/PartnerCTA/PartnerCTA';
 import Footer from './components/Footer/Footer';
+import Home from './pages/Home';
+import Services from './pages/Services';
+import BecomePartner from './pages/BecomePartner';
 import './App.css';
 
-function App() {
+const Layout = () => (
+  <div className="app-root">
+    <Navbar />
+    <main>
+      <Outlet />
+    </main>
+    <Footer />
+  </div>
+);
+
+export default function App() {
   return (
-    <div className="app">
-      <Navbar/>
-      <Hero />
-      <PopularServices />
-      <WhyChoose />
-      <HowItWorks />
-      <Testimonials />
-      <PartnerCTA />
-      <Footer />
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/services" element={<Services />} />
+          <Route path="/become-partner" element={<BecomePartner />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App;
-
-
