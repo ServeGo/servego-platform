@@ -4,6 +4,53 @@ import './Navbar.css';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [notifCount, setNotifCount] = useState(3);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const navigate = useNavigate();
+
+  const [user, setUser] = useState(() => {
+    try {
+      const j = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      return j ? JSON.parse(j) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const onUserChange = () => {
+      try {
+        const j = localStorage.getItem('user');
+        setUser(j ? JSON.parse(j) : null);
+      } catch (e) {
+        setUser(null);
+      }
+    };
+
+    const onStorage = e => {
+      if (e.key === 'user') onUserChange();
+    };
+
+    window.addEventListener('userChange', onUserChange);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('userChange', onUserChange);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleOutside = e => {
+      if (!e.target.closest('.profile') && !e.target.closest('.notification')) {
+        setIsNotifOpen(false);
+        setIsProfileOpen(false);
+      }
+    };
+    window.addEventListener('click', handleOutside);
+    return () => window.removeEventListener('click', handleOutside);
+  }, []);
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
