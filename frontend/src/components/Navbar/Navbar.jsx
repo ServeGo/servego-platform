@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, NavLink } from 'react-router-dom';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -55,99 +55,34 @@ const Navbar = () => {
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
 
-  const handleLogout = () => {
-    // clear user and redirect to login
-    localStorage.removeItem('user');
-    // notify other components
-    window.dispatchEvent(new Event('userChange'));
-    setShowLogoutModal(false);
-    navigate('/login');
-  };
+  useEffect(() => {
+    // Lock body scroll when mobile menu is open
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
 
-  // Logged-in navbar
-  if (user) {
-    return (
-      <nav className="navbar navbar-logged">
-        <div className="navbar-container">
-          <div className="navbar-logo">
-            <Link to="/">🔧 ServeGo</Link>
-          </div>
+    // Close menu on resize to desktop width
+    const handleResize = () => {
+      if (window.innerWidth > 768) setIsMenuOpen(false);
+    };
 
-          <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-            <Link to="/" onClick={closeMenu}>Home</Link>
-            <Link to="/services" onClick={closeMenu}>Services</Link>
-            <Link to="/my-bookings" onClick={closeMenu}>My Bookings</Link>
-            <Link to="/support" onClick={closeMenu}>Support</Link>
-          </div>
+    // Close menu on Escape key
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setIsMenuOpen(false);
+    };
 
-          <div className="nav-right">
-            <div className={`notification ${isNotifOpen ? 'open' : ''}`} onClick={e => { e.stopPropagation(); setIsNotifOpen(prev => !prev); }}>
-              <button className="notif-btn" aria-label="Notifications">🔔</button>
-              {notifCount > 0 && <span className="badge">{notifCount}</span>}
-              {isNotifOpen && (
-                <div className="notif-dropdown">
-                  <div className="notif-item">You have {notifCount} new notifications</div>
-                  <div className="notif-item">Booking confirmed for tomorrow</div>
-                  <div className="notif-footer"><Link to="/notifications">View all</Link></div>
-                </div>
-              )}
-            </div>
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('keydown', handleKey);
 
-            <div className={`profile ${isProfileOpen ? 'open' : ''}`} onClick={e => { e.stopPropagation(); setIsProfileOpen(prev => !prev); }}>
-              <div className="profile-btn">
-                <div className="avatar">👤</div>
-                <div className="profile-name">{user.name || 'Customer'}</div>
-                <div className="chev">▾</div>
-              </div>
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [isMenuOpen]);
 
-              {isProfileOpen && (
-                <div className="dropdown-menu">
-                  <Link to="/dashboard" className="dropdown-link">Dashboard</Link>
-                  <Link to="/profile" className="dropdown-link">Profile</Link>
-                  <Link to="/booking-history" className="dropdown-link">Booking History</Link>
-                  <Link to="/saved-services" className="dropdown-link">Saved Services</Link>
-                  <Link to="/settings" className="dropdown-link">Settings</Link>
-                  <button className="dropdown-link logout" onClick={() => setShowLogoutModal(true)}>Logout</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="hamburger" onClick={toggleMenu}>
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`}></span>
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`}></span>
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`}></span>
-          </div>
-        </div>
-
-        <div className={`mobile-menu ${isMenuOpen ? 'active' : ''}`}>
-          <div className="mobile-menu-content">
-            <Link to="/" onClick={closeMenu}>Home</Link>
-            <Link to="/services" onClick={closeMenu}>Services</Link>
-            <Link to="/my-bookings" onClick={closeMenu}>My Bookings</Link>
-            <Link to="/support" onClick={closeMenu}>Support</Link>
-            <div className="mobile-buttons">
-              <Link to="/book-service"><button className="btn-book-mobile" onClick={closeMenu}>Book a Service</button></Link>
-            </div>
-          </div>
-        </div>
-
-        {showLogoutModal && (
-          <div className="modal-backdrop">
-            <div className="modal">
-              <div className="modal-title">Are you sure you want to logout?</div>
-              <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setShowLogoutModal(false)}>Cancel</button>
-                <button className="btn primary" onClick={handleLogout}>Logout</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </nav>
-    );
-  }
-
-  // Guest navbar (fallback)
   return (
     <nav className="navbar">
       <div className="navbar-container">
@@ -156,10 +91,10 @@ const Navbar = () => {
         </div>
 
         <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-          <Link to="/" onClick={closeMenu}>Home</Link>
-          <Link to="/services" onClick={closeMenu}>Services</Link>
-          <Link to="/become-partner" onClick={closeMenu}>Become a Partner</Link>
-          <Link to="/about" onClick={closeMenu}>About</Link>
+          <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Home</NavLink>
+          <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Services</NavLink>
+          <NavLink to="/become-partner" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Become a Partner</NavLink>
+          <NavLink to="/about" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>About</NavLink>
         </div>
 
         <div className="nav-buttons">
@@ -175,11 +110,14 @@ const Navbar = () => {
       </div>
 
       <div className={`mobile-menu ${isMenuOpen ? 'active' : ''}`}>
+        <div className="mobile-menu-overlay" onClick={closeMenu} />
         <div className="mobile-menu-content">
-          <Link to="/" onClick={closeMenu}>Home</Link>
-          <Link to="/services" onClick={closeMenu}>Services</Link>
-          <Link to="/become-partner" onClick={closeMenu}>Become a Partner</Link>
-          <Link to="/about" onClick={closeMenu}>About</Link>
+          <nav className="mobile-nav">
+            <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Home</NavLink>
+            <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Services</NavLink>
+            <NavLink to="/become-partner" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>Become a Partner</NavLink>
+            <NavLink to="/about" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>About</NavLink>
+          </nav>
           <div className="mobile-buttons">
             <Link to="/book-service"><button className="btn-book-mobile" onClick={closeMenu}>Book a Service</button></Link>
             <Link to="/login"><button className="btn-login-mobile" onClick={closeMenu}>Login</button></Link>
