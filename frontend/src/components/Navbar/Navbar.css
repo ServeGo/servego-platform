@@ -1,0 +1,359 @@
+/* Reset and Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.navbar {
+  position: sticky;
+  top: 0;
+  width: 100%;
+  background: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.navbar-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Logo Styles */
+.navbar-logo a {
+  font-size: 1.8rem;
+  font-weight: bold;
+  text-decoration: none;
+  color: #2563eb;
+  transition: color 0.3s ease;
+}
+
+.navbar-logo a:hover {
+  color: #1e40af;
+}
+
+/* Desktop Navigation Links */
+.nav-links {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: #374151;
+  font-weight: 500;
+  transition: color 0.3s ease;
+  position: relative;
+}
+
+.nav-links a:hover {
+  color: #2563eb;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: #2563eb;
+  transition: width 0.3s ease;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+}
+
+/* Desktop Buttons */
+.nav-buttons {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.btn-book, .btn-login {
+  padding: 0.7rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  font-size: 1rem;
+}
+
+.btn-book {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-book:hover {
+  background: #1e40af;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-login {
+  background: transparent;
+  color: #2563eb;
+  border: 2px solid #2563eb;
+}
+
+.btn-login:hover {
+  background: #2563eb;
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* Hamburger Menu (Hidden on Desktop) */
+.hamburger {
+  display: none;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1001;
+}
+
+.bar {
+  width: 30px;
+  height: 3px;
+  background: #374151;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+}
+
+.bar.active:nth-child(1) {
+  transform: rotate(45deg) translate(6px, 6px);
+}
+
+.bar.active:nth-child(2) {
+  opacity: 0;
+}
+
+.bar.active:nth-child(3) {
+  transform: rotate(-45deg) translate(6px, -6px);
+}
+
+/* Mobile Menu Overlay */
+.mobile-menu {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: white;
+  z-index: 999;
+  animation: slideIn 0.3s ease;
+}
+
+.mobile-menu.active {
+  display: block;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.mobile-menu-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  height: 100%;
+  padding: 2rem;
+}
+
+.mobile-menu-content a {
+  text-decoration: none;
+  color: #374151;
+  font-size: 1.5rem;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.mobile-menu-content a:hover {
+  color: #2563eb;
+}
+
+.mobile-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 250px;
+  margin-top: 1rem;
+}
+
+.btn-book-mobile, .btn-login-mobile {
+  padding: 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.btn-book-mobile {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-login-mobile {
+  background: transparent;
+  color: #2563eb;
+  border: 2px solid #2563eb;
+}
+
+/* Media Queries */
+
+/* Tablet Styles (768px - 1024px) */
+@media screen and (max-width: 1024px) {
+  .navbar-container {
+    padding: 1rem 1.5rem;
+  }
+
+  .nav-links {
+    gap: 1.5rem;
+  }
+
+  .btn-book, .btn-login {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Mobile Styles (up to 768px) */
+@media screen and (max-width: 768px) {
+  .navbar-container {
+    padding: 1rem;
+  }
+
+  /* Hide desktop navigation and buttons on mobile */
+  .nav-links {
+    display: none;
+  }
+
+  .nav-buttons {
+    display: none;
+  }
+
+  /* Show hamburger menu on mobile */
+  .hamburger {
+    display: flex;
+  }
+
+  /* Adjust logo size */
+  .navbar-logo a {
+    font-size: 1.5rem;
+  }
+
+  /* Mobile menu improvements */
+  .mobile-menu-content a {
+    font-size: 1.3rem;
+  }
+
+  .mobile-buttons {
+    max-width: 200px;
+  }
+}
+
+/* Small Mobile Devices (up to 480px) */
+@media screen and (max-width: 480px) {
+  .navbar-container {
+    padding: 0.8rem 1rem;
+  }
+
+  .navbar-logo a {
+    font-size: 1.3rem;
+  }
+
+  .mobile-menu-content {
+    gap: 1.5rem;
+  }
+
+  .mobile-menu-content a {
+    font-size: 1.2rem;
+  }
+
+  .btn-book-mobile, .btn-login-mobile {
+    padding: 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  .bar {
+    width: 25px;
+    height: 2.5px;
+  }
+}
+
+/* Landscape Mode for Mobile */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+  .mobile-menu-content {
+    gap: 1rem;
+  }
+
+  .mobile-menu-content a {
+    font-size: 1rem;
+  }
+
+  .mobile-buttons {
+    flex-direction: row;
+    max-width: 400px;
+    gap: 1rem;
+  }
+}
+
+/* Large Desktop Screens (1400px and above) */
+@media screen and (min-width: 1400px) {
+  .navbar-container {
+    max-width: 1400px;
+  }
+
+  .navbar-logo a {
+    font-size: 2rem;
+  }
+
+  .nav-links {
+    gap: 2.5rem;
+  }
+
+  .nav-links a {
+    font-size: 1.1rem;
+  }
+
+  .btn-book, .btn-login {
+    padding: 0.8rem 1.8rem;
+    font-size: 1rem;
+  }
+}
+
+/* Hover Effects for Desktop */
+@media (hover: hover) and (pointer: fine) {
+  .btn-book:hover, .btn-login:hover,
+  .btn-book-mobile:hover, .btn-login-mobile:hover {
+    transform: translateY(-2px);
+  }
+}
+
+/* Reduced Motion Preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

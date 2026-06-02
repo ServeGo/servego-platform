@@ -1,0 +1,134 @@
+.how-it-works {
+  padding: 5rem 2rem;
+  background: white;
+}
+
+.hiw-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.steps-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 3rem;
+  position: relative;
+}
+
+.step-card {
+  flex: 1;
+  text-align: center;
+  padding: 2rem;
+  position: relative;
+  background: white;
+  border-radius: 20px;
+  transition: all 0.3s ease;
+  border: 1px solid #e5e7eb;
+}
+
+.step-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1);
+  border-color: #2563eb;
+}
+
+.step-number {
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  width: 45px;
+  height: 45px;
+  background: #f97316;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
+}
+
+.step-icon {
+  font-size: 3.5rem;
+  margin-bottom: 1.5rem;
+  transition: transform 0.3s ease;
+}
+
+.step-card:hover .step-icon {
+  transform: scale(1.1);
+}
+
+.step-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.step-description {
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.step-arrow {
+  position: absolute;
+  right: -2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2rem;
+  color: #2563eb;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: translateY(-50%) translateX(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-50%) translateX(10px);
+    opacity: 0.7;
+  }
+}
+
+@media (max-width: 1024px) {
+  .step-title {
+    font-size: 1.3rem;
+  }
+  
+  .step-arrow {
+    right: -1rem;
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .how-it-works {
+    padding: 3rem 1rem;
+  }
+  
+  .steps-container {
+    flex-direction: column;
+  }
+  
+  .step-card {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+  }
+  
+  .step-arrow {
+    display: none;
+  }
+  
+  .step-number {
+    top: -10px;
+    left: -10px;
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+}

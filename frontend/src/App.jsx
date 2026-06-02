@@ -1,13 +1,28 @@
-export default function App() {
+import Navbar from './components/Navbar/Navbar';
+import Hero from './components/Hero/Hero';
+import PopularServices from './components/PopularServices/PopularServices';
+import WhyChoose from './components/WhyChoose/WhyChoose';
+import HowItWorks from './components/HowItWorks/HowItWorks';
+import Testimonials from './components/Testimonials/Testimonials';
+import PartnerCTA from './components/PartnerCTA/PartnerCTA';
+import Footer from './components/Footer/Footer';
+import './App.css';
+
+function App() {
   return (
-    <div className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-5xl p-6">
-        <h1 className="text-2xl font-semibold">Servego Frontend</h1>
-        <p className="mt-2 text-slate-600">
-          Project initialized. Next: add routes/pages/components.
-        </p>
-      </div>
+    <div className="app">
+      <Navbar/>
+      <Hero />
+      <PopularServices />
+      <WhyChoose />
+      <HowItWorks />
+      <Testimonials />
+      <PartnerCTA />
+      <Footer />
     </div>
-  )
+  );
 }
+
+export default App;
+
 
