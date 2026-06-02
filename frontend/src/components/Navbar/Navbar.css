@@ -187,6 +187,85 @@
   color: #2563eb;
 }
 
+/* Logged-in styles */
+.nav-right {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.notification {
+  position: relative;
+}
+
+.notif-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.notif-dropdown {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  width: 300px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(2,6,23,0.12);
+  padding: 0.6rem;
+  z-index: 1100;
+}
+
+.notif-item { padding: 0.6rem 0.6rem; color: #0b1220; font-weight:600 }
+.notif-footer { text-align: right; padding-top:0.4rem }
+
+.profile { position: relative; cursor: pointer }
+.profile-btn { display:flex; gap:0.6rem; align-items:center }
+.avatar { width:36px; height:36px; border-radius:50%; background:#eef2ff; display:grid; place-items:center }
+.profile-name { font-weight:700; color:#0b1220 }
+.chev { color:#64748b }
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: 56px;
+  width: 220px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(2,6,23,0.12);
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  z-index: 1100;
+}
+
+.dropdown-link { padding: 0.6rem 0.8rem; text-align:left; color:#0b1220; text-decoration:none; font-weight:700; border-radius:8px }
+.dropdown-link:hover { background:#f1f5f9 }
+.dropdown-link.logout { color:#ef4444; border:none; background:transparent }
+
+.modal-backdrop { position:fixed; inset:0; display:grid; place-items:center; background:rgba(2,6,23,0.45); z-index:1200 }
+.modal { background:white; padding:1.6rem; border-radius:12px; width:320px; box-shadow:0 30px 80px rgba(2,6,23,0.2) }
+.modal-title { font-weight:800; color:#0b1220; margin-bottom:0.8rem }
+.modal-actions { display:flex; gap:0.6rem; justify-content:flex-end }
+.btn { padding:0.6rem 0.9rem; border-radius:8px; cursor:pointer; font-weight:700 }
+.btn.primary { background:linear-gradient(135deg,#2563eb 0%,#4f46e5 100%); color:white; border:none }
+.btn.secondary { background:#f1f5f9; color:#0b1220; border:none }
+
+
 .mobile-buttons {
   display: flex;
   flex-direction: column;
