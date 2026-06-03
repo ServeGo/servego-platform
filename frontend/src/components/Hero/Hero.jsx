@@ -1,7 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import './Hero.css';
 
 const Hero = () => {
+  const [query, setQuery] = useState('');
+  const navigate = useNavigate();
+
+  const handleSearch = () => {
+    const encoded = encodeURIComponent(query.trim());
+    navigate(`/services${encoded ? `?q=${encoded}` : ''}`);
+  };
+
   return (
     <section className="hero">
       <div className="hero-container">
@@ -24,14 +33,16 @@ const Hero = () => {
                 type="text" 
                 className="search-input" 
                 placeholder="Search for a service..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
               />
-              <button className="search-btn">Search</button>
+              <button type="button" className="search-btn" onClick={handleSearch}>Search</button>
             </div>
           </div>
 
           <div className="hero-buttons">
-            <button className="btn-primary">Book a Service</button>
-            <button className="btn-secondary">Become a Partner</button>
+            <Link to="/book-service" className="btn-primary">Book a Service</Link>
+            <Link to="/become-partner#apply" className="btn-secondary">Become a Partner</Link>
           </div>
 
           <div className="trust-badges">

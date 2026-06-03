@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './PopularServices.css';
 
 const services = [
@@ -91,7 +92,7 @@ const PopularServices = () => {
                 <span className="price-label">Starting from</span>
                 <span className="price-value">{service.price}</span>
               </div>
-              <button className="book-now-btn">Book Now →</button>
+              <Link to={`/services/${service.id}`} className="book-now-btn">Book Now →</Link>
             </div>
           ))}
         </div>

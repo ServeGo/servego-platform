@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import Loader from '../scaffold/common/Loader';
+import EmptyState from '../scaffold/common/EmptyState';
 import { Link } from 'react-router-dom';
 
 const styles = {
@@ -14,6 +16,10 @@ const styles = {
 };
 
 const Dashboard = () => {
+  const [isLoading] = useState(false);
+
+  if (isLoading) return <Loader />;
+
   return (
     <div style={styles.page}>
       <div style={styles.header}>

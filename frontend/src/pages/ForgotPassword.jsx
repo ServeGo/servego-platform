@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const styles = {
   page: {
@@ -297,7 +297,7 @@ const ForgotPassword = () => {
               <div style={{ fontWeight: 800, color: '#0b1220' }}>Need Help?</div>
               <div style={{ color: '#475569', marginTop: '0.35rem' }}>
                 <a href="mailto:support@servego.example" style={{ color: '#2563eb', fontWeight: 700 }}>Contact Support</a>
-                <div style={{ marginTop: '0.35rem' }}><a href="#" style={{ color: '#2563eb', fontWeight: 700 }}>FAQ</a></div>
+                <div style={{ marginTop: '0.35rem' }}><Link to="/faq" style={{ color: '#2563eb', fontWeight: 700 }}>FAQ</Link></div>
               </div>
             </div>
             <div style={{ color: '#64748b', fontSize: '0.95rem' }}>

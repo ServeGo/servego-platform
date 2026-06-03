@@ -2,15 +2,18 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 export default function ScrollToTop() {
-  const { pathname } = useLocation();
+  const location = useLocation();
 
   useEffect(() => {
+    // Always reset scroll on pathname change. If navigating only by hash, do not reset.
     try {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    } catch (e) {
+      if (location && location.pathname) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    } catch (err) {
       window.scrollTo(0, 0);
     }
-  }, [pathname]);
+  }, [location.pathname, location.key]);
 
   return null;
 }

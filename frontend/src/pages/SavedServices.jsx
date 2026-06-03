@@ -1,24 +1,33 @@
 import React from 'react';
-
-const styles = {
-  page: { padding: '2rem', background: 'linear-gradient(180deg,#f8fafc,#eef5ff)', minHeight: '80vh' },
-  card: { background: 'white', borderRadius: '12px', padding: '1rem', boxShadow: '0 20px 60px rgba(2,6,23,0.06)' },
-  serviceRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0', borderBottom: '1px solid #eef2ff' },
-  button: { padding: '0.5rem 0.8rem', borderRadius: '8px', background: '#2563eb', color: 'white', border: 'none', fontWeight: 700 }
-};
+import PageShell from '../components/PageShell';
 
 const SavedServices = () => {
-  return (
-    <div style={styles.page}>
-      <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Saved Services</div>
-      <div style={{ color: '#475569', marginBottom: '1rem' }}>Your favorite services and professionals for quick booking.</div>
+  const saved = [
+    'Full Home Cleaning',
+    'AC Repair (Trusted)',
+    'Electrician - Shekhar'
+  ];
 
-      <div style={styles.card}>
-        <div style={styles.serviceRow}><div>Full Home Cleaning</div><button style={styles.button}>Quick Book</button></div>
-        <div style={styles.serviceRow}><div>AC Repair (Trusted)</div><button style={styles.button}>Quick Book</button></div>
-        <div style={styles.serviceRow}><div>Electrician - Shekhar</div><button style={styles.button}>Quick Book</button></div>
+  return (
+    <PageShell title="Saved Services" description="Your favorite services and professionals for quick booking.">
+      <div className="page-card">
+        {saved.length === 0 ? (
+          <div className="empty-state" role="status" aria-live="polite">
+            <h3>No saved services</h3>
+            <p>You haven't saved any services yet.</p>
+          </div>
+        ) : (
+          <div className="page-list">
+            {saved.map((s, i) => (
+              <div key={i} className="page-list-item">
+                <div className="page-list-item-main">{s}</div>
+                <button className="button-primary">Quick Book</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </PageShell>
   );
 };
 

@@ -327,17 +327,17 @@ const BookService = () => {
   });
 
   return (
-    <div style={styles.page}>
-      <div style={styles.wrapper}>
-        <header style={styles.header}>
+    <main className="page-section" style={{ ...styles.page, minHeight: '100vh' }}>
+      <div className="page-container" style={styles.wrapper}>
+        <header className="page-card" style={styles.header}>
           <div style={styles.badge}>Book a Service</div>
-          <h1 style={styles.title}>Fast, clean booking for home services.</h1>
-          <p style={styles.description}>
+          <h1 className="page-title" style={styles.title}>Fast, clean booking for home services.</h1>
+          <p className="page-description" style={styles.description}>
             Complete your service request step by step. The flow is simple, guided, and distraction-free.
           </p>
         </header>
 
-        <div style={styles.progress}>
+        <div className="page-row" style={{ ...styles.progress, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginTop: '1.25rem' }}>
           {steps.map((label, index) => (
             <div key={label} style={styles.stepBadge(index + 1 === step)}>
               {index + 1}. {label}
@@ -350,8 +350,8 @@ const BookService = () => {
 
           {step === 1 && (
             <div>
-              <p style={styles.description}>Choose the service category that best fits your need.</p>
-              <div style={styles.serviceGrid}>
+              <p className="page-description">Choose the service category that best fits your need.</p>
+              <div className="page-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginTop: '1rem' }}>
                 {services.map(item => (
                   <button
                     key={item.id}
@@ -371,7 +371,7 @@ const BookService = () => {
             <div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={styles.label}>Your location</label>
-                <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr auto' }}>
+                <div className="bp-form-row">
                   <input
                     type="text"
                     value={location}
@@ -564,7 +564,7 @@ const BookService = () => {
             </div>
           )}
 
-          <div style={styles.buttonRow}>
+          <div className="bp-hero-actions" style={{ justifyContent: 'space-between', marginTop: '1.75rem' }}>
             {step > 1 ? (
               <button type="button" onClick={previousStep} style={styles.secondaryButton}>
                 Back
@@ -605,7 +605,7 @@ const BookService = () => {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -1,5 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import '../components/PopularServices/PopularServices.css';
+import PageShell from '../components/PageShell';
 
 const services = [
   { id: 1, icon: '⚡', name: 'Electrician', description: 'Expert electrical repairs, installations and maintenance', price: '₹499', color: '#fef3c7' },
@@ -12,17 +14,12 @@ const services = [
 
 const Services = () => {
   return (
-    <section className="services">
-      <div className="services-container">
-        <div className="section-header">
-          <h2 className="section-title">All Services</h2>
-          <p className="section-subtitle">Browse individual services and book what you need</p>
-        </div>
-
+    <PageShell title="All Services" description="Browse individual services and book what you need">
+      <div className="page-card">
         <div className="services-grid">
           {services.map(service => (
             <div key={service.id} className="service-card">
-              <div className="service-icon" style={{ backgroundColor: service.color }}>
+              <div className="service-icon" style={{ backgroundColor: service.color }} aria-hidden>
                 <span>{service.icon}</span>
               </div>
               <h3 className="service-name">{service.name}</h3>
@@ -31,12 +28,14 @@ const Services = () => {
                 <span className="price-label">Starting from</span>
                 <span className="price-value">{service.price}</span>
               </div>
-              <button className="book-now-btn">Book Now →</button>
+              <Link to={`/services/${service.id}`} className="book-now-btn">
+                Book Now →
+              </Link>
             </div>
           ))}
         </div>
       </div>
-    </section>
+    </PageShell>
   );
 };
 

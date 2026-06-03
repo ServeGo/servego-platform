@@ -22,19 +22,22 @@
 ========================= */
 
 .navbar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 1000;
 
+  height: 72px;
   width: 100%;
 
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 
   border-bottom: 1px solid var(--border);
 
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
 }
 
 .navbar-container {
@@ -46,6 +49,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
 
   gap: 1rem;
 }
@@ -80,6 +84,10 @@
   display: flex;
   align-items: center;
   gap: 2rem;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .nav-links a {
@@ -423,6 +431,76 @@
   min-width: 220px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 1.5rem;
+}
+
+.modal {
+  width: min(92%, 420px);
+  max-height: 88vh;
+  padding: 1.5rem;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  text-align: center;
+  overflow: auto;
+}
+
+.modal-title {
+  margin-bottom: 1rem;
+  color: var(--text-dark);
+  font-size: 1.03rem;
+  font-weight: 700;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.modal .btn {
+  min-width: 120px;
+  padding: 0.95rem 1.35rem;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.modal .btn.primary {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  color: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.18);
+}
+
+.modal .btn.primary:hover {
+  transform: translateY(-1px);
+}
+
+.modal .btn.secondary {
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.modal .btn.secondary:hover {
+  background: #e2e8f0;
+}
+
 .dropdown-link.logout {
   width: 100%;
   text-align: left;
@@ -430,6 +508,14 @@
   color: #dc2626;
   background: transparent;
   cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.dropdown-link.logout:focus-visible,
+.dropdown-link.logout:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .notif-footer {
@@ -445,6 +531,7 @@
 
 /* =========================
    MOBILE BUTTONS
+========================= */
 
 .mobile-buttons {
   margin-top: auto;

@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Loader from '../scaffold/common/Loader';
+import EmptyState from '../scaffold/common/EmptyState';
 
 const statusColors = {
   upcoming: '#2563eb',
@@ -86,6 +89,7 @@ const mockBookings = [
 export default function MyBookings() {
   const [tab, setTab] = useState('upcoming');
   const [selected, setSelected] = useState(null);
+  const [isLoading] = useState(false);
 
   const totals = mockBookings.reduce(
     (acc, b) => {
@@ -107,53 +111,59 @@ export default function MyBookings() {
     <div className="mybookings-root">
       <style>{`
         .mybookings-root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:28px; color:#0f172a}
-        .header{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:20px}
-        .title{font-size:28px;font-weight:700;margin:0}
-        .subtitle{color:#64748b;margin-top:6px}
-        .quick-actions{display:flex;gap:10px}
-        .qa-btn{background:#111827;color:#fff;padding:10px 14px;border-radius:10px;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(2,6,23,0.08);transition:transform .18s}
-        .qa-btn:hover{transform:translateY(-3px)}
+        .mybookings-root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; padding:12px; color:#0f172a}
+        .header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+        .title{font-size:22px;font-weight:700;margin:0}
+        .subtitle{color:#64748b;margin-top:4px}
+        .quick-actions{display:flex;gap:8px}
+        .qa-btn{background:#111827;color:#fff;padding:8px 12px;border-radius:10px;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(2,6,23,0.06);transition:transform .12s}
+        .qa-btn:hover{transform:translateY(-2px)}
 
-        .grid{display:grid;grid-template-columns:1fr 320px;gap:20px}
+        .grid{display:grid;grid-template-columns:1fr 280px;gap:12px}
         .main{background:transparent}
-        .cards{display:flex;gap:14px;margin:18px 0 22px;flex-wrap:wrap}
-        .stat{flex:1;min-width:160px;background:linear-gradient(180deg,#ffffff,#f8fafc);border-radius:12px;padding:16px;box-shadow:0 6px 30px rgba(2,6,23,0.06);border:1px solid rgba(15,23,42,0.04)}
-        .stat h4{margin:0;color:#334155;font-size:13px}
-        .stat .num{font-size:22px;font-weight:700;margin-top:6px}
+        .cards{display:flex;gap:10px;margin:12px 0 14px;flex-wrap:wrap}
+        .stat{flex:1;min-width:140px;background:linear-gradient(180deg,#ffffff,#f8fafc);border-radius:10px;padding:10px;box-shadow:0 6px 20px rgba(2,6,23,0.05);border:1px solid rgba(15,23,42,0.04)}
+        .stat h4{margin:0;color:#334155;font-size:12px}
+        .stat .num{font-size:18px;font-weight:700;margin-top:6px}
 
-        .tabs{display:flex;gap:8px;border-bottom:1px solid #e6eef6;padding-bottom:10px}
-        .tab{padding:10px 12px;border-radius:10px 10px 0 0;color:#475569;cursor:pointer}
+        .tabs{display:flex;gap:6px;border-bottom:1px solid #e6eef6;padding-bottom:8px}
+        .tab{padding:8px 10px;border-radius:8px 8px 0 0;color:#475569;cursor:pointer;font-size:14px}
         .tab.active{background:#eef2ff;color:#1e40af;font-weight:600;box-shadow:inset 0 -3px 0 #c7d2fe}
 
-        .list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
-        .card{background:#fff;border-radius:12px;padding:14px;border:1px solid rgba(2,6,23,0.06);display:flex;justify-content:space-between;gap:12px;align-items:flex-start;box-shadow:0 6px 24px rgba(2,6,23,0.04);transition:transform .12s}
-        .card:hover{transform:translateY(-6px)}
-        .card-left{display:flex;gap:12px;align-items:flex-start;flex:1}
-        .avatar{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#eef2ff,#e9f8ff);display:flex;align-items:center;justify-content:center;font-weight:700;color:#0f172a}
+        .list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+        .card{background:#fff;border-radius:10px;padding:12px;border:1px solid rgba(2,6,23,0.06);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;box-shadow:0 6px 20px rgba(2,6,23,0.04);transition:transform .12s}
+        .card:hover{transform:translateY(-4px)}
+        .card-left{display:flex;gap:10px;align-items:flex-start;flex:1}
+        .avatar{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,#eef2ff,#e9f8ff);display:flex;align-items:center;justify-content:center;font-weight:700;color:#0f172a}
         .meta{min-width:0}
         .service{font-weight:600;color:#0f172a}
         .provider{color:#475569;font-size:13px;margin-top:4px}
         .when{color:#64748b;font-size:13px;margin-top:6px}
-        .addr{color:#94a3b8;font-size:13px;margin-top:8px}
+        .addr{color:#94a3b8;font-size:13px;margin-top:6px}
 
-        .badge{padding:6px 10px;border-radius:999px;font-weight:600;font-size:12px}
+        .badge{padding:6px 8px;border-radius:999px;font-weight:600;font-size:12px}
         .actions{display:flex;gap:8px}
-        .btn{padding:8px 12px;border-radius:10px;border:none;cursor:pointer;background:#f1f5f9;color:#0f172a}
+        .btn{padding:6px 10px;border-radius:8px;border:none;cursor:pointer;background:#f1f5f9;color:#0f172a;font-size:13px}
         .primary{background:#2563eb;color:#fff;box-shadow:0 6px 18px rgba(37,99,235,0.12)}
         .ghost{background:transparent;border:1px solid #e2e8f0}
 
-        .right{background:#fff;border-radius:12px;padding:14px;border:1px solid rgba(2,6,23,0.04);height:100%}
-        .timeline{display:flex;flex-direction:column;gap:12px}
-        .tl-item{display:flex;gap:10px;align-items:flex-start}
-        .dot{width:10px;height:10px;border-radius:50%;background:#c7d2fe;margin-top:6px}
+        .right{background:#fff;border-radius:10px;padding:12px;border:1px solid rgba(2,6,23,0.04);min-height:120px}
+        .timeline{display:flex;flex-direction:column;gap:10px}
+        .tl-item{display:flex;gap:8px;align-items:flex-start}
+        .dot{width:9px;height:9px;border-radius:50%;background:#c7d2fe;margin-top:6px}
         .tl-meta{color:#475569;font-size:13px}
 
-        .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;border-radius:12px;border:1px dashed #e6eef6;background:linear-gradient(180deg,#ffffff,#fbfdff)}
-        .empty svg{width:148px;height:110px;margin-bottom:16px}
+        .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;border-radius:10px;border:1px dashed #e6eef6;background:linear-gradient(180deg,#ffffff,#fbfdff)}
+        .empty svg{width:120px;height:90px;margin-bottom:12px}
 
         @media (max-width:900px){
           .grid{grid-template-columns:1fr;}
           .right{order:2}
+          .card{flex-direction:column;align-items:stretch}
+          .card-left{align-items:center}
+          .avatar{width:40px;height:40px}
+          .actions{justify-content:flex-end;flex-wrap:wrap}
+          .btn, .qa-btn{width:100%;max-width:220px}
         }
       `}</style>
 
@@ -163,9 +173,9 @@ export default function MyBookings() {
           <div className="subtitle">Track, manage, and review all your service bookings in one place.</div>
         </div>
         <div className="quick-actions">
-          <button className="qa-btn">Book New Service</button>
-          <button className="qa-btn">Browse Services</button>
-          <button className="qa-btn">Contact Support</button>
+          <button className="qa-btn" onClick={() => navigate('/book-service')}>Book New Service</button>
+          <button className="qa-btn" onClick={() => navigate('/services')}>Browse Services</button>
+          <button className="qa-btn" onClick={() => navigate('/support-center')}>Contact Support</button>
         </div>
       </div>
 
@@ -198,17 +208,11 @@ export default function MyBookings() {
           </div>
 
           <div className="list">
-            {bookingsByTab[tab].length === 0 && (
-              <div className="empty">
-                <svg viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="2" y="8" width="60" height="34" rx="6" fill="#eef2ff"/>
-                  <path d="M8 20h48" stroke="#c7d2fe" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                <h3 style={{margin:0}}>No Bookings Yet</h3>
-                <p style={{color:'#64748b'}}>You don't have any bookings. Book your first service to get started.</p>
-                <button className="qa-btn" style={{marginTop:10}}>Book Your First Service</button>
-              </div>
-            )}
+              {isLoading ? (
+                <Loader />
+              ) : bookingsByTab[tab].length === 0 ? (
+                <EmptyState />
+              ) : null}
 
             {bookingsByTab[tab].map((b) => (
               <div key={b.id} className="card">

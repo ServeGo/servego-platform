@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './PartnerCTA.css';
 
 const PartnerCTA = () => {
@@ -14,8 +15,8 @@ const PartnerCTA = () => {
             Get more customers, earn more income, and build your reputation.
           </p>
           <div className="partner-buttons">
-            <button className="partner-btn-primary">Become a Partner →</button>
-            <button className="partner-btn-secondary">Learn More</button>
+            <Link to="/become-partner#apply" className="partner-btn-primary">Become a Partner →</Link>
+            <Link to="/become-partner" className="partner-btn-secondary">Learn More</Link>
           </div>
         </div>
         <div className="partner-stats">

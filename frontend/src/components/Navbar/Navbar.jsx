@@ -1,5 +1,16 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  publicNavItems,
+  guestActions,
+  customerNavItems,
+  customerProfileMenu,
+  providerNavItems,
+  providerProfileMenu,
+  adminNavItems,
+  adminProfileMenu,
+} from '../../data/navigation';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -8,37 +19,14 @@ const Navbar = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [notifCount] = useState(3);
-  const [user, setUser] = useState(() => {
-    try {
-      const j = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-      return j ? JSON.parse(j) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const onUserChange = () => {
-      try {
-        const j = localStorage.getItem('user');
-        setUser(j ? JSON.parse(j) : null);
-      } catch (e) {
-        setUser(null);
-      }
-    };
-
-    const onStorage = (e) => {
-      if (e.key === 'user') onUserChange();
-    };
-
-    window.addEventListener('userChange', onUserChange);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('userChange', onUserChange);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
+  const role = user?.role || 'guest';
+  const navItems = role === 'customer' ? customerNavItems : role === 'provider' ? providerNavItems : role === 'admin' ? adminNavItems : publicNavItems;
+  const profileMenu = role === 'customer' ? customerProfileMenu : role === 'provider' ? providerProfileMenu : role === 'admin' ? adminProfileMenu : [];
+  const actionButtons = role === 'guest' ? guestActions : [];
+  const profileLabel = user?.name || user?.email?.split('@')[0] || 'Account';
 
   useEffect(() => {
     const handleOutside = (e) => {
@@ -55,8 +43,7 @@ const Navbar = () => {
   const closeMenu = () => setIsMenuOpen(false);
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    window.dispatchEvent(new Event('userChange'));
+    logout();
     setShowLogoutModal(false);
     navigate('/login');
   };
@@ -86,29 +73,22 @@ const Navbar = () => {
     };
   }, [isMenuOpen]);
 
-  if (user) {
-    return (
-      <nav className="navbar navbar-logged">
-        <div className="navbar-container">
-          <div className="navbar-logo">
-            <Link to="/">ServeGo</Link>
-          </div>
+  return (
+    <nav className={`navbar ${isAuthenticated ? 'navbar-logged' : ''}`}>
+      <div className="navbar-container">
+        <div className="navbar-logo">
+          <Link to="/">ServeGo</Link>
+        </div>
 
-          <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-            <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Home
+        <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
+          {navItems.map((item) => (
+            <NavLink key={item.to} to={item.to} onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
+              {item.label}
             </NavLink>
-            <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Services
-            </NavLink>
-            <NavLink to="/my-bookings" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              My Bookings
-            </NavLink>
-            <NavLink to="/support" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Support
-            </NavLink>
-          </div>
+          ))}
+        </div>
 
+        {isAuthenticated ? (
           <div className="nav-right">
             <div className={`notification ${isNotifOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsNotifOpen((prev) => !prev); }}>
               <button className="notif-btn" aria-label="Notifications">🔔</button>
@@ -126,95 +106,34 @@ const Navbar = () => {
 
             <div className={`profile ${isProfileOpen ? 'open' : ''}`} onClick={(e) => { e.stopPropagation(); setIsProfileOpen((prev) => !prev); }}>
               <div className="profile-btn">
-                <div className="avatar">{user.name ? user.name[0] : 'C'}</div>
-                <div className="profile-name">{user.name || 'Customer'}</div>
+                <div className="avatar">{profileLabel[0]?.toUpperCase() || 'U'}</div>
+                <div className="profile-name">{profileLabel}</div>
                 <div className="chev">▾</div>
               </div>
 
               {isProfileOpen && (
                 <div className="dropdown-menu">
-                  <Link to="/dashboard" className="dropdown-link">Dashboard</Link>
-                  <Link to="/profile" className="dropdown-link">Profile</Link>
-                  <Link to="/booking-history" className="dropdown-link">Booking History</Link>
-                  <Link to="/my-bookings" className="dropdown-link">My Bookings</Link>
-                  <Link to="/saved-services" className="dropdown-link">Saved Services</Link>
-                  <Link to="/settings" className="dropdown-link">Settings</Link>
-                  <button className="dropdown-link logout" onClick={() => setShowLogoutModal(true)}>
+                  {profileMenu.map((item) => (
+                    <Link key={item.to} to={item.to} className="dropdown-link" onClick={() => setIsProfileOpen(false)}>
+                      {item.label}
+                    </Link>
+                  ))}
+                  <button className="dropdown-link logout" type="button" onClick={() => setShowLogoutModal(true)}>
                     Logout
                   </button>
                 </div>
               )}
             </div>
           </div>
-
-          <div className="hamburger" onClick={toggleMenu}>
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`} />
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`} />
-            <span className={`bar ${isMenuOpen ? 'active' : ''}`} />
-          </div>
-        </div>
-
-        <div className={`mobile-menu ${isMenuOpen ? 'active' : ''}`}>
-          <div className="mobile-menu-content">
-            <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Home
-            </NavLink>
-            <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Services
-            </NavLink>
-            <NavLink to="/my-bookings" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              My Bookings
-            </NavLink>
-            <NavLink to="/support" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Support
-            </NavLink>
-            <div className="mobile-buttons">
-              <Link to="/book-service"><button className="btn-book-mobile" onClick={closeMenu}>Book a Service</button></Link>
-            </div>
-          </div>
-        </div>
-
-        {showLogoutModal && (
-          <div className="modal-backdrop">
-            <div className="modal">
-              <div className="modal-title">Are you sure you want to logout?</div>
-              <div className="modal-actions">
-                <button className="btn secondary" onClick={() => setShowLogoutModal(false)}>Cancel</button>
-                <button className="btn primary" onClick={handleLogout}>Logout</button>
-              </div>
-            </div>
+        ) : (
+          <div className="nav-buttons">
+            {actionButtons.map((action) => (
+              <Link key={action.to} to={action.to}>
+                <button className={action.label.includes('Book') ? 'btn-book' : 'btn-login'}>{action.label}</button>
+              </Link>
+            ))}
           </div>
         )}
-      </nav>
-    );
-  }
-
-  return (
-    <nav className="navbar">
-      <div className="navbar-container">
-        <div className="navbar-logo">
-          <Link to="/">ServeGo</Link>
-        </div>
-
-        <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-          <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Home
-          </NavLink>
-          <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Services
-          </NavLink>
-          <NavLink to="/become-partner" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Become a Partner
-          </NavLink>
-          <NavLink to="/about" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            About
-          </NavLink>
-        </div>
-
-        <div className="nav-buttons">
-          <Link to="/book-service"><button className="btn-book">Book a Service</button></Link>
-          <Link to="/login"><button className="btn-login">Login</button></Link>
-        </div>
 
         <div className="hamburger" onClick={toggleMenu}>
           <span className={`bar ${isMenuOpen ? 'active' : ''}`} />
@@ -227,25 +146,40 @@ const Navbar = () => {
         <div className="mobile-menu-overlay" onClick={closeMenu} />
         <div className="mobile-menu-content">
           <nav className="mobile-nav">
-            <NavLink to="/" end onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Home
-            </NavLink>
-            <NavLink to="/services" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Services
-            </NavLink>
-            <NavLink to="/become-partner" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              Become a Partner
-            </NavLink>
-            <NavLink to="/about" onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
-              About
-            </NavLink>
+            {navItems.map((item) => (
+              <NavLink key={item.to} to={item.to} onClick={closeMenu} className={({ isActive }) => (isActive ? 'active' : undefined)}>
+                {item.label}
+              </NavLink>
+            ))}
           </nav>
           <div className="mobile-buttons">
-            <Link to="/book-service"><button className="btn-book-mobile" onClick={closeMenu}>Book a Service</button></Link>
-            <Link to="/login"><button className="btn-login-mobile" onClick={closeMenu}>Login</button></Link>
+            {isAuthenticated ? (
+            <>
+              {profileMenu.map((item) => (
+                <Link key={item.to} to={item.to} onClick={closeMenu}><button className="btn-book-mobile">{item.label}</button></Link>
+              ))}
+              <button type="button" className="btn-login-mobile" onClick={() => { closeMenu(); setShowLogoutModal(true); }}>Logout</button>
+            </>
+          ) : (
+              actionButtons.map((action) => (
+                <Link key={action.to} to={action.to} onClick={closeMenu}><button className={action.label.includes('Book') ? 'btn-book-mobile' : 'btn-login-mobile'}>{action.label}</button></Link>
+              ))
+            )}
           </div>
         </div>
       </div>
+
+      {showLogoutModal && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <div className="modal-title">Are you sure you want to logout?</div>
+            <div className="modal-actions">
+              <button className="btn secondary" onClick={() => setShowLogoutModal(false)}>Cancel</button>
+              <button className="btn primary" onClick={handleLogout}>Logout</button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

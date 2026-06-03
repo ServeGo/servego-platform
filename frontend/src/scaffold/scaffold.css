@@ -1,0 +1,31 @@
+:root{
+  --scaffold-bg: #f6f8fb;
+  --card-bg: #ffffff;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-2: #f97316;
+  --radius: 12px;
+  --container: 1100px;
+}
+body .scaffold-root{
+  background: linear-gradient(180deg,#f7f9fc 0%, #eef2ff 100%);
+  min-height: 100vh;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  color: #0f172a;
+}
+.scaffold-header{
+  background: white;
+  border-bottom: 1px solid rgba(15,23,42,0.06);
+  padding: 18px 24px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.04);
+}
+.scaffold-header h1{ margin:0; font-size:18px }
+.scaffold-container{ max-width: var(--container); margin: 28px auto; padding: 0 20px; }
+.scaffold-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:18px }
+.scaffold-card{ background:var(--card-bg); border-radius:var(--radius); padding:18px; box-shadow: 0 10px 30px rgba(2,6,23,0.04); border:1px solid rgba(15,23,42,0.04) }
+.scaffold-card h3{ margin:0 0 10px; font-size:1.05rem }
+.scaffold-card a{ color:var(--accent); font-weight:700 }
+.scaffold-footer{ max-width:var(--container); margin: 22px auto; padding: 0 20px 40px; color:var(--muted); font-size:13px }

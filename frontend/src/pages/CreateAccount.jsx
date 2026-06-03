@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import PageShell from '../components/PageShell';
 
 const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Excellent'];
 
@@ -343,6 +344,7 @@ const categories = [
 
 const CreateAccount = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -404,9 +406,7 @@ const CreateAccount = () => {
   const handleSubmit = event => {
     event.preventDefault();
     const name = form.firstName || form.username || (form.email ? form.email.split('@')[0] : 'Customer');
-    localStorage.setItem('user', JSON.stringify({ name, email: form.email }));
-    // notify navbar and other components
-    window.dispatchEvent(new Event('userChange'));
+    login({ name, email: form.email, role: 'customer' });
     setSubmitted(true);
   };
 
@@ -423,7 +423,7 @@ const CreateAccount = () => {
   }
 
   return (
-    <div style={styles.page}>
+    <PageShell title="Create Account" subtitle="Join ServeGo today">
       <div style={styles.wrapper}>
         <div style={styles.column}>
           <div style={styles.infoCard}>
@@ -700,7 +700,7 @@ const CreateAccount = () => {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 };
 

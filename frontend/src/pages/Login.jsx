@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const styles = {
   page: {
@@ -266,6 +267,7 @@ const styles = {
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -275,9 +277,7 @@ const Login = () => {
   const handleSubmit = event => {
     event.preventDefault();
     const nameFromEmail = email ? email.split('@')[0] : 'Customer';
-    localStorage.setItem('user', JSON.stringify({ name: nameFromEmail, email }));
-    // notify navbar and other components in same window
-    window.dispatchEvent(new Event('userChange'));
+    login({ name: nameFromEmail, email, role: 'customer' });
     setSuccess(true);
   };
 

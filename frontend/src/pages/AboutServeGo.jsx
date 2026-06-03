@@ -1,6 +1,7 @@
 import React from 'react';
+import PageShell from '../components/PageShell';
 
-const cards = [
+const features = [
   {
     id: 1,
     icon: '✔️',
@@ -31,232 +32,133 @@ const stats = [
   { id: 1, value: '10,000+', label: 'Happy Customers' },
   { id: 2, value: '2,000+', label: 'Service Partners' },
   { id: 3, value: '50+', label: 'Cities Covered' },
-  { id: 4, value: '4.8★', label: 'Average Customer Rating' },
+  { id: 4, value: '4.8★', label: 'Customer Rating' },
 ];
 
-const styles = {
-  section: {
-    padding: '5rem 2rem',
-    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-  },
-  container: {
-    maxWidth: '1400px',
-    margin: '0 auto',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-    gap: '2.5rem',
-    alignItems: 'center',
-  },
-  badge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.75rem 1rem',
-    background: 'rgba(59, 130, 246, 0.12)',
-    color: '#1d4ed8',
-    fontWeight: 700,
-    borderRadius: '9999px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    fontSize: '0.8rem',
-    marginBottom: '1.4rem',
-  },
-  title: {
-    fontSize: '3rem',
-    lineHeight: 1.05,
-    fontWeight: 800,
-    color: '#111827',
-    marginBottom: '1.5rem',
-  },
-  description: {
-    color: '#4b5563',
-    fontSize: '1.05rem',
-    lineHeight: 1.8,
-    marginBottom: '1rem',
-  },
-  strongDescription: {
-    color: '#374151',
-    fontWeight: 600,
-    marginBottom: '1rem',
-  },
-  cards: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: '1rem',
-    marginTop: '2.25rem',
-  },
-  card: {
-    background: '#ffffff',
-    border: '1px solid #e5e7eb',
-    borderRadius: '24px',
-    padding: '1.5rem',
-    display: 'flex',
-    gap: '1rem',
-    alignItems: 'flex-start',
-    transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-  },
-  cardIcon: {
-    width: '56px',
-    height: '56px',
-    minWidth: '56px',
-    borderRadius: '18px',
-    background: '#eff6ff',
-    display: 'grid',
-    placeItems: 'center',
-    fontSize: '1.5rem',
-  },
-  cardTitle: {
-    fontSize: '1.05rem',
-    fontWeight: 700,
-    color: '#111827',
-    marginBottom: '0.65rem',
-  },
-  cardText: {
-    color: '#6b7280',
-    lineHeight: 1.7,
-    fontSize: '0.95rem',
-  },
-  stats: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-    gap: '1rem',
-    marginTop: '2.25rem',
-  },
-  stat: {
-    background: '#ffffff',
-    border: '1px solid #e5e7eb',
-    borderRadius: '20px',
-    padding: '1.5rem',
-    textAlign: 'center',
-  },
-  statValue: {
-    display: 'block',
-    fontSize: '1.9rem',
-    fontWeight: 800,
-    color: '#111827',
-    marginBottom: '0.5rem',
-  },
-  statLabel: {
-    display: 'block',
-    color: '#6b7280',
-    fontSize: '0.95rem',
-  },
-  finalMessage: {
-    marginTop: '2.25rem',
-    padding: '2rem',
-    borderRadius: '24px',
-    background: '#1d4ed8',
-    color: '#ffffff',
-    boxShadow: '0 30px 60px rgba(30, 64, 175, 0.12)',
-  },
-  finalTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 800,
-    marginBottom: '1rem',
-  },
-  finalText: {
-    color: 'rgba(255, 255, 255, 0.92)',
-    lineHeight: 1.8,
-    fontSize: '1rem',
-  },
-  visual: {
-    position: 'relative',
-    display: 'grid',
-    placeItems: 'center',
-  },
-  image: {
-    width: '100%',
-    borderRadius: '32px',
-    objectFit: 'cover',
-    boxShadow: '0 30px 60px rgba(15, 23, 42, 0.12)',
-  },
-  visualCard: {
-    position: 'absolute',
-    zIndex: 1,
-    borderRadius: '22px',
-    padding: '1rem 1.25rem',
-    color: '#ffffff',
-    fontWeight: 700,
-    backdropFilter: 'blur(12px)',
-    boxShadow: '0 20px 40px rgba(15, 23, 42, 0.12)',
-  },
-  visualPrimary: {
-    top: '12%',
-    left: '10%',
-    background: 'rgba(59, 130, 246, 0.96)',
-  },
-  visualSecondary: {
-    bottom: '12%',
-    right: '8%',
-    background: 'rgba(16, 185, 129, 0.96)',
-  },
-};
+const values = [
+  { id: 1, title: 'Trust', description: 'Every professional is verified and reviewed by customers' },
+  { id: 2, title: 'Transparency', description: 'Clear pricing with no hidden fees or surprises' },
+  { id: 3, title: 'Quality', description: 'We maintain high service standards across all categories' },
+  { id: 4, title: 'Innovation', description: 'Continuously improving to meet customer expectations' },
+];
 
 const AboutServeGo = () => {
   return (
-    <section style={styles.section}>
-      <div style={styles.container}>
-        <div style={styles.grid}>
-          <div>
-            <span style={styles.badge}>About ServeGo</span>
-            <h2 style={styles.title}>Connecting Customers With Trusted Service Professionals</h2>
-            <p style={styles.description}>
-              ServeGo is a trusted service marketplace that connects customers with skilled professionals for everyday home and business needs.
-            </p>
-            <p style={styles.description}>
-              Whether you need an electrician, plumber, carpenter, AC technician, cleaner, painter, appliance repair expert, or other local professional, ServeGo helps you find verified and reliable service providers quickly and easily.
-            </p>
-            <p style={{ ...styles.description, ...styles.strongDescription }}>
-              Our mission is to make service booking simple, transparent, affordable, and accessible while helping professionals grow their businesses and reach more customers.
-            </p>
-
-            <div style={styles.cards}>
-              {cards.map(card => (
-                <div key={card.id} style={styles.card}>
-                  <div style={styles.cardIcon}>{card.icon}</div>
-                  <div>
-                    <h3 style={styles.cardTitle}>{card.title}</h3>
-                    <p style={styles.cardText}>{card.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.stats}>
-              {stats.map(stat => (
-                <div key={stat.id} style={styles.stat}>
-                  <span style={styles.statValue}>{stat.value}</span>
-                  <span style={styles.statLabel}>{stat.label}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.finalMessage}>
-              <h3 style={styles.finalTitle}>Why Customers Choose ServeGo</h3>
-              <p style={styles.finalText}>
-                We focus on trust, convenience, quality, and customer satisfaction. Our platform makes it easy to find skilled professionals while giving service providers the tools they need to grow their careers.
-              </p>
-            </div>
-          </div>
-
-          <div style={styles.visual}>
-            <div style={{ ...styles.visualCard, ...styles.visualPrimary }}>
-              Service professionals
-            </div>
-            <div style={{ ...styles.visualCard, ...styles.visualSecondary }}>
-              Customer satisfaction
-            </div>
-            <img
-              style={styles.image}
-              src="https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1200&q=80"
-              alt="Service professionals and customer satisfaction"
-            />
-          </div>
+    <PageShell title="About ServeGo" description="Connecting customers with trusted service professionals">
+      {/* Hero Section */}
+      <div className="about-hero" style={{
+        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+        borderRadius: '28px',
+        padding: '3rem 2.5rem',
+        color: 'white',
+        marginBottom: '3rem',
+        boxShadow: '0 20px 60px rgba(37, 99, 235, 0.15)',
+      }}>
+        <div className="about-hero-content">
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '1rem', lineHeight: 1.2 }}>Our Mission</h2>
+          <p style={{ fontSize: '1.1rem', lineHeight: 1.8, maxWidth: '600px', opacity: 0.95 }}>
+            To make professional home services reliable, affordable, and accessible for everyone, while helping skilled professionals build successful careers.
+          </p>
         </div>
       </div>
-    </section>
+
+      {/* Main Content */}
+      <div style={{ marginBottom: '3rem' }}>
+        <div style={{ maxWidth: '800px', marginBottom: '3rem' }}>
+          <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1rem', color: '#0f172a' }}>About ServeGo</h3>
+          <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#475569', marginBottom: '1.2rem' }}>
+            ServeGo is a trusted service marketplace that connects customers with skilled professionals for everyday home and business needs. Whether you need an electrician, plumber, carpenter, AC technician, cleaner, painter, or appliance repair expert, ServeGo helps you find verified and reliable service providers quickly and easily.
+          </p>
+          <p style={{ fontSize: '1rem', lineHeight: 1.7, color: '#475569' }}>
+            We leverage technology, rigorous verification processes, and customer feedback to ensure a seamless experience for both customers and service professionals.
+          </p>
+        </div>
+      </div>
+
+      {/* Features Grid */}
+      <div style={{ marginBottom: '3rem' }}>
+        <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '2rem', color: '#0f172a' }}>Why Choose ServeGo?</h3>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: '1.5rem',
+        }}>
+          {features.map(feature => (
+            <div key={feature.id} className="page-card" style={{
+              padding: '2rem',
+              borderRadius: '16px',
+              background: '#ffffff',
+              border: '1px solid rgba(15, 23, 42, 0.08)',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = '0 12px 40px rgba(37, 99, 235, 0.15)';
+              e.currentTarget.style.transform = 'translateY(-4px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{feature.icon}</div>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: '#0f172a' }}>{feature.title}</h4>
+              <p style={{ fontSize: '0.95rem', color: '#475569', lineHeight: 1.6 }}>{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Stats Section */}
+      <div style={{
+        background: 'linear-gradient(135deg, #f8fafc 0%, #eef5ff 100%)',
+        borderRadius: '24px',
+        padding: '3rem 2.5rem',
+        marginBottom: '3rem',
+        border: '1px solid rgba(37, 99, 235, 0.1)',
+      }}>
+        <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '2rem', color: '#0f172a', textAlign: 'center' }}>Our Impact</h3>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '2rem',
+        }}>
+          {stats.map(stat => (
+            <div key={stat.id} style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '2.5rem',
+                fontWeight: 800,
+                color: '#2563eb',
+                marginBottom: '0.5rem',
+              }}>{stat.value}</div>
+              <div style={{ fontSize: '1rem', color: '#475569', fontWeight: 600 }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Core Values */}
+      <div style={{ marginBottom: '3rem' }}>
+        <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '2rem', color: '#0f172a' }}>Our Core Values</h3>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '1.5rem',
+        }}>
+          {values.map(value => (
+            <div key={value.id} style={{
+              padding: '1.5rem',
+              borderLeft: '4px solid #2563eb',
+              background: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid rgba(15, 23, 42, 0.08)',
+            }}>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: '#0f172a' }}>{value.title}</h4>
+              <p style={{ fontSize: '0.95rem', color: '#475569', margin: 0 }}>{value.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </PageShell>
   );
 };
 
