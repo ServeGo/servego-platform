@@ -246,6 +246,7 @@ export default function Navbar({
               <button
                 onClick={() => setNotifDropdownOpen((v) => !v)}
                 className="p-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 relative focus:outline-none"
+                aria-label="Notifications"
               >
                 <Bell className="w-4.5 h-4.5" />
                 {unreadNotifications.length > 0 && (
@@ -415,6 +416,7 @@ export default function Navbar({
               <button
                 onClick={() => setNotifDropdownOpen((v) => !v)}
                 className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 relative focus:outline-none"
+                aria-label="Notifications"
               >
                 <Bell className="w-4.5 h-4.5" />
                 {unreadNotifications.length > 0 && (
@@ -524,7 +526,7 @@ export default function Navbar({
             <User className="w-3.5 h-3.5" />
             <span>Login</span>
           </button>
-          <button onClick={() => setMobileMenuOpen((v) => !v)} className="md:hidden p-1 px-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer">
+          <button onClick={() => setMobileMenuOpen((v) => !v)} className="md:hidden p-1 px-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 cursor-pointer" aria-label="Toggle menu">
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>

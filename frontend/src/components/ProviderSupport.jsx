@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function ProviderSupport({
   tickets = [],
@@ -7,7 +8,8 @@ export default function ProviderSupport({
   setSubject,
   message,
   setMessage,
-  success
+  success,
+  submitting
 }) {
 
   // Keep for future expansion; currently UI uses raw ticket status.
@@ -47,7 +49,10 @@ export default function ProviderSupport({
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Details *</label>
               <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} required className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 font-bold text-slate-800 outline-none" placeholder="Concern description..." />
             </div>
-            <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl shadow-sm transition-all uppercase tracking-widest text-[10px]">Submit Regional Ticket</button>
+            <button type="submit" disabled={submitting} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl shadow-sm transition-all uppercase tracking-widest text-[10px] disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {submitting ? 'Submitting...' : 'Submit Regional Ticket'}
+            </button>
           </form>
         </div>
 

@@ -70,6 +70,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const [supportSubject, setSupportSubject] = useState('');
   const [supportMsg, setSupportMsg] = useState('');
   const [ticketSuccess, setTicketSuccess] = useState(false);
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
   const [referralInput, setReferralInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [refSuccess, setRefSuccess] = useState('');
@@ -89,11 +90,16 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
   
 
-  const handleSupportSubmit = (e) => {
+  const handleSupportSubmit = async (e) => {
     e.preventDefault();
-    submitSupportTicket({ name: activeProvider?.name, email: currentUser?.email, subject: supportSubject, message: supportMsg });
-    setSupportSubject(''); setSupportMsg(''); setTicketSuccess(true);
-    setTimeout(() => setTicketSuccess(false), 4000);
+    setSupportSubmitting(true);
+    try {
+      submitSupportTicket({ name: activeProvider?.name, email: currentUser?.email, subject: supportSubject, message: supportMsg });
+      setSupportSubject(''); setSupportMsg(''); setTicketSuccess(true);
+      setTimeout(() => setTicketSuccess(false), 4000);
+    } finally {
+      setSupportSubmitting(false);
+    }
   };
 
   const handleApplyReferral = async (e) => {
@@ -175,6 +181,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             subject={supportSubject} setSubject={setSupportSubject}
             message={supportMsg} setMessage={setSupportMsg}
             success={ticketSuccess}
+            submitting={supportSubmitting}
           />
         )}
 

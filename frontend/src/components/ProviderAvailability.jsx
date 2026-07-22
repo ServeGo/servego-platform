@@ -167,12 +167,12 @@ export default function ProviderAvailability() {
               ) : availableDays.map((day) => {
                 const daySlots = availabilitySlots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.dayOfWeek === day);
                 return <div key={day} className="rounded-2xl border border-slate-200 p-3 space-y-2">
-                  <div className="flex items-center justify-between"><span className="text-xs font-black text-slate-700">{day}</span><button type="button" onClick={() => addSlot(day)} className="text-xs font-bold text-indigo-700">Add slot</button></div>
+                  <div className="flex items-center justify-between"><span className="text-xs font-black text-slate-700">{day}</span><button type="button" onClick={() => addSlot(day)} className="text-xs font-bold text-indigo-700 transition-colors">Add slot</button></div>
                   {daySlots.map(({ slot, index }) => <div key={`${day}-${index}`} className="flex items-center gap-2">
                     <input type="time" value={slot.startTime} onChange={(e) => updateSlot(index, 'startTime', e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
                     <span className="text-xs text-slate-400">to</span>
                     <input type="time" value={slot.endTime} onChange={(e) => updateSlot(index, 'endTime', e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1 text-xs" />
-                    <button type="button" onClick={() => setAvailabilitySlots((prev) => prev.filter((_, i) => i !== index))} className="text-xs font-bold text-rose-600">Remove</button>
+                    <button type="button" onClick={() => setAvailabilitySlots((prev) => prev.filter((_, i) => i !== index))} className="text-xs font-bold text-rose-600 transition-colors">Remove</button>
                   </div>)}
                 </div>;
               })}

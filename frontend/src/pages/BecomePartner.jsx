@@ -108,7 +108,7 @@ export const BecomePartner = () => {
                     placeholder="Srinivas Reddy"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
 
@@ -120,7 +120,7 @@ export const BecomePartner = () => {
                     placeholder="srinivas@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
               </div>
@@ -134,7 +134,7 @@ export const BecomePartner = () => {
                     placeholder="9988776655"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
 
@@ -143,7 +143,7 @@ export const BecomePartner = () => {
                   <select 
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 cursor-pointer"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   >
                     {SERVICE_CATEGORIES.map(cat => (
                       <option key={cat.id} value={cat.name}>{cat.name}</option>
@@ -162,7 +162,7 @@ export const BecomePartner = () => {
                     required
                     value={experience}
                     onChange={(e) => setExperience(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
 
@@ -177,7 +177,7 @@ export const BecomePartner = () => {
                       required
                       value={hourlyRate}
                       onChange={(e) => setHourlyRate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-6 pr-3 py-2 text-xs font-semibold text-slate-800"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-6 pr-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                     />
                   </div>
                 </div>
@@ -191,7 +191,7 @@ export const BecomePartner = () => {
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   rows={2}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
               </div>
 
@@ -202,7 +202,7 @@ export const BecomePartner = () => {
                   placeholder="e.g. Smart Switches Setup, Geyser Specialist, Industrial wiring"
                   value={specialtiesText}
                   onChange={(e) => setSpecialtiesText(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
               </div>
 
@@ -217,7 +217,7 @@ export const BecomePartner = () => {
                         type="button"
                         key={area}
                         onClick={() => handleAreaToggle(area)}
-                        className={`p-2 rounded-lg text-[10px] font-bold border text-center transition-all ${
+                        className={`p-2 rounded-lg text-[10px] font-bold border text-center transition-all focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
                           checked 
                             ? 'bg-teal-700 border-teal-850 text-white' 
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -237,7 +237,7 @@ export const BecomePartner = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-2 border border-teal-500/10 cursor-pointer"
+                className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-lg text-xs transition-all flex items-center justify-center gap-2 border border-teal-500/10 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               >
                 {isSubmitting ? (
                   <span>Redirecting...</span>

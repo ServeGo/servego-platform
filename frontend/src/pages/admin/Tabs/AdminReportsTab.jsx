@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Star } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
@@ -103,7 +104,7 @@ export default function AdminReportsTab() {
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-slate-800">{p.name || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{p.category || '—'}</td>
-                    <td className="px-4 py-3 text-amber-600 font-bold">⭐ {p.rating || 0}</td>
+                    <td className="px-4 py-3 text-amber-600 font-bold flex items-center gap-1"><Star className="w-3.5 h-3.5" /> {p.rating || 0}</td>
                     <td className="px-4 py-3 text-slate-700 font-semibold">{p.jobsCompleted || 0}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${p.isVerified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>

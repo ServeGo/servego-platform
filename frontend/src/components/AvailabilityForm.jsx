@@ -1,4 +1,5 @@
 import React from 'react';
+import { Lightbulb } from 'lucide-react';
 
 export default function AvailabilityForm({ 
   onSubmit, 
@@ -80,7 +81,7 @@ export default function AvailabilityForm({
           ))}
         </div>
         <div className="bg-indigo-50 border border-indigo-100 text-indigo-900 text-[11px] p-4 rounded-xl font-semibold opacity-90 italic">
-          💡 Contact Admin to add new licenses or primary credentials to your public specialist profile.
+          <Lightbulb className="w-3.5 h-3.5 inline-block mr-1" /> Contact Admin to add new licenses or primary credentials to your public specialist profile.
         </div>
       </div>
     </div>

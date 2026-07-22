@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { ReputationBadgeStrip, VerificationLevelPill } from './ProviderReputation';
+import { Star, Loader2 } from 'lucide-react';
 
 function ServiceChip({ name }) {
   return (
@@ -56,7 +57,7 @@ export default function ProviderHeader({ provider, completedJobs = 0, approvedSe
             </div>
 
             {loadingServices ? (
-              <div className="mt-2 text-[10px] text-slate-300 font-semibold">Loading approved services...</div>
+              <div className="mt-2 text-[10px] text-slate-300 font-semibold flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Loading approved services...</div>
             ) : (
               <div className="mt-3">
                 <span className="text-[9px] uppercase font-black text-slate-500 block tracking-wider mb-1.5">Approved Services</span>
@@ -91,7 +92,7 @@ export default function ProviderHeader({ provider, completedJobs = 0, approvedSe
         <div className="grid grid-cols-3 gap-2 sm:gap-6 text-center bg-white/5 border border-white/10 p-4 rounded-2xl shrink-0 text-slate-200">
           <div>
             <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-1">Rating</span>
-            <span className="text-base sm:text-lg font-bold text-amber-400 block">⭐ {provider.rating}</span>
+            <span className="text-base sm:text-lg font-bold text-amber-400 block flex items-center gap-1 justify-center"><Star className="w-4 h-4" /> {provider.rating}</span>
           </div>
           <div className="border-x border-white/10 px-2 sm:px-4">
             <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-1">Jobs Done</span>

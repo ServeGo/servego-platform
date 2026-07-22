@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Lock } from 'lucide-react';
 
 export default function ProfileView({ user, onSave }) {
   const [editing, setEditing] = useState(false);
@@ -117,7 +118,7 @@ export default function ProfileView({ user, onSave }) {
           </div>
 
           <div className="bg-teal-50 border border-teal-100 p-4 rounded-xl text-teal-800 leading-relaxed font-semibold text-[11px]">
-            🔒 Your resident address coordinates are protected. Specialists only access dispatch waypoints within 60 minutes of scheduled windows.
+            <Lock className="w-3.5 h-3.5 inline-block mr-1" /> Your resident address coordinates are protected. Specialists only access dispatch waypoints within 60 minutes of scheduled windows.
           </div>
         </div>
       )}

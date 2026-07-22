@@ -40,12 +40,12 @@ export default function ServiceHeader({
               onSearchChange?.(v);
             }}
             placeholder="Query plumber, painting, etc..."
-            className="w-full bg-transparent text-xs font-semibold outline-none text-slate-850"
+            className="w-full bg-transparent text-xs font-semibold outline-none text-slate-850 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
           />
         </div>
         <button 
           type="submit"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg px-5 py-2.5 text-xs transition-all shadow-sm"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg px-5 py-2.5 text-xs transition-all shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
         >
           Filter
         </button>

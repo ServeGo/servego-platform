@@ -35,12 +35,14 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const [reviewBooking, setReviewBooking] = useState(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [invoiceBooking, setInvoiceBooking] = useState(null);
 
   // Ticket state
   const [ticketSubject, setTicketSubject] = useState('Payment Refund Support');
   const [ticketMsg, setTicketMsg] = useState('');
   const [ticketSuccess, setTicketSuccess] = useState(false);
+  const [ticketSubmitting, setTicketSubmitting] = useState(false);
 
   // Chat states
   const [openChatBookingId, setOpenChatBookingId] = useState(null);
@@ -84,27 +86,37 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   }, [completedCount]);
 
   // Actions
-  const handlePublishReview = (e) => {
+  const handlePublishReview = async (e) => {
     e.preventDefault();
     if (!reviewBooking) return;
-    submitReview(reviewBooking.id, reviewBooking.providerId, reviewRating, reviewComment);
-    setReviewBooking(null);
-    setReviewComment('');
-    setReviewRating(5);
+    setReviewSubmitting(true);
+    try {
+      submitReview(reviewBooking.id, reviewBooking.providerId, reviewRating, reviewComment);
+      setReviewBooking(null);
+      setReviewComment('');
+      setReviewRating(5);
+    } finally {
+      setReviewSubmitting(false);
+    }
   };
 
-  const handleTicketSubmit = (e) => {
+  const handleTicketSubmit = async (e) => {
     e.preventDefault();
     if (!ticketMsg.trim()) return;
-    submitSupportTicket({
-      name: currentUser?.name,
-      email: currentUser?.email,
-      subject: ticketSubject,
-      message: ticketMsg
-    });
-    setTicketSuccess(true);
-    setTicketMsg('');
-    setTimeout(() => setTicketSuccess(false), 3000);
+    setTicketSubmitting(true);
+    try {
+      submitSupportTicket({
+        name: currentUser?.name,
+        email: currentUser?.email,
+        subject: ticketSubject,
+        message: ticketMsg
+      });
+      setTicketSuccess(true);
+      setTicketMsg('');
+      setTimeout(() => setTicketSuccess(false), 3000);
+    } finally {
+      setTicketSubmitting(false);
+    }
   };
 
   const handleApplyReferral = async (e) => {
@@ -144,6 +156,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             comment={reviewComment} setComment={setReviewComment}
             onClose={() => setReviewBooking(null)}
             onSubmit={handlePublishReview}
+            submitting={reviewSubmitting}
           />
         )}
 
@@ -189,6 +202,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             subject={ticketSubject} setSubject={setTicketSubject}
             message={ticketMsg} setMessage={setTicketMsg}
             success={ticketSuccess}
+            submitting={ticketSubmitting}
           />
         )}
 

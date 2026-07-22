@@ -1,4 +1,5 @@
 import React from 'react';
+import { Lock } from 'lucide-react';
 
 export default function AppPromo() {
   return (
@@ -26,7 +27,7 @@ export default function AppPromo() {
               <span className="text-[8px] text-slate-400 block font-mono">Order #SVG-5847</span>
             </div>
             <div className="grow" />
-            <div className="text-[9px] text-slate-500 font-mono text-center">🔐 Secure Booking Link</div>
+            <div className="text-[9px] text-slate-500 font-mono text-center"><Lock className="w-3 h-3 inline-block mr-0.5" /> Secure Booking Link</div>
           </div>
         </div>
       </div>

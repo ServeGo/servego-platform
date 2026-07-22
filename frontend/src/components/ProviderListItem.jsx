@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, Star } from 'lucide-react';
 import { ReputationBadgeStrip, VerificationLevelPill } from './ProviderReputation';
 
 export default function ProviderListItem({ 
@@ -24,7 +24,7 @@ export default function ProviderListItem({
             <h4 className="font-bold text-slate-900 mt-1 line-clamp-1 text-sm sm:text-base leading-tight">{provider.name}</h4>
             
             <div className="flex items-center gap-1 mt-1 text-xs">
-              <span className="text-amber-500 font-bold">⭐ {provider.rating}</span>
+              <span className="text-amber-500 font-bold"><Star className="w-3.5 h-3.5 inline-block text-amber-400" /> {provider.rating}</span>
               <span className="text-slate-500 font-medium">({provider.reviewCount} reviews)</span>
             </div>
             <div className="mt-2">

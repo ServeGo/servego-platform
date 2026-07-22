@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, CreditCard, DollarSign, AlertCircle } from 'lucide-react';
+import { Calendar, CreditCard, DollarSign, AlertCircle, Crown } from 'lucide-react';
 
 export default function BookingModal({ 
   provider, 
@@ -33,7 +33,7 @@ export default function BookingModal({
           </div>
           <button 
             onClick={onClose}
-            className="cursor-pointer p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold"
+            className="cursor-pointer p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
           >
             Exit
           </button>
@@ -190,7 +190,7 @@ export default function BookingModal({
 
             {loyaltyTier?.tier && (
               <div className="my-3 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs font-bold text-amber-700 flex items-center gap-2">
-                <span>👑</span>
+                <Crown className="w-4 h-4 text-amber-500" />
                 <span>{loyaltyTier.tier} member perks applied</span>
               </div>
             )}

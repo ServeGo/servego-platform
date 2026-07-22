@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Star } from 'lucide-react';
 import CategoryIcon from './CategoryIcon';
 
 export default function ServiceCard({ 
@@ -62,7 +62,7 @@ export default function ServiceCard({
             {activeCount} Active Specialists
           </span>
           <span className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-400">
-            ⭐ {bestRating} Highest
+            <Star className="w-3 h-3 inline-block" /> {bestRating} Highest
           </span>
         </div>
 

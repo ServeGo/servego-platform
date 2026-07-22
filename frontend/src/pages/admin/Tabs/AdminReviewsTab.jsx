@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../../utils/apiClient';
+import { Loader2, Star } from 'lucide-react';
 
-const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+const StarRating = ({ count }) => (
+  <span className="flex items-center gap-0.5">
+    {[1, 2, 3, 4, 5].map(i => (
+      <Star key={i} className={`w-3.5 h-3.5 ${i <= Math.round(count) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
+    ))}
+  </span>
+);
 
 export default function AdminReviewsTab() {
   const [reviews, setReviews] = useState([]);
@@ -59,7 +66,7 @@ export default function AdminReviewsTab() {
         className="w-full sm:w-80 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold outline-none focus:border-indigo-500"
       />
 
-      {loading && <p className="text-slate-400 text-xs italic">Loading reviews...</p>}
+      {loading && <div className="flex items-center gap-2 text-slate-400 text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Loading reviews...</div>}
       {error && <p className="text-rose-600 text-xs font-semibold">{error}</p>}
 
       {!loading && !error && filtered.length === 0 && (
@@ -79,7 +86,7 @@ export default function AdminReviewsTab() {
                 </span>
               </div>
               <div className="text-amber-400 text-sm font-bold tracking-wider">
-                {stars(rev.rating)}
+                <StarRating count={rev.rating} />
                 <span className="text-slate-500 text-xs font-semibold ml-1">({rev.rating}/5)</span>
               </div>
               {rev.comment && (
