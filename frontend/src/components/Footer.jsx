@@ -1,4 +1,5 @@
 import React from 'react';
+import { MapPin } from 'lucide-react';
 
 export default function Footer({ onNavigate }) {
   const handleLinkClick = (page, categoryId = null) => {
@@ -30,9 +31,9 @@ export default function Footer({ onNavigate }) {
         
         <div className="md:col-span-4 space-y-3 font-semibold text-slate-400">
           <h5 className="font-bold text-white uppercase text-[10px] tracking-wider text-teal-600 font-sans">Launch Territories</h5>
-          <div>📍 Hyderabad Operations (Active)</div>
-          <div>📍 Bengaluru operations (Pending)</div>
-          <div>📍 Chennai operations (Pending)</div>
+          <div><MapPin className="w-3.5 h-3.5 inline-block mr-1" /> Hyderabad Operations (Active)</div>
+          <div><MapPin className="w-3.5 h-3.5 inline-block mr-1" /> Bengaluru operations (Pending)</div>
+          <div><MapPin className="w-3.5 h-3.5 inline-block mr-1" /> Chennai operations (Pending)</div>
         </div>
       </div>
       

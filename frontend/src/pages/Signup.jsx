@@ -202,7 +202,7 @@ export function Signup({ onNavigate }) {
               setSignupType('customer');
               setErrorMsg('');
             }}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
               signupType === 'customer'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-900'
@@ -218,7 +218,7 @@ export function Signup({ onNavigate }) {
               setSignupType('provider');
               setErrorMsg('');
             }}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
               signupType === 'provider'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-900'
@@ -243,7 +243,7 @@ export function Signup({ onNavigate }) {
                 placeholder="Enter your first and last name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               />
             </div>
           </div>
@@ -260,7 +260,7 @@ export function Signup({ onNavigate }) {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               />
             </div>
           </div>
@@ -277,7 +277,7 @@ export function Signup({ onNavigate }) {
                 placeholder="e.g. 9848022311"
                 value={mobileNumber}
                 onChange={(e) => setMobileNumber(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               />
             </div>
           </div>
@@ -291,7 +291,7 @@ export function Signup({ onNavigate }) {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="House no, Street, Locality"
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none min-h-[46px] resize-none"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none min-h-[46px] resize-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
                 <div className="mt-3">
                   <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1.5 font-sans">Pincode *</label>
@@ -301,7 +301,7 @@ export function Signup({ onNavigate }) {
                     value={pincode}
                     onChange={(e) => setPincode(e.target.value)}
                     placeholder="e.g. 500081"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
               </div>
@@ -327,7 +327,7 @@ export function Signup({ onNavigate }) {
                     };
                     reader.readAsDataURL(file);
                   }}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-800 outline-none"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
                 {photoDataUrl && (
                   <img
@@ -355,9 +355,9 @@ export function Signup({ onNavigate }) {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-10 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-10 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               />
-              <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1">
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
 
@@ -377,9 +377,9 @@ export function Signup({ onNavigate }) {
                 placeholder="Re-enter your password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-10 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-10 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
               />
-              <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1">
                 {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
@@ -400,7 +400,7 @@ export function Signup({ onNavigate }) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-xl text-xs tracking-wider transition-all uppercase flex items-center justify-center gap-2 shadow-xs mt-6"
+            className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-xl text-xs tracking-wider transition-all uppercase flex items-center justify-center gap-2 shadow-xs mt-6 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
           >
             {isLoading ? (
               <span>Creating your account...</span>
@@ -425,7 +425,7 @@ export function Signup({ onNavigate }) {
             <button
               type="button"
               onClick={() => onNavigate('login')}
-              className="text-teal-700 font-extrabold text-xs hover:underline"
+              className="text-teal-700 font-extrabold text-xs hover:underline focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
             >
               Sign In
             </button>

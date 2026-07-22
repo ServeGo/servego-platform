@@ -114,7 +114,7 @@ export default function ReferralsView({
                 Applied: <span className="text-indigo-600 font-mono">{user.referredBy}</span>
               </div>
             ) : (
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold p-3 rounded-xl shadow-sm">
+              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold p-3 rounded-xl shadow-sm transition-colors">
                 Claim Credit
               </button>
             )}

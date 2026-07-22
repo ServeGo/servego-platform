@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Save } from 'lucide-react';
+import { Plus, Save, Loader2 } from 'lucide-react';
 import { api } from '../utils/apiClient';
 
 function FilterButton({ label, active, onClick }) {
@@ -187,7 +187,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
               className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
             />
             {loadingMyServices && (
-              <div className="text-[11px] text-slate-500 font-semibold">Loading...</div>
+              <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
             )}
           </div>
 

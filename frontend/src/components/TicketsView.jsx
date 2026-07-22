@@ -1,7 +1,7 @@
 import React from 'react';
-import { Send } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 
-export default function TicketsView({ tickets, onSubmit, subject, setSubject, message, setMessage, success }) {
+export default function TicketsView({ tickets, onSubmit, subject, setSubject, message, setMessage, success, submitting }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start text-left">
       {/* Raise Ticket */}
@@ -44,10 +44,11 @@ export default function TicketsView({ tickets, onSubmit, subject, setSubject, me
 
           <button
             type="submit"
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+            disabled={submitting}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
           >
-            <Send className="w-3.5 h-3.5" />
-            <span>Submit Ticket</span>
+            {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            <span>{submitting ? 'Submitting...' : 'Submit Ticket'}</span>
           </button>
         </form>
       </div>

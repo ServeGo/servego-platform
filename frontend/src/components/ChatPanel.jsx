@@ -1,7 +1,9 @@
-import React from 'react';
-import { Send } from 'lucide-react';
+import React, { useState } from 'react';
+import { Send, Loader2 } from 'lucide-react';
 
-export default function ChatPanel({ booking, input, setInput, onSend }) {
+export default function ChatPanel({ booking, input, setInput, onSend, sending }) {
+  const [localSending, setLocalSending] = useState(false);
+  const isSending = sending ?? localSending;
   return (
     <div className="mt-4 border border-slate-200 rounded-2xl bg-slate-50 overflow-hidden flex flex-col h-80 animate-fade-in shadow-xs text-left">
       <div className="bg-slate-100 px-4 py-3 flex justify-between items-center border-b border-slate-200">
@@ -40,7 +42,7 @@ export default function ChatPanel({ booking, input, setInput, onSend }) {
       </div>
 
       <form 
-        onSubmit={(e) => { e.preventDefault(); onSend(booking.id, input, 'customer'); setInput(''); }}
+        onSubmit={async (e) => { e.preventDefault(); if (!input.trim()) return; setLocalSending(true); try { await onSend(booking.id, input, 'customer'); setInput(''); } finally { setLocalSending(false); } }}
         className="p-2 border-t border-slate-200 bg-white flex gap-2 shrink-0"
       >
         <input 
@@ -52,9 +54,10 @@ export default function ChatPanel({ booking, input, setInput, onSend }) {
         />
         <button 
           type="submit"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-xl transition-all w-8 h-8 flex items-center justify-center shrink-0"
+          disabled={isSending}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-xl transition-all w-8 h-8 flex items-center justify-center shrink-0 disabled:opacity-50"
         >
-          <Send className="w-3.5 h-3.5" />
+          {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
         </button>
       </form>
     </div>

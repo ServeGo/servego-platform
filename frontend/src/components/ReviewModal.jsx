@@ -1,11 +1,13 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function ReviewModal({ 
   booking, 
   rating, setRating, 
   comment, setComment, 
   onClose, 
-  onSubmit 
+  onSubmit,
+  submitting
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -17,7 +19,7 @@ export default function ReviewModal({
           </div>
           <button 
             onClick={onClose}
-            className="p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold"
+            className="p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
           >
             Close
           </button>
@@ -69,9 +71,11 @@ export default function ReviewModal({
             </button>
             <button
               type="submit"
-              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg text-xs transition-colors border border-indigo-500/10 shadow-sm"
+              disabled={submitting}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg text-xs transition-colors border border-indigo-500/10 shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
-              Publish Verified Review
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {submitting ? 'Publishing...' : 'Publish Verified Review'}
             </button>
           </div>
         </form>

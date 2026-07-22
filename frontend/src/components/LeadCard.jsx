@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, User, Wrench } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 
 export default function LeadCard({ 
@@ -46,7 +46,7 @@ export default function LeadCard({
       <div className="mb-4">
         <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Customer Requirements</span>
         <p className="text-slate-700 text-xs font-semibold">
-          👤 {lead.customerName || 'Client'}: <span className="text-slate-400 italic font-medium">"{lead.instructions || 'No special notes.'}"</span>
+          <User className="w-3.5 h-3.5 inline-block mr-0.5" /> {lead.customerName || 'Client'}: <span className="text-slate-400 italic font-medium">"{lead.instructions || 'No special notes.'}"</span>
         </p>
       </div>
 
@@ -112,7 +112,7 @@ export default function LeadCard({
 
 
         {lead.status === 'confirmed' && (
-          <button onClick={() => onStartWork(lead.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-xs font-bold rounded-xl transition-all">🛠 Start Work</button>
+          <button onClick={() => onStartWork(lead.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 text-xs font-bold rounded-xl transition-all"><Wrench className="w-3.5 h-3.5 inline-block mr-1" /> Start Work</button>
         )}
 
         {lead.status === 'ongoing' && (

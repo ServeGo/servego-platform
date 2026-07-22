@@ -34,7 +34,7 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
                 <select 
                   value={selectedArea}
                   onChange={(e) => setArea(e.target.value)}
-                  className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer"
+                  className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 >
                   <option value="">All Hyderabad Area</option>
                   {HYDERABAD_NEIGHBORHOODS.map(area => (
@@ -54,7 +54,7 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
                   value={inputQuery}
                   onChange={(e) => setInputQuery(e.target.value)}
                   placeholder="Washing machine repair, deep cleaning..."
-                  className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400"
+                  className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
               </div>
             </div>
@@ -62,7 +62,7 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
             {/* Submit button */}
             <button 
               type="submit" 
-              className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
             >
               <span>Search Services</span>
               <ArrowRight className="w-3.5 h-3.5" />

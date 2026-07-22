@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ShieldCheck } from 'lucide-react';
+import { Check, ShieldCheck, Star } from 'lucide-react';
 import { normalizeProviderIsVerified } from '../../utils/normalizeAdminData';
 import { api } from '../../utils/apiClient';
 
@@ -126,7 +126,7 @@ export default function AdminProvidersPanel({ providersList, handlePartnerApprov
                 </div>
                 <div>
                   <span className="text-slate-400 uppercase text-[9px] block">Average Feedback</span>
-                  <span className="text-amber-550 block font-bold">⭐ {p.rating} / 5.0</span>
+                  <span className="text-amber-550 block font-bold flex items-center gap-1"><Star className="w-3.5 h-3.5" /> {p.rating} / 5.0</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-slate-400 uppercase text-[9px] block">Sectors active</span>

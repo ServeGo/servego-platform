@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { api } from '../../../utils/apiClient';
+import { Loader2 } from 'lucide-react';
 
 export default function AdminAnalyticsTab() {
   const { bookings, providers, services } = useApp();
@@ -46,7 +47,7 @@ export default function AdminAnalyticsTab() {
 
       {/* KPI Cards */}
       {loading ? (
-        <p className="text-slate-400 text-xs italic">Loading metrics...</p>
+        <div className="flex items-center gap-2 text-slate-400 text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Loading metrics...</div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {statCards.map(c => (

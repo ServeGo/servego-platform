@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, MapPin, Mail, Phone, Landmark, Send } from 'lucide-react';
+import { CheckCircle2, MapPin, Mail, Phone, Landmark, Send, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 export const Contact = () => {
@@ -13,8 +13,9 @@ export const Contact = () => {
 
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorText('');
 
@@ -28,17 +29,22 @@ export const Contact = () => {
       return;
     }
 
-    submitSupportTicket({
-      name,
-      email,
-      subject,
-      message,
-    });
+    setIsSubmitting(true);
+    try {
+      submitSupportTicket({
+        name,
+        email,
+        subject,
+        message,
+      });
 
-    setIsSuccess(true);
-    setName('');
-    setEmail('');
-    setMessage('');
+      setIsSuccess(true);
+      setName('');
+      setEmail('');
+      setMessage('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -128,7 +134,7 @@ export const Contact = () => {
                     onClick={() => {
                       window.location.hash = 'login';
                     }}
-                    className="mt-6 w-full max-w-md bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 border border-slate-750/30"
+                    className="mt-6 w-full max-w-md bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 border border-slate-750/30 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   >
                     <span>Login to Open a Support Ticket</span>
                   </button>
@@ -208,10 +214,11 @@ export const Contact = () => {
 
                     <button
                       type="submit"
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 border border-slate-750/30"
+                      disabled={isSubmitting}
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 border border-slate-750/30 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                     >
-                      <Send className="w-4 h-4" />
-                      <span>Send Ticket Message</span>
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      <span>{isSubmitting ? 'Submitting...' : 'Send Ticket Message'}</span>
                     </button>
                   </form>
                 </div>

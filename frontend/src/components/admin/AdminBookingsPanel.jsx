@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, X, Clock } from 'lucide-react';
+import { Search, X, Clock, Loader2 } from 'lucide-react';
 import { api } from '../../utils/apiClient';
 
 const STATUS_BADGES = {
@@ -48,13 +48,13 @@ function TimelineModal({ bookingId, onClose }) {
             <h3 className="text-base font-extrabold text-slate-900">Booking Timeline</h3>
             <p className="text-[11px] text-slate-500 font-mono mt-0.5">{bookingId}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors" aria-label="Close timeline">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-5">
-          {loading && <p className="text-xs text-slate-400 text-center py-8">Loading timeline...</p>}
+          {loading && <div className="flex items-center justify-center gap-2 text-xs text-slate-400 py-8"><Loader2 className="w-4 h-4 animate-spin" /> Loading timeline...</div>}
           {error && <p className="text-xs text-rose-600 font-semibold">{error}</p>}
           {data && (
             <div className="space-y-4">
@@ -88,7 +88,7 @@ function TimelineModal({ bookingId, onClose }) {
                       <li key={i} className="ml-4">
                         <span className="absolute -left-1.5 mt-1 w-3 h-3 rounded-full bg-teal-500 border-2 border-white" />
                         <div className="flex items-start gap-2">
-                          <Clock className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" />
+                          <Clock className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
                           <div>
                             <span className="text-[10px] font-extrabold uppercase text-slate-700">{event.status}</span>
                             {event.note && <p className="text-[11px] text-slate-500 mt-0.5">{event.note}</p>}
@@ -254,14 +254,14 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
             <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2 justify-end">
               <button
                 onClick={() => setTimelineBookingId(bk.id)}
-                className="bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 font-bold px-3 py-1.5 text-[10px] rounded-lg"
+                className="bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 font-bold px-3 py-1.5 text-[10px] rounded-lg transition-colors"
               >
                 Timeline
               </button>
               {bk.status !== 'completed' && bk.status !== 'cancelled' && (
                 <button
                   onClick={() => onOverrideCancel(bk.id)}
-                  className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-3 py-1.5 text-[10px] rounded-lg"
+                  className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-3 py-1.5 text-[10px] rounded-lg transition-colors"
                 >
                   Cancel
                 </button>

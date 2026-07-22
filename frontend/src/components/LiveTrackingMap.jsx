@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, Truck, ShieldCheck, Activity } from 'lucide-react';
+import { Compass, Truck, ShieldCheck, Activity, Building2, MapPin, Clock } from 'lucide-react';
 
 
 export const LiveTrackingMap = ({ booking }) => {
@@ -199,12 +199,12 @@ export const LiveTrackingMap = ({ booking }) => {
 
         {/* Start Landmark Box */}
         <div className="absolute left-[20px] bottom-[110px] bg-slate-900 border border-slate-700/80 rounded px-1.5 py-0.5 text-[8px] text-slate-400 font-bold">
-          🏢 {booking.providerName.split(' ')[0]} Dispatch Hub
+          <Building2 className="w-2.5 h-2.5 inline-block mr-0.5" /> {booking.providerName.split(' ')[0]} Dispatch Hub
         </div>
 
         {/* Customer Location Pin Box */}
         <div className="absolute right-[120px] top-[75px] bg-indigo-900/90 border border-indigo-500 rounded px-2 py-1 text-[9px] font-bold text-indigo-50 leading-none">
-          📍 Your Home{booking.locationAddress.substring(0, 18)}...
+          <MapPin className="w-2.5 h-2.5 inline-block mr-0.5" /> Your Home{booking.locationAddress.substring(0, 18)}...
         </div>
 
         {/* Hover Specialist Floating Banner */}
@@ -243,7 +243,8 @@ export const LiveTrackingMap = ({ booking }) => {
 
         <div className="space-y-1">
           <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider">
-            ⏰ Time Of Arrival (ETA)
+            <Clock className="w-3.5 h-3.5 text-indigo-500" />
+            Time Of Arrival (ETA)
           </span>
           <div className="text-sm font-extrabold text-indigo-400">
             {booking.status === 'ongoing' ? 'Started Labor' : `${eta} Minutes Left`}
