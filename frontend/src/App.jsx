@@ -14,6 +14,8 @@ import { ProviderDashboard } from './pages/ProviderDashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -78,6 +80,10 @@ const getRoutePath = (page, categoryId = null, tab = null) => {
       return '/login';
     case 'signup':
       return '/signup';
+    case 'forgot-password':
+      return '/forgot-password';
+    case 'reset-password':
+      return '/reset-password';
     case 'dashboard-customer':
       return '/dashboard-customer';
     case 'dashboard-provider':
@@ -152,7 +158,10 @@ export function MainLayout() {
       setCurrentPage(nextPage);
     };
 
-    if (!currentUser) {
+    const publicPages = ['forgot-password', 'reset-password'];
+    const currentPath = (window.location.pathname || '/').split('?')[0].replace(/^\/+|\/+$/g, '');
+    const currentSegment = currentPath ? currentPath.split('/')[0] : '';
+    if (!currentUser && !publicPages.includes(currentSegment)) {
       window.history.replaceState({}, '', '/');
       setCurrentPage('home');
     }
@@ -223,9 +232,103 @@ export function MainLayout() {
 
   if (isInitializing) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 rounded-full border-4 border-slate-700 border-t-teal-500 animate-spin" />
-        <span className="text-sm font-bold text-slate-400 tracking-wide">Loading ServeGo...</span>
+      <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center gap-6 overflow-hidden">
+        <style>{`
+          @keyframes logoGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(20,184,166,0.25), 0 0 60px rgba(20,184,166,0.1); }
+            50% { box-shadow: 0 0 30px rgba(20,184,166,0.45), 0 0 80px rgba(20,184,166,0.2); }
+          }
+          @keyframes gearSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes logoBreathe {
+            0% { transform: scale(0.6); opacity: 0.3; }
+            50% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+          @keyframes dotBounce {
+            0%, 80%, 100% { transform: scale(0.35); opacity: 0.25; }
+            40% { transform: scale(1); opacity: 1; }
+          }
+          @keyframes barSlide {
+            0% { transform: translateX(-100%); }
+            50% { transform: translateX(0%); }
+            100% { transform: translateX(100%); }
+          }
+          @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+          @keyframes ringPulse {
+            0% { transform: scale(1); opacity: 0.5; }
+            100% { transform: scale(1.6); opacity: 0; }
+          }
+        `}</style>
+
+        {/* Expanding ring pulse behind logo */}
+        <div className="absolute" style={{ animation: 'fadeUp 0.5s ease-out' }}>
+          <div className="w-24 h-24 rounded-2xl border border-teal-400/30 absolute -inset-2" style={{ animation: 'ringPulse 2s ease-out infinite' }} />
+          <div className="w-24 h-24 rounded-2xl border border-teal-400/30 absolute -inset-2" style={{ animation: 'ringPulse 2s ease-out 0.8s infinite' }} />
+        </div>
+
+        {/* Logo with glow */}
+        <div
+          className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center"
+          style={{ animation: 'logoGlow 2.5s ease-in-out infinite, logoBreathe 2s cubic-bezier(0.34,1.56,0.64,1) infinite, fadeUp 0.5s ease-out' }}
+        >
+          <span className="text-white font-extrabold text-2xl tracking-tight select-none">S</span>
+          <span className="absolute top-2 right-2 text-white/80" style={{ animation: 'gearSpin 3s linear infinite' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          </span>
+        </div>
+
+        {/* Brand text */}
+        <div className="flex flex-col items-center gap-2" style={{ animation: 'fadeUp 0.6s ease-out 0.15s both' }}>
+          <span className="text-white font-extrabold text-lg tracking-tight">ServeGo</span>
+          <span
+            className="text-[10px] uppercase tracking-[0.3em] font-bold"
+            style={{
+              background: 'linear-gradient(90deg, #5eead4, #14b8a6, #99f6e4, #14b8a6, #5eead4)',
+              backgroundSize: '200% auto',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              animation: 'shimmer 3s linear infinite',
+            }}
+          >
+            Trusted Local Experts
+          </span>
+        </div>
+
+        {/* Bouncing dots */}
+        <div className="flex items-center gap-2" style={{ animation: 'fadeUp 0.6s ease-out 0.3s both' }}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-teal-400"
+              style={{ animation: `dotBounce 1.4s ease-in-out ${i * 0.16}s infinite` }}
+            />
+          ))}
+        </div>
+
+        {/* Shimmer progress bar */}
+        <div
+          className="absolute bottom-14 left-1/2 -translate-x-1/2 w-28 h-[3px] rounded-full bg-slate-800 overflow-hidden"
+          style={{ animation: 'fadeUp 0.6s ease-out 0.45s both' }}
+        >
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: '60%',
+              background: 'linear-gradient(90deg, transparent, #14b8a6, transparent)',
+              animation: 'barSlide 1.8s ease-in-out infinite',
+            }}
+          />
+        </div>
       </div>
     );
   }
@@ -256,6 +359,10 @@ export function MainLayout() {
         return <Login onNavigate={handlePageTransition} />;
       case 'signup':
         return <Signup onNavigate={handlePageTransition} />;
+      case 'forgot-password':
+        return <ForgotPassword onNavigate={handlePageTransition} />;
+      case 'reset-password':
+        return <ResetPassword onNavigate={handlePageTransition} />;
       case 'dashboard-customer':
         return (
           <CustomerDashboard

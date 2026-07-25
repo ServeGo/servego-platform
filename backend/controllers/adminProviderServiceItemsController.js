@@ -39,8 +39,8 @@ export const AdminProviderServiceItemsController = {
         id: r.id,
         provider: r.provider,
         name: r.requestedServiceName,
-        description: r.description,
-        experienceYears: r.experienceYears,
+        description: r.description || '-',
+        experienceYears: r.experienceYears ?? r.provider?.experienceYears ?? null,
         createdAt: r.createdAt,
         approvalStatus: r.status
       }));
@@ -50,8 +50,8 @@ export const AdminProviderServiceItemsController = {
         id: `APP-${link.id}`,
         provider: link.provider,
         name: link.service.name,
-        description: link.description ?? link.service.description,
-        experienceYears: null,
+        description: link.description || link.service.description || '-',
+        experienceYears: link.provider?.experienceYears ?? null,
         createdAt: link.createdAt,
         approvalStatus: 'APPROVED'
       }));

@@ -223,13 +223,11 @@ export const registerProviderServiceValidation = [
   body('serviceName')
     .trim()
     .notEmpty().withMessage('Service name is required')
-    .isLength({ max: 200 }).withMessage('Service name too long')
-    .escape(),
+    .isLength({ max: 200 }).withMessage('Service name too long'),
   body('description')
     .trim()
     .notEmpty().withMessage('Description is required')
-    .isLength({ min: 10, max: 2000 }).withMessage('Description must be between 10 and 2000 characters')
-    .escape(),
+    .isLength({ min: 10, max: 2000 }).withMessage('Description must be between 10 and 2000 characters'),
   body('popularIssues')
     .optional()
     .isArray().withMessage('Popular issues must be an array'),
@@ -328,6 +326,27 @@ export const sendMessageValidation = [
     .notEmpty().withMessage('Message text is required')
     .isLength({ max: 2000 }).withMessage('Message too long')
     .escape()
+];
+
+// ==================== Password Reset Validations ====================
+
+export const forgotPasswordValidation = [
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Please enter your email address')
+    .isEmail().withMessage('Please enter a valid email address')
+    .normalizeEmail()
+];
+
+export const resetPasswordValidation = [
+  body('token')
+    .trim()
+    .notEmpty().withMessage('Reset token is required')
+    .isLength({ min: 10, max: 512 }).withMessage('Invalid reset token'),
+  body('password')
+    .notEmpty().withMessage('Please enter a new password')
+    .isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*\d)/).withMessage('Password must contain a lowercase letter and a number')
 ];
 
 // ==================== Parameter Validations ====================

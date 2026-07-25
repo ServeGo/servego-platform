@@ -2,9 +2,8 @@
  * Production-grade API client with retry logic, error handling, and token refresh
  */
 
-// Localhost-only configuration (no Render fallback)
-const API_BASE_URL = 'http://localhost:4000/api';
-const SOCKET_URL = 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 const API_BASES = [API_BASE_URL];
 
 
@@ -110,7 +109,7 @@ async function refreshAccessToken() {
 /**
  * Create request headers
  */
-function createHeaders(additionalHeaders = {}) {
+function createHeaders(additionalHeaders = {}, body) {
   const headers = new Headers(additionalHeaders);
   
   // Add auth token if available
@@ -119,8 +118,8 @@ function createHeaders(additionalHeaders = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
   
-  // Default content type
-  if (!headers.has('Content-Type') && !(additionalHeaders instanceof FormData)) {
+  // Don't set Content-Type for FormData — browser sets multipart boundary automatically
+  if (!headers.has('Content-Type') && !(body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
   
@@ -140,7 +139,7 @@ async function apiRequest(endpoint, options = {}) {
     const url = `${baseUrl}${endpoint}`;
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       try {
-        const headers = createHeaders(options.headers);
+        const headers = createHeaders(options.headers, options.body);
         const fetchOptions = {
           ...options,
           headers,
@@ -217,6 +216,13 @@ export const api = {
       ...options, 
       method: 'POST',
       body: typeof body === 'string' ? body : JSON.stringify(body)
+    }),
+  
+  postFormData: (endpoint, formData, options = {}) =>
+    apiRequest(endpoint, {
+      ...options,
+      method: 'POST',
+      body: formData
     }),
   
   put: (endpoint, body, options = {}) => 

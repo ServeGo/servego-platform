@@ -30,12 +30,12 @@ export default function AdminAnalyticsTab() {
   const totalBookings = bookings.length || 1;
 
   const statCards = loading || !metrics ? [] : [
-    { label: 'Total Providers', value: metrics.totalProviders, color: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
-    { label: 'Total Customers', value: metrics.totalCustomers, color: 'text-teal-700 bg-teal-50 border-teal-100' },
-    { label: 'Active Bookings', value: metrics.activeBookings, color: 'text-amber-700 bg-amber-50 border-amber-100' },
-    { label: 'Completed This Month', value: metrics.completedThisMonth, color: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
-    { label: 'Pending Approvals', value: metrics.pendingApprovals, color: 'text-rose-700 bg-rose-50 border-rose-100' },
-    { label: 'Open Tickets', value: metrics.openTickets, color: 'text-slate-700 bg-slate-50 border-slate-200' },
+    { label: 'Total Providers', value: metrics.users?.providers ?? metrics.totalProviders ?? 0, color: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
+    { label: 'Total Customers', value: metrics.users?.customers ?? metrics.totalCustomers ?? 0, color: 'text-teal-700 bg-teal-50 border-teal-100' },
+    { label: 'Active Bookings', value: metrics.bookings?.active ?? metrics.activeBookings ?? 0, color: 'text-amber-700 bg-amber-50 border-amber-100' },
+    { label: 'Completed This Month', value: metrics.bookings?.completedThisMonth ?? metrics.completedThisMonth ?? 0, color: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+    { label: 'Pending Approvals', value: metrics.services?.pendingApprovals ?? metrics.pendingApprovals ?? 0, color: 'text-rose-700 bg-rose-50 border-rose-100' },
+    { label: 'Open Tickets', value: metrics.tickets?.open ?? metrics.openTickets ?? 0, color: 'text-slate-700 bg-slate-50 border-slate-200' },
   ];
 
   return (

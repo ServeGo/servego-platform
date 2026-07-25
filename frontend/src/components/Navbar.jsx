@@ -54,9 +54,12 @@ export default function Navbar({
     onNavigate(page, categoryId);
   };
 
-  const setAdminHashAndTab = (tabKey, hashValue) => {
+  const setAdminHashAndTab = (tabKey) => {
     setAdminActiveTab(tabKey);
-    window.location.hash = hashValue;
+    const path = tabKey === 'dashboard' ? '/admin/dashboard' : `/admin/${tabKey}`;
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
   };
 
   // ----------------------------------------------------
@@ -83,7 +86,7 @@ export default function Navbar({
           {/* desktop tabs */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-bold uppercase tracking-wider text-slate-350">
             <button
-              onClick={() => setAdminHashAndTab('dashboard', 'admin/dashboard')}
+              onClick={() => setAdminHashAndTab('dashboard')}
               className={`hover:text-white cursor-pointer ${
                 adminActiveTab === 'dashboard' ? 'text-teal-400 border-b-2 border-teal-400' : ''
               }`}
@@ -91,7 +94,7 @@ export default function Navbar({
               Control Dashboard
             </button>
             <button
-              onClick={() => setAdminHashAndTab('providers', 'admin/providers')}
+              onClick={() => setAdminHashAndTab('providers')}
               className={`hover:text-white cursor-pointer ${
                 adminActiveTab === 'providers' ? 'text-teal-400 border-b-2 border-teal-400' : ''
               }`}
@@ -99,7 +102,7 @@ export default function Navbar({
               Verify Partners
             </button>
             <button
-              onClick={() => setAdminHashAndTab('bookings', 'admin/bookings')}
+              onClick={() => setAdminHashAndTab('bookings')}
               className={`hover:text-white cursor-pointer ${
                 adminActiveTab === 'bookings' ? 'text-teal-400 border-b-2 border-teal-400' : ''
               }`}
@@ -107,7 +110,7 @@ export default function Navbar({
               Manage Orders
             </button>
             <button
-              onClick={() => setAdminHashAndTab('tickets', 'admin/tickets')}
+              onClick={() => setAdminHashAndTab('tickets')}
               className={`hover:text-white cursor-pointer ${
                 adminActiveTab === 'tickets' ? 'text-teal-400 border-b-2 border-teal-400' : ''
               }`}
@@ -143,7 +146,7 @@ export default function Navbar({
             <div className="flex flex-col items-center text-xs font-bold uppercase tracking-wider text-slate-200">
               <button
                 onClick={() => {
-                  setAdminHashAndTab('dashboard', 'admin/dashboard');
+                  setAdminHashAndTab('dashboard');
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full py-3 px-1.5 text-center rounded ${
@@ -154,7 +157,7 @@ export default function Navbar({
               </button>
               <button
                 onClick={() => {
-                  setAdminHashAndTab('providers', 'admin/providers');
+                  setAdminHashAndTab('providers');
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full py-3 px-1.5 text-center rounded ${
@@ -165,7 +168,7 @@ export default function Navbar({
               </button>
               <button
                 onClick={() => {
-                  setAdminHashAndTab('bookings', 'admin/bookings');
+                  setAdminHashAndTab('bookings');
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full py-3 px-1.5 text-center rounded ${
@@ -176,7 +179,7 @@ export default function Navbar({
               </button>
               <button
                 onClick={() => {
-                  setAdminHashAndTab('tickets', 'admin/tickets');
+                  setAdminHashAndTab('tickets');
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full py-3 px-1.5 text-center rounded ${

@@ -1,6 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 import { useApp } from '../context/AppContext';
+
+function decodeHtmlEntities(str) {
+  if (!str) return str;
+  const el = document.createElement('textarea');
+  el.innerHTML = str;
+  return el.value;
+}
 
 export default function AdminOtherServicesRequestsPanel() {
   const {
@@ -11,8 +19,8 @@ export default function AdminOtherServicesRequestsPanel() {
     runWithActionSpinner
   } = useApp();
 
-
-
+  const [processingId, setProcessingId] = useState(null);
+  const [processingAction, setProcessingAction] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const loadNow = async () => {
@@ -24,13 +32,38 @@ export default function AdminOtherServicesRequestsPanel() {
     }
   };
 
-  // Optimization: avoid refetch-on-mount.
-  // AppContext already handles initial admin fetches on role change; this tab should
-  // only refresh deterministically after mutations (approve/deny).
-  useEffect(() => {
-    // no-op
-  }, []);
+  const handleApprove = async (item) => {
+    if (processingId) return;
+    setProcessingId(item.id);
+    setProcessingAction('approve');
+    try {
+      await runWithActionSpinner(
+        () => approveProviderServiceRequest(item.id),
+        { message: 'Approving service request...' }
+      );
+    } finally {
+      setProcessingId(null);
+      setProcessingAction(null);
+    }
+  };
 
+  const handleDeny = async (item) => {
+    if (processingId) return;
+    const reason = window.prompt('Reason for denial?');
+    if (!reason || !reason.trim()) return;
+
+    setProcessingId(item.id);
+    setProcessingAction('deny');
+    try {
+      await runWithActionSpinner(
+        () => denyProviderServiceRequest(item.id, reason.trim()),
+        { message: 'Denying service request...' }
+      );
+    } finally {
+      setProcessingId(null);
+      setProcessingAction(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -47,6 +80,7 @@ export default function AdminOtherServicesRequestsPanel() {
             disabled={loading}
             className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-xs disabled:bg-slate-700"
           >
+            {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
@@ -69,16 +103,18 @@ export default function AdminOtherServicesRequestsPanel() {
                   <th className="py-3 px-6">Service Name</th>
                   <th className="py-3 px-6 text-center">Status</th>
                   <th className="py-3 px-6">Experience</th>
-                  <th className="py-3 px-6">Base Price/Day</th>
                   <th className="py-3 px-6">Description</th>
 
                   <th className="py-3 px-6 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150 text-slate-700">
-                {providerServiceItems.map((r) => (
-
-                  <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                {providerServiceItems.map((r) => {
+                  const isRowBusy = processingId === r.id;
+                  const isApproving = isRowBusy && processingAction === 'approve';
+                  const isDenying = isRowBusy && processingAction === 'deny';
+                  return (
+                  <tr key={r.id} className={`transition-colors ${isRowBusy ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}>
                     <td className="py-4 px-6 font-mono font-bold text-slate-900">{r.id}</td>
                     <td className="py-4 px-6">
                       <div className="font-extrabold text-slate-900">
@@ -98,54 +134,37 @@ export default function AdminOtherServicesRequestsPanel() {
                         <span className="bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded text-[9px] font-extrabold uppercase">Unknown</span>
                       )}
                     </td>
-                    <td className="py-4 px-6 text-slate-700">{r.experienceYears ?? '-' } years</td>
+                    <td className="py-4 px-6 text-slate-700">{r.experienceYears != null ? `${r.experienceYears} Years` : '-'}</td>
 
-                    <td className="py-4 px-6 text-slate-700">₹{r.basePricePerDay ?? '-'}</td>
-                    <td className="py-4 px-6 text-slate-700 max-w-[260px]">{r.description ?? '-'}</td>
+                    <td className="py-4 px-6 text-slate-700 max-w-[260px] whitespace-pre-wrap">{decodeHtmlEntities(r.description) || '-'}</td>
                     <td className="py-4 px-6 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          onClick={async () => {
-                            if (r.approvalStatus !== 'PENDING') return;
-                            await runWithActionSpinner(
-                              () => approveProviderServiceRequest(r.id),
-                              { message: 'Approving service request...' }
-                            );
-                          }}
-                          disabled={r.approvalStatus !== 'PENDING'}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-lg text-[10px] shadow-2xs disabled:bg-emerald-300 disabled:cursor-not-allowed transition-colors"
+                          onClick={() => handleApprove(r)}
+                          disabled={r.approvalStatus !== 'PENDING' || isRowBusy}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-lg text-[10px] shadow-2xs disabled:bg-emerald-300 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                         >
-                          Approve
+                          {isApproving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          {isApproving ? 'Approving...' : 'Approve'}
                         </button>
 
 
                         <button
                           type="button"
-                          onClick={async () => {
-                            if (r.approvalStatus !== 'PENDING') return;
-                            const reason = window.prompt('Reason for denial?');
-                            if (!reason || !reason.trim()) {
-                              alert('Please enter a reason to deny the request.');
-                              return;
-                            }
-
-                            await runWithActionSpinner(
-                              () => denyProviderServiceRequest(r.id, reason.trim()),
-                              { message: 'Denying service request...' }
-                            );
-                          }}
-
-                          disabled={r.approvalStatus !== 'PENDING'}
-                          className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] disabled:bg-rose-100 disabled:text-rose-300 disabled:border-rose-200 disabled:cursor-not-allowed transition-colors"
+                          onClick={() => handleDeny(r)}
+                          disabled={r.approvalStatus !== 'PENDING' || isRowBusy}
+                          className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-3 py-2 rounded-lg text-[10px] disabled:bg-rose-100 disabled:text-rose-300 disabled:border-rose-200 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                         >
-                          Deny
+                          {isDenying ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          {isDenying ? 'Denying...' : 'Deny'}
                         </button>
 
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -154,4 +173,3 @@ export default function AdminOtherServicesRequestsPanel() {
     </div>
   );
 }
-

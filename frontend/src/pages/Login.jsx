@@ -159,6 +159,16 @@ export function Login({ onNavigate }) {
             </div>
           </div>
 
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => onNavigate('forgot-password')}
+              className="text-teal-700 text-[11px] font-bold hover:underline"
+            >
+              Forgot Password?
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={isLoading}
