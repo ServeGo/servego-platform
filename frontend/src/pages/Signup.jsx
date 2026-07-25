@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { api } from '../utils/apiClient';
 import { User, Briefcase, Mail, Lock, Phone, ShieldAlert, Sparkles, Eye, EyeOff } from 'lucide-react';
 
 export function Signup({ onNavigate }) {
@@ -30,7 +31,9 @@ export function Signup({ onNavigate }) {
   const [pincode, setPincode] = useState('');
 
   // Provider fields
-  const [photoDataUrl, setPhotoDataUrl] = useState(''); // base64 data URL
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   // Password fields
   const [password, setPassword] = useState('');
@@ -107,6 +110,30 @@ export function Signup({ onNavigate }) {
 
     setIsLoading(true);
 
+    let photoUrl = null;
+    if (signupType === 'provider' && photoFile) {
+      setPhotoUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('image', photoFile);
+        formData.append('folder', 'servego/providers');
+        const uploadRes = await api.postFormData('/images/upload', formData);
+        if (uploadRes.ok && uploadRes.data?.url) {
+          photoUrl = uploadRes.data.url;
+        } else {
+          setIsLoading(false);
+          setPhotoUploading(false);
+          setErrorMsg('Failed to upload photo. Please try again.');
+          return;
+        }
+      } catch {
+        setIsLoading(false);
+        setPhotoUploading(false);
+        setErrorMsg('Failed to upload photo. Please try again.');
+        return;
+      }
+      setPhotoUploading(false);
+    }
 
     const payload =
       signupType === 'customer'
@@ -128,7 +155,7 @@ export function Signup({ onNavigate }) {
             role: signupType,
             password,
             confirmPassword,
-            photo: photoDataUrl || null,
+            photo: photoUrl,
             acceptedTerms
           };
 
@@ -314,24 +341,22 @@ export function Signup({ onNavigate }) {
                 <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1 font-sans">photo (optional)</label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) {
-                      setPhotoDataUrl('');
+                      setPhotoFile(null);
+                      setPhotoPreview('');
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setPhotoDataUrl(typeof reader.result === 'string' ? reader.result : '');
-                    };
-                    reader.readAsDataURL(file);
+                    setPhotoFile(file);
+                    setPhotoPreview(URL.createObjectURL(file));
                   }}
                   className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                 />
-                {photoDataUrl && (
+                {photoPreview && (
                   <img
-                    src={photoDataUrl}
+                    src={photoPreview}
                     alt="provider"
                     className="mt-3 w-16 h-16 rounded-lg object-cover border border-slate-200"
                   />
@@ -403,7 +428,7 @@ export function Signup({ onNavigate }) {
             className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-xl text-xs tracking-wider transition-all uppercase flex items-center justify-center gap-2 shadow-xs mt-6 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
           >
             {isLoading ? (
-              <span>Creating your account...</span>
+              <span>{photoUploading ? 'Uploading photo...' : 'Creating your account...'}</span>
             ) : (
               <>
                 <span>Create Account</span>

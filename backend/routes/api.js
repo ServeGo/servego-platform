@@ -16,17 +16,19 @@ import { ReferralsController } from '../controllers/referralsController.js';
 import { ProviderServiceDiscoveryController } from '../controllers/providerServiceDiscoveryController.js';
 import { ProviderAnalyticsController } from '../controllers/providerAnalyticsController.js';
 import { SavedProController } from '../controllers/savedProController.js';
+import { ImageController } from '../controllers/imageController.js';
+import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
-import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation } from '../middleware/validation.js';
+import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation } from '../middleware/validation.js';
 
 const apiRouter = Router();
 
 // --- Authentication & Users ---
 apiRouter.post('/auth/register', validate(registerValidation), UserController.register);
 apiRouter.post('/auth/login', authRateLimiter, validate(loginValidation), UserController.login);
-apiRouter.post('/auth/forgot-password', authRateLimiter, UserController.forgotPassword);
-apiRouter.post('/auth/reset-password', authRateLimiter, UserController.resetPassword);
+apiRouter.post('/auth/forgot-password', authRateLimiter, validate(forgotPasswordValidation), UserController.forgotPassword);
+apiRouter.post('/auth/reset-password', authRateLimiter, validate(resetPasswordValidation), UserController.resetPassword);
 apiRouter.post('/auth/refresh', UserController.refreshToken);
 apiRouter.get('/auth/me', requireAuth, UserController.getMe);
 apiRouter.get('/users', requireAuth, requireRole('admin'), UserController.getUsers);
@@ -113,6 +115,9 @@ apiRouter.get('/providers/:id/analytics', requireAuth, requireRole(['provider', 
 // --- Admin: Dashboard ---
 apiRouter.get('/admin/dashboard', requireAuth, requireRole('admin'), AdminDashboardController.getSummary);
 apiRouter.get('/admin/analytics', requireAuth, requireRole('admin'), AdminDashboardController.getAnalytics);
+apiRouter.get('/admin/audit-logs', requireAuth, requireRole('admin'), AdminDashboardController.getAuditLogs);
+apiRouter.get('/admin/bookings', requireAuth, requireRole('admin'), BookingController.getAll);
+apiRouter.get('/admin/providers', requireAuth, requireRole('admin'), AdminDashboardController.getPaginatedProviders);
 
 // --- Admin: provider service items ---
 apiRouter.get('/admin/provider-service-items', requireAuth, requireRole('admin'), AdminProviderServiceItemsController.getAll);
@@ -128,5 +133,8 @@ apiRouter.patch('/admin/providers/:id/status', requireAuth, requireRole('admin')
 apiRouter.get('/saved-pros', requireAuth, requireRole('customer'), SavedProController.getMine);
 apiRouter.post('/saved-pros', requireAuth, requireRole('customer'), SavedProController.save);
 apiRouter.delete('/saved-pros/:providerId', requireAuth, requireRole('customer'), SavedProController.unsave);
+
+// --- Image Upload (optionalAuth so providers can upload during signup) ---
+apiRouter.post('/images/upload', optionalAuth, uploadImage.single('image'), ImageController.upload);
 
 export default apiRouter;

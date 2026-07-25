@@ -25,6 +25,8 @@ model User {
   referralBonusEarned     Float          @default(0)
   providerId              String?
   profileComplete         Boolean        @default(false)
+  resetToken              String?
+  resetTokenExpiry        DateTime?
 
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt

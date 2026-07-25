@@ -1,18 +1,99 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import prisma from '../prisma/client.js';
 import { generateTokenPair, verifyRefreshToken, isAuthBlocked, recordFailedAuthAttempt } from '../utils/auth.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { validatePasswordStrength } from '../utils/validation.js';
+import { sendPasswordResetEmail } from '../services/emailService.js';
 
 export const UserController = {
-  forgotPassword: async (_req, res) => {
-    // A reset flow must send a one-time token through a configured mailer;
-    // this repository has no mail transport or token store to do that safely.
-    return sendApiError(res, 501, 'PASSWORD_RESET_NOT_CONFIGURED', 'Password reset email delivery is not configured.');
+  forgotPassword: async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (!email || !String(email).trim()) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter your email address.');
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+      // Always return success to prevent email enumeration
+      if (!user) {
+        return sendApiSuccess(res, 200, { message: 'If an account with that email exists, a reset link has been sent.' });
+      }
+
+      // Generate a random token and store its SHA-256 hash
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { resetToken: tokenHash, resetTokenExpiry: expiry }
+      });
+
+      // Send email
+      try {
+        const emailResult = await sendPasswordResetEmail(normalizedEmail, rawToken);
+        console.log('[forgotPassword] Email sent successfully:', emailResult?.messageId);
+      } catch (emailErr) {
+        console.error('[forgotPassword] Failed to send email:', emailErr.message);
+        console.error('[forgotPassword] Full error:', emailErr);
+      }
+
+      return sendApiSuccess(res, 200, { message: 'If an account with that email exists, a reset link has been sent.' });
+    } catch (err) {
+      console.error('[forgotPassword] Error:', err);
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Something went wrong. Please try again later.');
+    }
   },
 
-  resetPassword: async (_req, res) => {
-    return sendApiError(res, 501, 'PASSWORD_RESET_NOT_CONFIGURED', 'Password reset email delivery is not configured.');
+  resetPassword: async (req, res) => {
+    try {
+      const { token, password } = req.body || {};
+
+      if (!token || !String(token).trim()) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Reset token is required.');
+      }
+      if (!password) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter a new password.');
+      }
+
+      const passwordErrors = validatePasswordStrength(password);
+      if (passwordErrors.length > 0) {
+        return sendApiError(res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters and include a lowercase letter and a number', passwordErrors);
+      }
+
+      // Hash the incoming token to match the stored hash
+      const tokenHash = crypto.createHash('sha256').update(String(token).trim()).digest('hex');
+
+      const user = await prisma.user.findFirst({
+        where: {
+          resetToken: tokenHash,
+          resetTokenExpiry: { gt: new Date() }
+        }
+      });
+
+      if (!user) {
+        return sendApiError(res, 400, 'INVALID_TOKEN', 'This reset link is invalid or has expired. Please request a new one.');
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashedPassword,
+          resetToken: null,
+          resetTokenExpiry: null
+        }
+      });
+
+      return sendApiSuccess(res, 200, { message: 'Password has been reset successfully. You can now log in with your new password.' });
+    } catch (err) {
+      console.error('[resetPassword] Error:', err);
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Something went wrong. Please try again later.');
+    }
   },
 
   getUsers: async (req, res) => {

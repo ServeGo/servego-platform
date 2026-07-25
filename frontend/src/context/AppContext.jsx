@@ -462,6 +462,24 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const forgotPassword = async (email) => {
+    try {
+      const response = await apiClient.post('/auth/forgot-password', { email });
+      return { success: response.ok, message: response.data?.message || 'If an account with that email exists, a reset link has been sent.' };
+    } catch (err) {
+      return { success: false, message: 'Network error. Please try again.' };
+    }
+  };
+
+  const resetPassword = async (token, password) => {
+    try {
+      const response = await apiClient.post('/auth/reset-password', { token, password });
+      return { success: response.ok, message: response.data?.message || response.data?.error || 'Something went wrong.' };
+    } catch (err) {
+      return { success: false, message: 'Network error. Please try again.' };
+    }
+  };
+
   const logout = () => {
     try {
       localStorage.removeItem('servego_user');
@@ -1035,6 +1053,7 @@ export const AppProvider = ({ children }) => {
       const data = await res.json();
       if (res.ok) {
         await fetchProviderServiceRequests();
+        await fetchProviderServiceItems();
         return data;
       }
       return data;
@@ -1061,6 +1080,8 @@ export const AppProvider = ({ children }) => {
       selectedCategory,
       login,
       registerUser,
+      forgotPassword,
+      resetPassword,
       logout,
       setCity,
       setArea,

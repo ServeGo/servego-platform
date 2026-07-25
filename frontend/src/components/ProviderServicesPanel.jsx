@@ -91,7 +91,8 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const openRegister = () => {
     setServicesError('');
     setServiceInterestedOption('');
-    setExperienceYears(provider?.experienceYears || 3);
+    setExperienceYears('');
+    setDescription('');
     setIsRegisterOpen(true);
   };
 
@@ -113,11 +114,12 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
       return;
     }
 
-
-
+    if (experienceYears === '' || experienceYears === null || experienceYears === undefined) {
+      setServicesError('Please select your experience years.');
+      return;
+    }
 
     if (!description || !description.trim()) {
-
       setServicesError('Please enter service description.');
       return;
     }
@@ -302,14 +304,17 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Experience (years)</label>
-                <input
-                  type="number"
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Experience (years) *</label>
+                <select
                   value={experienceYears}
-                  min={0}
                   onChange={(e) => setExperienceYears(e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none"
-                />
+                >
+                  <option value="">Select experience</option>
+                  {Array.from({ length: 26 }, (_, i) => (
+                    <option key={i} value={i}>{i} {i === 1 ? 'Year' : 'Years'}</option>
+                  ))}
+                </select>
               </div>
 
 

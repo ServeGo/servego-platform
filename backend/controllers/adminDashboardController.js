@@ -182,6 +182,96 @@ export const AdminDashboardController = {
     }
   },
 
+  // Audit logs endpoint
+  getAuditLogs: async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
+      const skip = (page - 1) * limit;
+
+      const [logs, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.auditLog.count()
+      ]);
+
+      // Collect targetIds that don't already have a stored targetName
+      const providerIds = [...new Set(
+        logs.filter(l => !l.targetName && l.targetType === 'Provider').map(l => l.targetId)
+      )];
+      const requestIds = [...new Set(
+        logs.filter(l => !l.targetName && l.targetType === 'ProviderServiceRequest').map(l => l.targetId)
+      )];
+
+      const [providers, requests] = await Promise.all([
+        providerIds.length ? prisma.provider.findMany({
+          where: { id: { in: providerIds } },
+          select: { id: true, user: { select: { name: true } } }
+        }) : [],
+        requestIds.length ? prisma.providerServiceRequest.findMany({
+          where: { id: { in: requestIds } },
+          select: { id: true, provider: { select: { user: { select: { name: true } } } } }
+        }) : []
+      ]);
+
+      const providerNameMap = {};
+      for (const p of providers) providerNameMap[p.id] = p.user?.name || '';
+
+      const requestNameMap = {};
+      for (const req of requests) requestNameMap[req.id] = req.provider?.user?.name || '';
+
+      const enriched = logs.map(log => ({
+        ...log,
+        targetName: log.targetName
+          || providerNameMap[log.targetId]
+          || requestNameMap[log.targetId]
+          || ''
+      }));
+
+      sendApiSuccess(res, 200, {
+        logs: enriched,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+      });
+    } catch (err) {
+      console.error('[AdminDashboardController] getAuditLogs Error:', err);
+      sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load audit logs', err.message);
+    }
+  },
+
+  // Paginated providers for admin reports
+  getPaginatedProviders: async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
+      const skip = (page - 1) * limit;
+
+      const [providers, total] = await Promise.all([
+        prisma.provider.findMany({
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
+            reviews: true,
+            badges: true
+          },
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.provider.count()
+      ]);
+
+      sendApiSuccess(res, 200, {
+        providers,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+      });
+    } catch (err) {
+      console.error('[AdminDashboardController] getPaginatedProviders Error:', err);
+      sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load providers', err.message);
+    }
+  },
+
   // Additional analytics endpoint
   getAnalytics: async (req, res) => {
     try {
