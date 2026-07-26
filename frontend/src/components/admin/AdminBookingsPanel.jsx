@@ -199,7 +199,7 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
                     <span className="text-slate-900 block font-extrabold leading-tight">{bk.providerName}</span>
                     <span className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider">{bk.serviceCategory}</span>
                   </td>
-                  <td className="py-4 px-5">{bk.bookingDateLabel || bk.bookingDate} · {bk.bookingTimeSlot}</td>
+                  <td className="py-4 px-5">{bk.bookingDateLabel || bk.createdAt}</td>
                   <td className="py-4 px-5"><StatusBadge status={bk.status} /></td>
                   <td className="py-4 px-5 text-center">
                     <div className="flex items-center justify-center gap-2">
@@ -249,7 +249,7 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
               </div>
             </div>
             <div className="mt-3 text-[11px] text-slate-600 font-semibold">
-              {bk.bookingDateLabel || bk.bookingDate} · {bk.bookingTimeSlot}
+              {bk.bookingDateLabel || bk.createdAt}
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2 justify-end">
               <button

@@ -74,7 +74,7 @@ export const PaymentController = {
 
       await prisma.booking.update({
         where: { id: bookingId },
-        data: { paymentStatus: normalizedStatus, paymentMethod: normalizedMethod }
+        data: { paymentStatus: normalizedStatus }
       });
 
       if (normalizedStatus === 'PAID') {

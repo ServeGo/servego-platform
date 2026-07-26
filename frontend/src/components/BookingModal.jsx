@@ -1,24 +1,14 @@
 import React from 'react';
-import { Calendar, CreditCard, DollarSign, AlertCircle, Crown } from 'lucide-react';
+import { AlertCircle, Crown } from 'lucide-react';
 
 export default function BookingModal({ 
   provider, 
   onClose, 
   errorText, 
-  availabilityBusyError,
 
-  bookingDate, setBookingDate, 
-  bookingTimeSlot, setBookingTimeSlot,
-  availableSlots, availabilityLoading,
   bookingType, setBookingType,
-  bookingEndDate, setBookingEndDate,
-  contractYears, setContractYears,
-  contractDays, setContractDays,
-  contractHours, setContractHours,
   address, setAddress, 
   instructions, setInstructions, 
-  paymentMethod, setPaymentMethod,
-  billMetrics,
   loyaltyTier,
   onSubmit
 }) {
@@ -39,13 +29,6 @@ export default function BookingModal({
           </button>
         </div>
 
-        {availabilityBusyError && (
-          <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs flex items-center gap-2 font-semibold">
-            <AlertCircle className="w-4 h-4" />
-            <span>{availabilityBusyError}</span>
-          </div>
-        )}
-
         {errorText && (
           <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs flex items-center gap-2 font-semibold">
             <AlertCircle className="w-4 h-4" />
@@ -62,12 +45,7 @@ export default function BookingModal({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setBookingType('contract');
-                    setBookingEndDate('');
-                    setContractDays('1');
-                    setContractHours('0');
-                  }}
+                  onClick={() => setBookingType('contract')}
                   className={`cursor-pointer py-2 px-4 text-xs font-bold rounded-full border transition-all ${
                     bookingType === 'contract'
                       ? 'bg-indigo-600 border-indigo-650 text-white shadow-sm'
@@ -78,10 +56,7 @@ export default function BookingModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setBookingType('permanent');
-                    setBookingEndDate('');
-                  }}
+                  onClick={() => setBookingType('permanent')}
                   className={`cursor-pointer py-2 px-4 text-xs font-bold rounded-full border transition-all ${
                     bookingType === 'permanent'
                       ? 'bg-indigo-600 border-indigo-650 text-white shadow-sm'
@@ -91,54 +66,6 @@ export default function BookingModal({
                   Permanent
                 </button>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                  Start Date <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input
-                    type="date"
-                    value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-sm font-semibold text-slate-800 outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className={bookingType === 'contract' ? 'sm:col-span-2' : 'hidden'}>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                  Contract Length <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <DurationSelect label="Years" value={contractYears} onChange={setContractYears} options={[0, 1, 2, 3, 4, 5]} />
-                  <DurationSelect label="Days" value={contractDays} onChange={setContractDays} options={[0, 1, 2, 3, 4, 5, 6, 7, 14, 21, 30]} />
-                  <DurationSelect label="Hours" value={contractHours} onChange={setContractHours} options={[0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 24]} />
-                </div>
-                <p className="text-[11px] text-slate-500 mt-2">Choose the contract duration that fits your service requirement. At least one of years, days, or hours must be selected.</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                Appointment Window <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={bookingTimeSlot}
-                onChange={(e) => setBookingTimeSlot(e.target.value)}
-                disabled={availabilityLoading || !availableSlots.length}
-                required
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none disabled:opacity-60"
-              >
-                <option value="">{availabilityLoading ? 'Loading availability…' : 'Select an available window'}</option>
-                {availableSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-              </select>
-              {!availabilityLoading && bookingDate && !availableSlots.length ? <p className="text-[11px] text-rose-600 mt-1">No appointment windows are available for this date.</p> : null}
             </div>
 
             <div>
@@ -165,17 +92,6 @@ export default function BookingModal({
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-800 outline-none"
               />
             </div>
-
-            {bookingType === 'contract' && (
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 font-sans">Payment Method <span className="text-rose-500">*</span></label>
-                <div className="grid grid-cols-2 gap-2">
-                  <PaymentButton active={paymentMethod === 'UPI'} onClick={() => setPaymentMethod('UPI')} icon={<CreditCard className="w-4 h-4" />} label="UPI Apps" />
-                  <PaymentButton active={paymentMethod === 'Card'} onClick={() => setPaymentMethod('Card')} icon={<CreditCard className="w-4 h-4" />} label="Cards" />
-                  <PaymentButton active={paymentMethod === 'Cash'} onClick={() => setPaymentMethod('Cash')} icon={<DollarSign className="w-4 h-4" />} label="Cash After Job" />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Booking Summary */}
@@ -184,8 +100,6 @@ export default function BookingModal({
             <div className="space-y-2 pb-3 border-b border-slate-100 text-xs font-bold">
               <BillRow label="Specialist" value={provider.name} />
               <BillRow label="Plan" value={bookingType === 'contract' ? 'Contract' : 'Permanent'} />
-              <BillRow label="Duration" value={billMetrics.durationLabel} />
-              {bookingType === 'contract' && <BillRow label="Payment" value={paymentMethod} />}
             </div>
 
             {loyaltyTier?.tier && (
@@ -198,7 +112,7 @@ export default function BookingModal({
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 font-medium leading-relaxed my-3">
               {bookingType === 'contract'
                 ? 'Final charges are agreed directly with your specialist after the job is assessed.'
-                : 'We’ll route this request to the provider and confirm details once they verify availability.'}
+                : "We'll route this request to the provider and confirm details once they verify availability."}
             </div>
 
             <button
@@ -211,40 +125,6 @@ export default function BookingModal({
         </form>
       </div>
     </div>
-  );
-}
-
-function PaymentButton({ active, onClick, icon, label }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`cursor-pointer p-2.5 rounded-xl border flex items-center gap-2 justify-center transition-all ${
-        active ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-slate-50 border-slate-200 text-slate-600 text-xs hover:bg-slate-100'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function DurationSelect({ label, value, onChange, options }) {
-  return (
-    <label className="block">
-      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3 py-2 text-sm font-semibold text-slate-800 outline-none cursor-pointer"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 

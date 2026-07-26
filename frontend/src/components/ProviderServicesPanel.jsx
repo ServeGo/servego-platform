@@ -31,7 +31,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [serviceInterestedOption, setServiceInterestedOption] = useState('');
-  const [experienceYears, setExperienceYears] = useState(provider?.experienceYears || 3);
+  const [experienceYears, setExperienceYears] = useState('');
 
   // Mandatory fields
   const [description, setDescription] = useState('');
@@ -311,7 +311,7 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none"
                 >
                   <option value="">Select experience</option>
-                  {Array.from({ length: 26 }, (_, i) => (
+                  {Array.from({ length: 25 }, (_, i) => i + 1).map((i) => (
                     <option key={i} value={i}>{i} {i === 1 ? 'Year' : 'Years'}</option>
                   ))}
                 </select>

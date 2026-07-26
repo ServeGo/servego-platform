@@ -14,7 +14,7 @@ export const ServiceController = {
       if (!category) return sendApiError(res, 404, 'NOT_FOUND', 'Service category not found.');
       const location = String(req.query.zone || '').trim();
       const providers = await prisma.providerService.findMany({
-        where: { serviceId: category.id, provider: { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' }, ...(location ? { serviceAreas: { string_contains: location } } : {}) } },
+        where: { serviceId: category.id, provider: { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' }, ...(location ? { serviceAreas: { array_contains: [location] } } : {}) } },
         include: { provider: { include: { user: { select: { id: true, name: true, avatar: true } }, badges: true } } },
         orderBy: { provider: String(req.query.sort) === 'experience' ? { experienceYears: 'desc' } : { rating: 'desc' } }
       });
@@ -103,7 +103,7 @@ export const ServiceController = {
             accountStatus: 'ACTIVE',
             isVerified: true,
             user: { status: 'ACTIVE' },
-            ...(location ? { serviceAreas: { string_contains: location } } : {})
+            ...(location ? { serviceAreas: { array_contains: [location] } } : {})
           }
         }
       });
@@ -184,15 +184,18 @@ export const ServiceController = {
       if (!id) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing service id');
 
       const { name, description, popularIssues } = req.body || {};
-      if (!name) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: name');
 
+      const existing = await prisma.service.findUnique({ where: { id }, select: { name: true, nameNormalized: true } });
+      if (!existing) return sendApiError(res, 404, 'NOT_FOUND', 'Service not found');
+
+      const nextName = name || existing.name;
       const updated = await prisma.service.update({
         where: { id },
         data: {
-          name,
-          nameNormalized: normalize(name),
-          description: description || '',
-          popularIssues: Array.isArray(popularIssues) ? popularIssues : []
+          name: nextName,
+          nameNormalized: normalize(nextName),
+          ...(description !== undefined ? { description } : {}),
+          ...(Array.isArray(popularIssues) ? { popularIssues } : {})
         }
       });
 
@@ -212,7 +215,7 @@ export const ServiceController = {
       if (!id) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing service id');
 
       const { isHidden } = req.body || {};
-      if (![true, false, 'true', 'false'].includes(isHidden)) {
+      if (isHidden === undefined || isHidden === null) {
         return sendApiError(res, 400, 'INVALID_VALUE', 'isHidden must be true or false.');
       }
       const updated = await prisma.service.update({

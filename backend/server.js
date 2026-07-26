@@ -11,6 +11,7 @@ import { getCorsConfig, resolvePort } from './utils/runtimeConfig.js';
 import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/security.js';
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
+import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
 
 dotenv.config();
 
@@ -83,7 +84,15 @@ async function bootstrap() {
     // A process that cannot reach its primary datastore is alive but not
     // ready to serve traffic. Returning 503 lets load balancers and monitors
     // distinguish that state from a healthy deployment.
-    return sendApiSuccess(res, health.dbStatus === 'reachable' ? 200 : 503, health);
+    if (health.dbStatus === 'reachable') {
+      return sendApiSuccess(res, 200, health);
+    }
+    return res.status(503).json({
+      success: false,
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Database is unreachable',
+      data: health
+    });
   });
 
   // API routes
@@ -152,6 +161,7 @@ async function bootstrap() {
     console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');
+    startAutoCancelCron(io);
   });
 
   httpServer.on('error', (err) => {
@@ -170,6 +180,7 @@ async function bootstrap() {
   // Graceful shutdown
   const shutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
+    stopAutoCancelCron();
     httpServer.close(async () => {
       const { default: prisma } = await import('./prisma/client.js');
       await prisma.$disconnect();

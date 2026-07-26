@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { UserController } from '../controllers/userController.js';
 import { ProviderController } from '../controllers/providerController.js';
-import { ProviderAvailabilityController } from '../controllers/providerAvailabilityController.js';
 import { BookingController } from '../controllers/bookingController.js';
 import { TicketController } from '../controllers/ticketController.js';
 import { NotificationController } from '../controllers/notificationController.js';
@@ -39,7 +38,6 @@ apiRouter.get('/providers', optionalAuth, ProviderController.getAll);
 apiRouter.get('/providers/by-approved-service', ProviderServiceDiscoveryController.getApprovedProvidersByServiceName);
 apiRouter.get('/providers/:id', optionalAuth, ProviderController.getById);
 apiRouter.get('/providers/:id/services', optionalAuth, ProviderController.getProviderServices);
-apiRouter.get('/providers/:id/availability', ProviderAvailabilityController.getAvailability);
 
 apiRouter.put('/providers/me/availability', requireAuth, requireRole('provider'), validate(updateAvailabilityValidation), ProviderController.updateMyAvailability);
 
@@ -76,6 +74,7 @@ apiRouter.delete('/notifications', requireAuth, NotificationController.clearAll)
 apiRouter.get('/tickets', requireAuth, TicketController.getAll);
 apiRouter.post('/tickets', requireAuth, validate(createAuthenticatedTicketValidation), TicketController.create);
 apiRouter.patch('/tickets/:id/resolve', requireAuth, requireRole('admin'), TicketController.resolve);
+apiRouter.patch('/admin/tickets/:id/resolve', requireAuth, requireRole('admin'), TicketController.resolve);
 apiRouter.post('/support-tickets', supportTicketRateLimiter, optionalAuth, validate(createTicketValidation), TicketController.create);
 apiRouter.patch('/support-tickets/:id/status', requireAuth, requireRole('admin'), TicketController.setStatus);
 

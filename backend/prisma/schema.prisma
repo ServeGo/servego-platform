@@ -24,6 +24,7 @@ model User {
   referralDiscountBalance Float          @default(0)
   referralBonusEarned     Float          @default(0)
   providerId              String?
+  verificationCode        String?
   profileComplete         Boolean        @default(false)
   resetToken              String?
   resetTokenExpiry        DateTime?
@@ -130,7 +131,7 @@ model Provider {
   serviceAreas      Json      @default("[]")
   photo             String?
   serviceInterested String?
-  isVerified        Boolean   @default(true)
+  isVerified        Boolean   @default(false)
   isFeatured        Boolean   @default(false)
   availableDays     Json      @default("[]")
   timeSlots         Json      @default("[]")
@@ -230,25 +231,17 @@ model Booking {
   providerId      String
   serviceId       String?
   serviceCategory String
-  bookingDate     DateTime
-  bookingTimeSlot String
+  bookingDate     DateTime      @default(now())
   status          BookingStatus @default(PENDING)
   paymentStatus   PaymentStatus @default(PENDING)
-  paymentMethod   String?
   locationAddress String
   city            String
   instructions    String?
 
   cancelledBy     String?
   cancelledReason String?
-  scheduledStart  DateTime?
-  durationType    DurationType  @default(CONTRACT)
-  durationYears   Int           @default(0)
-  durationDays    Int           @default(1)
-  durationHours   Int           @default(0)
   amount          Float?
 
-  bookingTime     DateTime
   messages        Json          @default("[]")
   reviewed        Boolean       @default(false)
   statusHistory   Json          @default("[]")
@@ -367,11 +360,6 @@ enum ApprovalStatus {
   APPROVED
   DENIED
   REJECTED
-}
-
-enum DurationType {
-  CONTRACT
-  PERMANENT
 }
 
 enum VerificationLevel {

@@ -106,7 +106,7 @@ export function MainLayout() {
   const { currentUser, logout, notifications, actionSpinner, isInitializing } = useApp();
 
   const unreadNotifications = (notifications || []).filter(
-    (n) => n.userId === currentUser?.id && !n.read
+    (n) => n.userId === currentUser?.id && !n.isRead
   ).length;
 
   const [currentPage, setCurrentPage] = useState('home');

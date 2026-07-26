@@ -4,10 +4,12 @@ import { sendApiError, sendApiSuccess } from '../utils/response.js';
 export const NotificationController = {
   getAll: async (req, res) => {
     try {
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const where = req.user.role === 'admin' ? {} : { userId: req.user.id };
       const notifications = await prisma.notification.findMany({
         where,
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        take: limit
       });
       return sendApiSuccess(res, 200, notifications);
     } catch (err) {

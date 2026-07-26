@@ -30,7 +30,7 @@ export default function InvoiceModal({ booking, onClose }) {
             </div>
             <div className="text-right text-xs">
               <span className="text-slate-500 block">Date Issued</span>
-              <span className="text-slate-900 font-bold">{booking.bookingDateLabel || booking.bookingDate}</span>
+              <span className="text-slate-900 font-bold">{booking.bookingDateLabel || booking.createdAt}</span>
             </div>
           </div>
 
@@ -60,17 +60,9 @@ export default function InvoiceModal({ booking, onClose }) {
               <tr>
                 <td className="py-2.5">
                   <span className="font-bold text-slate-900 block">{booking.serviceCategory} Service</span>
-                  <span className="text-[10px] text-slate-500">Completed on {booking.bookingDateLabel || booking.bookingDate}</span>
+                  <span className="text-[10px] text-slate-500">Completed on {booking.bookingDateLabel || booking.createdAt}</span>
                 </td>
                 <td className="py-2.5 text-right text-slate-800 capitalize">{booking.status}</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 text-slate-500">Schedule</td>
-                <td className="py-2.5 text-right text-slate-800">{booking.bookingTimeSlot}</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 text-slate-500">Payment Method</td>
-                <td className="py-2.5 text-right text-slate-800 capitalize">{booking.paymentMethod || 'On completion'}</td>
               </tr>
             </tbody>
           </table>

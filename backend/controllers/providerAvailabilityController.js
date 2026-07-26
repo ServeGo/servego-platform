@@ -1,5 +1,4 @@
 import prisma from '../prisma/client.js';
-import { isProviderSlotTaken } from '../services/bookingAvailabilityService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parseCalendarDate } from '../utils/availability.js';
 
@@ -103,12 +102,18 @@ export const ProviderAvailabilityController = {
         : (Array.isArray(provider.timeSlots) ? provider.timeSlots : []);
       const slots = rawSlots.length ? rawSlots : ['Flexible'];
 
-      const slotResults = await Promise.all(
-        slots.map(async (slot) => {
-          const busy = await isProviderSlotTaken(providerId, dayStart, slot);
-          return { slot, busy };
-        })
-      );
+      const hasActiveBooking = await prisma.booking.findFirst({
+        where: {
+          providerId,
+          status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] },
+        },
+        select: { id: true },
+      });
+
+      const slotResults = slots.map((slot) => ({
+        slot,
+        busy: !!hasActiveBooking,
+      }));
 
       return sendApiSuccess(res, 200, {
         providerId,

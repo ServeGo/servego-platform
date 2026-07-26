@@ -162,7 +162,7 @@ export default function AdminReportsTab() {
                         <td className="px-4 py-3 font-semibold text-slate-800">{b.customerName || b.customer?.name || '—'}</td>
                         <td className="px-4 py-3 font-semibold text-slate-800">{b.providerName || b.provider?.user?.name || '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{b.serviceCategory || '—'}</td>
-                        <td className="px-4 py-3 text-slate-500">{fmt(b.bookingDate)}</td>
+                        <td className="px-4 py-3 text-slate-500">{fmt(b.createdAt || b.bookingDate)}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
                             b.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
