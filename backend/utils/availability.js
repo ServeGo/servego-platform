@@ -10,6 +10,26 @@ const normalizeDay = (value) => {
   return aliases[day] || null;
 };
 
+function to24h(timeStr) {
+  const s = String(timeStr || '').trim().toLowerCase();
+  const match = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const period = match[3];
+  if (period === 'pm' && h !== 12) h += 12;
+  if (period === 'am' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+function isTimeInRange(requestedMin, startMin, endMin) {
+  if (requestedMin === null || startMin === null || endMin === null) return false;
+  if (endMin <= startMin) {
+    return requestedMin >= startMin || requestedMin <= endMin;
+  }
+  return requestedMin >= startMin && requestedMin <= endMin;
+}
+
 export function parseCalendarDate(date) {
   if (date instanceof Date) return new Date(date);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date || ''));
@@ -27,11 +47,18 @@ export function isProviderAvailableForSlot(provider, date, slot) {
 
   const requestedSlot = String(slot || '').trim();
   if (!requestedSlot) return false;
+  if (requestedSlot.toLowerCase() === 'flexible') return true;
+
   const configuredSlots = Array.isArray(provider.availabilitySlots) ? provider.availabilitySlots : [];
   if (configuredSlots.length) {
-    return configuredSlots.some((configured) =>
-      normalizeDay(configured.dayOfWeek) === day && `${configured.startTime}-${configured.endTime}` === requestedSlot
-    );
+    const requestedMin = to24h(requestedSlot);
+    return configuredSlots.some((configured) => {
+      if (normalizeDay(configured.dayOfWeek) !== day) return false;
+      const startMin = to24h(configured.startTime);
+      const endMin = to24h(configured.endTime);
+      if (requestedMin !== null) return isTimeInRange(requestedMin, startMin, endMin);
+      return `${configured.startTime}-${configured.endTime}` === requestedSlot;
+    });
   }
 
   const legacySlots = Array.isArray(provider.timeSlots) ? provider.timeSlots : [];

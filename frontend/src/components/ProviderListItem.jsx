@@ -35,7 +35,7 @@ export default function ProviderListItem({
 
         {/* Bio & Specialties */}
         <div className="flex-1 space-y-4">
-          <p className="text-slate-600 text-xs sm:text-sm leading-relaxed font-medium">{provider.bio}</p>
+          <p className="text-slate-600 text-xs sm:text-sm leading-relaxed font-medium">{provider.serviceDescription || provider.bio}</p>
 
           <div>
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5">Expertise Focus</span>

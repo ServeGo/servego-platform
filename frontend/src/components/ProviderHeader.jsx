@@ -11,7 +11,7 @@ function ServiceChip({ name }) {
   );
 }
 
-export default function ProviderHeader({ provider, completedJobs = 0, approvedServices = [], loadingServices = false }) {
+export default function ProviderHeader({ provider, completedJobs = 0, totalJobs = 0, approvedServices = [], loadingServices = false }) {
   const { currentUser } = useApp();
 
   const approvedNames = useMemo(
@@ -95,12 +95,12 @@ export default function ProviderHeader({ provider, completedJobs = 0, approvedSe
             <span className="text-base sm:text-lg font-bold text-amber-400 block flex items-center gap-1 justify-center"><Star className="w-4 h-4" /> {provider.rating}</span>
           </div>
           <div className="border-x border-white/10 px-2 sm:px-4">
-            <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-1">Jobs Done</span>
-            <span className="text-base sm:text-lg font-bold text-slate-100 block">{provider.jobsCompleted}</span>
+            <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-1">Total Jobs</span>
+            <span className="text-base sm:text-lg font-bold text-indigo-400 block">{totalJobs}</span>
           </div>
           <div>
             <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-1">Completed</span>
-            <span className="text-base sm:text-lg font-bold text-indigo-400 block">{completedJobs}</span>
+            <span className="text-base sm:text-lg font-bold text-slate-100 block">{completedJobs}</span>
           </div>
         </div>
       </div>

@@ -8,11 +8,14 @@ export const ProviderController = {
   registerOwnProviderService: async (req, res) => {
     const provider = await prisma.provider.findFirst({
       where: { userId: req.user.id },
-      select: { id: true, profileComplete: true }
+      select: { id: true, profileComplete: true, isVerified: true }
     });
     if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
     if (!provider.profileComplete) {
       return sendApiError(res, 403, 'PROFILE_INCOMPLETE', 'Complete your provider profile before submitting services.');
+    }
+    if (!provider.isVerified) {
+      return sendApiError(res, 403, 'NOT_VERIFIED', 'Your profile must be verified before registering for services.');
     }
     req.params.id = provider.id;
     return ProviderController.registerProviderService(req, res);
@@ -114,6 +117,9 @@ export const ProviderController = {
       if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Service provider not found');
       if (role !== 'admin' && provider.userId !== req.user?.id) {
         return sendApiError(res, 403, 'FORBIDDEN', 'You can only manage your own provider profile.');
+      }
+      if (role !== 'admin' && !provider.isVerified) {
+        return sendApiError(res, 403, 'NOT_VERIFIED', 'Your profile must be verified before registering for services.');
       }
 
       const requestedService = String(serviceName).trim();

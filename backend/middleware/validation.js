@@ -29,8 +29,7 @@ export const registerValidation = [
   body('name')
     .trim()
     .notEmpty().withMessage('Please enter your full name')
-    .isLength({ min: 2, max: 100 }).withMessage('Name must be at least 2 characters')
-    .escape(),
+    .isLength({ min: 2, max: 100 }).withMessage('Name must be at least 2 characters'),
   body('email')
     .trim()
     .notEmpty().withMessage('Please enter your email address')
@@ -46,7 +45,13 @@ export const registerValidation = [
     .isLength({ min: 8, max: 128 }).withMessage('Password must be at least 8 characters')
     .matches(/^(?=.*[a-z])(?=.*\d)/).withMessage('Password must contain a lowercase letter and a number'),
   body('confirmPassword')
-    .notEmpty().withMessage('Please confirm your password'),
+    .notEmpty().withMessage('Please confirm your password')
+    .custom((value, { req }) => {
+      if (value !== req.body.password) {
+        throw new Error('Passwords do not match');
+      }
+      return true;
+    }),
   body('role')
     .notEmpty().withMessage('Please select your account type')
     .isIn(['customer', 'provider']).withMessage('Account type must be customer or provider'),
@@ -90,23 +95,6 @@ export const createBookingValidation = [
     .notEmpty().withMessage('Service category is required')
     .isLength({ max: 200 }).withMessage('Service category too long')
     .escape(),
-  body('bookingDate')
-    .notEmpty().withMessage('Booking date is required')
-    .isISO8601().withMessage('Invalid date format')
-    .custom((value) => {
-      const bookingDate = new Date(value);
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      if (bookingDate < now) {
-        throw new Error('Booking date cannot be in the past');
-      }
-      return true;
-    }),
-  body('bookingTimeSlot')
-    .optional()
-    .trim()
-    .isLength({ max: 50 }).withMessage('Time slot too long')
-    .escape(),
   body('locationAddress')
     .optional()
     .trim()
@@ -122,10 +110,14 @@ export const createBookingValidation = [
     .trim()
     .isLength({ max: 1000 }).withMessage('Instructions too long')
     .escape(),
-  body('paymentMethod')
+  body('amount')
     .optional()
-    .trim()
-    .isLength({ max: 50 }).withMessage('Payment method too long')
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (Number.isNaN(n) || n < 0) throw new Error('Amount must be a non-negative number');
+      return true;
+    })
 ];
 
 export const updateBookingStatusValidation = [
@@ -149,8 +141,9 @@ export const createReviewValidation = [
     .trim()
     .notEmpty().withMessage('Provider ID is required'),
   body('bookingId')
+    .optional()
     .trim()
-    .notEmpty().withMessage('Booking ID is required'),
+    .notEmpty().withMessage('Booking ID must not be empty if provided'),
   body('comment')
     .optional()
     .trim()
@@ -233,7 +226,8 @@ export const registerProviderServiceValidation = [
     .isArray().withMessage('Popular issues must be an array'),
   body('experienceYears')
     .optional()
-    .isInt({ min: 0, max: 50 }).withMessage('Experience years must be between 0 and 50')
+    .toInt()
+    .isInt({ min: 1, max: 50 }).withMessage('Experience years must be between 1 and 50')
 ];
 
 export const updateProviderProfileValidation = [
@@ -250,7 +244,8 @@ export const updateProviderProfileValidation = [
     .isArray().withMessage('Service areas must be an array'),
   body('experienceYears')
     .optional()
-    .isInt({ min: 0, max: 50 }).withMessage('Experience years must be between 0 and 50'),
+    .toInt()
+    .isInt({ min: 1, max: 50 }).withMessage('Experience years must be between 1 and 50'),
   body('phone')
     .optional()
     .trim()
@@ -304,8 +299,8 @@ export const createServiceValidation = [
 
 export const updateServiceValidation = [
   body('name')
+    .optional()
     .trim()
-    .notEmpty().withMessage('Service name is required')
     .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters')
     .escape(),
   body('description')

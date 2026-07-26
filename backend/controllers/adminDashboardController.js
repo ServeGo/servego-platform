@@ -198,12 +198,12 @@ export const AdminDashboardController = {
         prisma.auditLog.count()
       ]);
 
-      // Collect targetIds that don't already have a stored targetName
+      // Collect targetIds for name resolution
       const providerIds = [...new Set(
-        logs.filter(l => !l.targetName && l.targetType === 'Provider').map(l => l.targetId)
+        logs.filter(l => l.targetType === 'Provider').map(l => l.targetId)
       )];
       const requestIds = [...new Set(
-        logs.filter(l => !l.targetName && l.targetType === 'ProviderServiceRequest').map(l => l.targetId)
+        logs.filter(l => l.targetType === 'ProviderServiceRequest').map(l => l.targetId)
       )];
 
       const [providers, requests] = await Promise.all([
@@ -225,8 +225,8 @@ export const AdminDashboardController = {
 
       const enriched = logs.map(log => ({
         ...log,
-        targetName: log.targetName
-          || providerNameMap[log.targetId]
+        targetName:
+          providerNameMap[log.targetId]
           || requestNameMap[log.targetId]
           || ''
       }));
@@ -330,20 +330,19 @@ export const AdminDashboardController = {
       });
 
       // Get rating distribution
-      const ratings = await prisma.review.findMany({
-        select: { rating: true },
-        where: {
-          createdAt: { gte: startDate }
-        }
+      const ratingGroups = await prisma.review.groupBy({
+        by: ['rating'],
+        _count: true,
+        where: { createdAt: { gte: startDate } }
       });
 
-      const ratingDistribution = {
-        5: ratings.filter(r => r.rating === 5).length,
-        4: ratings.filter(r => r.rating === 4).length,
-        3: ratings.filter(r => r.rating === 3).length,
-        2: ratings.filter(r => r.rating === 2).length,
-        1: ratings.filter(r => r.rating === 1).length
-      };
+      const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+      let totalReviewsThisPeriod = 0;
+      for (const g of ratingGroups) {
+        const key = Math.round(g.rating);
+        if (key >= 1 && key <= 5) ratingDistribution[key] = g._count;
+        totalReviewsThisPeriod += g._count;
+      }
 
       sendApiSuccess(res, 200, {
         period,
@@ -352,7 +351,7 @@ export const AdminDashboardController = {
         topProviders,
         topServices,
         ratingDistribution,
-        totalReviewsThisPeriod: ratings.length
+        totalReviewsThisPeriod
       });
     } catch (err) {
       console.error('[AdminDashboardController] Analytics Error:', err);

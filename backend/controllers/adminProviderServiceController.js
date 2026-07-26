@@ -47,23 +47,22 @@ export const AdminProviderServiceController = {
       const requestedName = request.requestedServiceName;
       const nameNormalized = normalize(requestedName);
 
-      // Prevent duplicate Service creation during approval.
-
-
       // Expected flow: approval should only create/update ProviderService links,
       // while the Service row must already exist.
-      const service = await prisma.service.findUnique({
+      let service = await prisma.service.findUnique({
         where: { nameNormalized },
         select: { id: true }
       });
 
       if (!service) {
-        return sendApiError(
-          res,
-          400,
-          'SERVICE_NOT_FOUND',
-          `Service '${requestedName}' was not found. Admin must approve against an existing Service.`
-        );
+        service = await prisma.service.create({
+          data: {
+            name: String(requestedName).trim(),
+            nameNormalized,
+            description: request.description || null
+          },
+          select: { id: true }
+        });
       }
 
 

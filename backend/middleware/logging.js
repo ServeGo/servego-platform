@@ -77,7 +77,7 @@ export const errorHandler = (err, req, res, next) => {
     requestId: req.requestId,
     error: {
       message: err.message,
-      stack: process.env.NODE_ENV !== 'production' ? undefined : err.stack,
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
       code: err.code
     },
     method: req.method,

@@ -88,7 +88,7 @@ export const ReferralsController = {
       if (!user) return sendApiError(res, 404, 'NOT_FOUND', 'User not found');
       if (user.referralCode) return sendApiSuccess(res, 200, { referralCode: user.referralCode });
       const prefix = user.role === 'provider' ? 'PRO' : 'CUST';
-      const code = `SERVEGO-${prefix}-${user.name.slice(0, 3).toUpperCase().replace(/\\s/g, 'X')}${Math.floor(100 + Math.random() * 900)}`;
+      const code = `SERVEGO-${prefix}-${user.name.slice(0, 3).toUpperCase().replace(/\s/g, 'X')}${Math.floor(100 + Math.random() * 900)}`;
       const updated = await prisma.user.update({ where: { id: req.user.id }, data: { referralCode: code }, select: { referralCode: true } });
       return sendApiSuccess(res, 201, updated);
     } catch (err) {

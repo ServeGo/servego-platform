@@ -16,8 +16,8 @@ export const ProviderServiceDiscoveryController = {
       select: { name: true }
     });
     if (!service) return sendApiError(res, 404, 'NOT_FOUND', 'Service category not found.');
-    req.query = { ...req.query, serviceName: service.name, location: req.query.zone || req.query.location || '' };
-    return ProviderServiceDiscoveryController.getApprovedProvidersByServiceName(req, res);
+    const mergedQuery = { ...req.query, serviceName: service.name, location: req.query.zone || req.query.location || '' };
+    return ProviderServiceDiscoveryController.getApprovedProvidersByServiceName({ ...req, query: mergedQuery }, res);
   },
 
   getApprovedProvidersByServiceName: async (req, res) => {
@@ -48,7 +48,7 @@ export const ProviderServiceDiscoveryController = {
             accountStatus: 'ACTIVE',
             isVerified: true,
             user: { status: 'ACTIVE' },
-            ...(location ? { serviceAreas: { string_contains: location } } : {})
+            ...(location ? { serviceAreas: { array_contains: [location] } } : {})
           }
         },
         orderBy: { provider: orderBy },

@@ -1,11 +1,9 @@
 import prisma from '../prisma/client.js';
 import { refreshProviderReputation } from '../services/providerReputationService.js';
 import { notifyBookingStatusChanged } from '../services/notificationService.js';
-import { isProviderSlotTaken } from '../services/bookingAvailabilityService.js';
-import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus, normalizePaymentStatus } from '../utils/workflow.js';
+import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
-import { isProviderAvailableForSlot, parseCalendarDate } from '../utils/availability.js';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -29,7 +27,7 @@ export const BookingController = {
       if (providerId) where.providerId = providerId;
       if (customerId) where.customerId = customerId;
       if (req.user.role === 'admin' && adminSearch) {
-        where.id = { contains: String(adminSearch).trim(), mode: 'insensitive' };
+        where.id = { equals: String(adminSearch).trim() };
       }
 
       if (req.user.role === 'provider') {
@@ -131,25 +129,11 @@ export const BookingController = {
       const customerId = actorRole === 'customer' ? actorId : bookingData.customerId;
       if (!customerId) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: customerId.');
 
-      const parsedBookingDate = parseCalendarDate(bookingData.bookingDate);
-      if (!bookingData.bookingDate || Number.isNaN(parsedBookingDate.getTime())) {
-        return sendApiError(res, 400, 'INVALID_DATE', 'A valid booking date is required.');
-      }
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (parsedBookingDate < today) {
-        return sendApiError(res, 400, 'INVALID_DATE', 'Booking date cannot be in the past.');
-      }
-
       const [customer, provider] = await Promise.all([
         prisma.user.findUnique({ where: { id: customerId }, select: { id: true, name: true } }),
-        prisma.provider.findUnique({ 
-          where: { id: bookingData.providerId }, 
-          include: {
-            user: { select: { id: true, name: true, status: true } },
-            availabilitySlots: true
-          }
+        prisma.provider.findUnique({
+          where: { id: bookingData.providerId },
+          select: { id: true, accountStatus: true, isVerified: true, user: { select: { id: true, name: true, status: true } } }
         })
       ]);
 
@@ -159,9 +143,28 @@ export const BookingController = {
       if (provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE') {
         return sendApiError(res, 409, 'PROVIDER_UNAVAILABLE', 'This provider is not currently accepting new bookings.');
       }
-      if (!isProviderAvailableForSlot(provider, parsedBookingDate, bookingData.bookingTimeSlot)) {
-        return sendApiError(res, 409, 'SLOT_UNAVAILABLE', 'This provider is not available for the selected date and time slot.');
+      if (!provider.isVerified) {
+        return sendApiError(res, 403, 'NOT_VERIFIED', 'This provider has not been verified yet and cannot accept bookings.');
       }
+
+      // One job at a time — provider
+      const providerActiveBooking = await prisma.booking.findFirst({
+        where: { providerId: provider.id, status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } },
+        select: { id: true }
+      });
+      if (providerActiveBooking) {
+        return sendApiError(res, 409, 'PROVIDER_BUSY', 'This provider is currently busy with another job. Please try again later.');
+      }
+
+      // One booking at a time — customer
+      const customerActiveBooking = await prisma.booking.findFirst({
+        where: { customerId, status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } },
+        select: { id: true }
+      });
+      if (customerActiveBooking) {
+        return sendApiError(res, 409, 'CUSTOMER_BUSY', 'You already have an active booking. Please complete or cancel it before booking another.');
+      }
+
       const approvedService = await prisma.providerService.findFirst({
         where: {
           providerId: provider.id,
@@ -175,69 +178,19 @@ export const BookingController = {
         return sendApiError(res, 409, 'SERVICE_NOT_APPROVED', 'This provider is not approved for the requested service.');
       }
 
-      const slotTaken = await isProviderSlotTaken(
-        bookingData.providerId,
-        parsedBookingDate,
-        bookingData.bookingTimeSlot || 'Flexible'
-      );
-      if (slotTaken) {
-        return sendApiError(res, 409, 'SLOT_UNAVAILABLE', 'This provider is already booked for the selected date and time slot.');
-      }
-
-      const activePendingBooking = await prisma.booking.findFirst({
-        where: {
-          customerId,
-          providerId: bookingData.providerId,
-          serviceCategory: bookingData.serviceCategory,
-          status: 'PENDING',
-          bookingDate: parsedBookingDate,
-          bookingTimeSlot: bookingData.bookingTimeSlot || 'Flexible',
-          ...(bookingData.serviceId ? { serviceId: bookingData.serviceId } : {})
-        },
-        select: { id: true, serviceCategory: true, status: true }
-      });
-
-      if (activePendingBooking) {
-        return sendApiError(
-          res,
-          409,
-          'SERVICE_ALREADY_PENDING',
-          `You already have a pending booking (${activePendingBooking.id}) for this provider, service, date, and time slot.`
-        );
-      }
-
       const timestamp = new Date();
-      
+
       const result = await prisma.$transaction(async (tx) => {
-        // Recheck inside a serializable transaction so simultaneous requests
-        // cannot both reserve the same provider/date/slot.
-        if (await isProviderSlotTaken(bookingData.providerId, parsedBookingDate, bookingData.bookingTimeSlot, tx)) {
-          const error = new Error('Selected slot is no longer available.');
-          error.code = 'SLOT_UNAVAILABLE';
-          throw error;
-        }
         const booking = await tx.booking.create({
           data: {
             customerId,
             providerId: bookingData.providerId,
             serviceId: approvedService.serviceId,
             serviceCategory: bookingData.serviceCategory,
-            bookingDate: parsedBookingDate,
-            bookingTimeSlot: bookingData.bookingTimeSlot || 'Flexible',
-            status: 'PENDING',
-            paymentStatus: normalizePaymentStatus(bookingData.paymentStatus),
-            paymentMethod: bookingData.paymentMethod || null,
             locationAddress: bookingData.locationAddress || '',
             city: bookingData.city || 'Hyderabad',
             instructions: bookingData.instructions || '',
-            durationType: bookingData.serviceDurationType === 'permanent' ? 'PERMANENT' : 'CONTRACT',
-            durationYears: parseInt(bookingData.durationYears || 0),
-            durationDays: parseInt(bookingData.durationDays || 1),
-            durationHours: parseInt(bookingData.durationHours || 0),
-            amount: bookingData.amount === undefined || bookingData.amount === null || bookingData.amount === ''
-              ? null
-              : Number(bookingData.amount),
-            bookingTime: timestamp,
+            amount: bookingData.amount != null && !Number.isNaN(Number(bookingData.amount)) ? Number(bookingData.amount) : null,
             messages: [],
             reviewed: false,
             statusHistory: [
@@ -279,9 +232,6 @@ export const BookingController = {
 
       return sendApiSuccess(res, 201, result.booking);
     } catch (err) {
-      if (err.code === 'SLOT_UNAVAILABLE' || err.code === 'P2034') {
-        return sendApiError(res, 409, 'SLOT_UNAVAILABLE', 'This provider is already booked for the selected date and time slot.');
-      }
       console.error('[BookingController.create] Error:', err.message, err.stack);
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to create booking.',
         process.env.NODE_ENV !== 'production' ? err.message : undefined);
@@ -336,16 +286,28 @@ export const BookingController = {
 
       if (!canUpdate) return sendApiError(res, 403, 'FORBIDDEN', 'You are not allowed to perform this status transition.');
 
+      // Verification code check: CONFIRMED -> ONGOING requires customer's 4-digit code
+      if (currentStatus === 'CONFIRMED' && updatedStatus === 'ONGOING') {
+        const { verificationCode } = req.body;
+        if (!verificationCode) {
+          return sendApiError(res, 400, 'MISSING_FIELDS', 'Verification code is required to start work. Ask the customer for their 4-digit code.');
+        }
+        const customerUser = await prisma.user.findUnique({
+          where: { id: booking.customerId },
+          select: { verificationCode: true }
+        });
+        if (!customerUser || String(verificationCode).trim() !== String(customerUser.verificationCode).trim()) {
+          return sendApiError(res, 400, 'INVALID_CODE', 'Invalid verification code. Please ask the customer for the correct 4-digit code.');
+        }
+      }
+
       const newHistory = buildStatusHistory(booking.statusHistory, updatedStatus, note);
-      const paymentMethod = String(booking.paymentMethod || 'CASH').toUpperCase();
-      const settlesCash = ['CASH', 'CASH AFTER JOB', 'CASH_AFTER_JOB'].includes(paymentMethod);
 
       const updated = await prisma.booking.update({
         where: { id },
         data: {
           status: updatedStatus,
           statusHistory: newHistory,
-          paymentStatus: updatedStatus === 'COMPLETED' && settlesCash ? 'PAID' : booking.paymentStatus,
           ...(updatedStatus === 'CANCELLED' ? {
             cancelledBy: requesterId,
             cancelledReason: note || null
@@ -354,8 +316,6 @@ export const BookingController = {
         include: BOOKING_INCLUDE
       });
 
-
-      // Append BookingEvent audit row
       await prisma.bookingEvent.create({
         data: {
           bookingId: id,
@@ -365,23 +325,8 @@ export const BookingController = {
           note: note || null
         }
       });
+
       if (updatedStatus === 'COMPLETED') {
-        // Cash After Job is the only local payment path.  Completion settles
-        // it once and creates the matching transaction row for dashboards.
-        const method = booking.paymentMethod || 'CASH';
-        if (settlesCash) {
-          await prisma.payment.upsert({
-            where: { bookingId: id },
-            update: { status: 'PAID', paidAt: new Date(), paymentMethod: method },
-            create: {
-              bookingId: id,
-              userId: booking.customerId,
-              paymentMethod: method,
-              status: 'PAID',
-              paidAt: new Date()
-            }
-          });
-        }
         await refreshProviderReputation(booking.providerId);
       }
 

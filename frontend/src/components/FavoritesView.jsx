@@ -20,7 +20,7 @@ export default function FavoritesView({ favorites, onToggleFavorite, onNavigate 
             <div className="flex gap-4 items-center">
               <img
                 className="w-12 h-12 rounded-xl object-cover border border-slate-200"
-                src={prov.avtra || prov.avatar || prov.photo || ''}
+                src={prov.avatar || prov.photo || ''}
                 onError={(e) => {
                   e.currentTarget.onerror = null;
                   e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"%3E%3Crect width="120" height="120" rx="20" fill="%23e2e8f0"/%3E%3Cpath d="M60 62c10 0 18-9 18-20S70 22 60 22 42 31 42 42s8 20 18 20zm0 12c-18 0-34 9-34 22v2h68v-2c0-13-16-22-34-22z" fill="%236b7280"/%3E%3C/svg%3E';
@@ -53,7 +53,7 @@ export default function FavoritesView({ favorites, onToggleFavorite, onNavigate 
             </div>
           </div>
 
-          <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed font-medium">{prov.bio}</p>
+          <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed font-medium">{prov.serviceDescription || prov.bio}</p>
         </div>
       ))}
     </div>

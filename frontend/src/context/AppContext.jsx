@@ -648,12 +648,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const updateBookingStatus = async (bookingId, status, note) => {
+  const updateBookingStatus = async (bookingId, status, note, verificationCode) => {
     try {
       const res = await api(`${API_BASE_URL}/bookings/${bookingId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note })
+        body: JSON.stringify({ status, note, verificationCode })
       });
       const data = await res.json();
       if (data.id) {

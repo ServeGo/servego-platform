@@ -39,6 +39,12 @@ export const UserController = {
       } catch (emailErr) {
         console.error('[forgotPassword] Failed to send email:', emailErr.message);
         console.error('[forgotPassword] Full error:', emailErr);
+        // Clear the reset token since the user will never receive it
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { resetToken: null, resetTokenExpiry: null }
+        });
+        return sendApiError(res, 500, 'EMAIL_FAILED', 'Failed to send reset email. Please try again later.');
       }
 
       return sendApiSuccess(res, 200, { message: 'If an account with that email exists, a reset link has been sent.' });
@@ -181,11 +187,6 @@ export const UserController = {
         return sendApiError(res, 400, 'MISSING_FIELDS', 'Please fill in all required fields');
       }
 
-      // Accept boolean true, string 'true', or number 1
-      if (acceptedTerms !== true && acceptedTerms !== 'true' && acceptedTerms !== 1 && acceptedTerms !== '1') {
-        return sendApiError(res, 400, 'TERMS_NOT_ACCEPTED', 'Please accept the Terms & Conditions to continue');
-      }
-
       if (!confirmPassword) {
         return sendApiError(res, 400, 'MISSING_FIELDS', 'Please confirm your password');
       }
@@ -220,6 +221,7 @@ export const UserController = {
       const hashedPassword = await bcrypt.hash(password, 12);
       const referralCode = `SERVEGO-${role === 'provider' ? 'PRO' : 'CUST'}-${name.substring(0, 3).toUpperCase().replace(/\s/g, 'X')}${Math.floor(10 + Math.random() * 90)}`;
       const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
+      const verificationCode = role === 'customer' ? String(Math.floor(1000 + Math.random() * 9000)) : null;
 
       const newUser = await prisma.user.create({
         data: {
@@ -233,6 +235,7 @@ export const UserController = {
           address: role === 'customer' ? (address?.trim() || null) : null,
           pincode: role === 'customer' ? String(pincode).trim() : null,
           referralCode,
+          verificationCode,
           referralsCount: 0,
           referralDiscountBalance: 0
         }
@@ -298,6 +301,7 @@ export const UserController = {
         profileComplete: newUser.profileComplete,
         address: newUser.address,
         pincode: newUser.pincode,
+        verificationCode: newUser.verificationCode,
         providerId: role === 'provider' ? providerProfile?.id || null : null,
         customerProfile: customerProfile,
         providerProfile: providerProfile,
@@ -435,6 +439,7 @@ export const UserController = {
           avatar: true, status: true, profileComplete: true, address: true, pincode: true,
           referralCode: true, referredBy: true, referralsCount: true,
           referralDiscountBalance: true, referralBonusEarned: true,
+          verificationCode: true,
           providerId: true, createdAt: true, updatedAt: true,
           customerProfile: true,
           providerProfile: {

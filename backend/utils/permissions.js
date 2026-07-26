@@ -2,6 +2,7 @@ const ROLE_ACTIONS = {
   customer: {
     create_booking: true,
     cancel_booking: true,
+    update_booking_status: true,
     review_provider: true,
     view_own_bookings: true
   },

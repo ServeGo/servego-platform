@@ -73,6 +73,10 @@ export const TicketController = {
       if (role !== 'admin') return sendApiError(res, 403, 'FORBIDDEN', 'Admin access required');
 
       const { id } = req.params;
+      if (!id || !String(id).trim()) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Ticket ID is required.');
+      }
+
       const { response } = req.body;
 
       if (!response) {
@@ -98,6 +102,9 @@ export const TicketController = {
   ,
   setStatus: async (req, res) => {
     try {
+      if (!req.params.id || !String(req.params.id).trim()) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Ticket ID is required.');
+      }
       const { status, response } = req.body || {};
       if (!['OPEN', 'RESOLVED', 'CLOSED'].includes(String(status).toUpperCase())) return sendApiError(res, 400, 'INVALID_STATUS', 'Status must be OPEN, RESOLVED, or CLOSED.');
       if (response !== undefined && String(response).trim().length > 2000) return sendApiError(res, 400, 'VALIDATION_ERROR', 'Response cannot exceed 2000 characters.');

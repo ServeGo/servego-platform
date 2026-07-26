@@ -107,7 +107,7 @@ export default function AdminDashboardPanel({
 
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0">
                   <div className="font-mono text-slate-500 text-[10px]">
-                    {bk.bookingDate} • {bk.bookingTimeSlot}
+                    {bk.createdAt ? new Date(bk.createdAt).toLocaleDateString() : ''}
                   </div>
                   <div>
                     {['pending', 'new'].includes(bk.status) && (

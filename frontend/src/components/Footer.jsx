@@ -25,7 +25,7 @@ export default function Footer({ onNavigate }) {
             <button onClick={() => handleLinkClick('service-details', 'electrician')} className="hover:text-slate-200 text-left cursor-pointer">Electrician</button>
             <button onClick={() => handleLinkClick('service-details', 'plumber')} className="hover:text-slate-200 text-left cursor-pointer">Plumber</button>
             <button onClick={() => handleLinkClick('service-details', 'ac-repair')} className="hover:text-slate-200 text-left cursor-pointer">AC Service & Repair</button>
-            <button onClick={() => handleLinkClick('service-details', 'home-cleaning')} className="hover:text-slate-200 text-left cursor-pointer">Deep Cleaning</button>
+            <button onClick={() => handleLinkClick('service-details', 'deep-cleaning')} className="hover:text-slate-200 text-left cursor-pointer">Deep Cleaning</button>
           </div>
         </div>
         

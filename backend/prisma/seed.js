@@ -173,7 +173,7 @@ function daysFromNow(offset) {
   return d;
 }
 
-async function createBooking({ customer, provider, serviceName, status, bookingDate, timeSlot, address, instructions, reviewed = false }) {
+async function createBooking({ customer, provider, serviceName, status, address, instructions, reviewed = false }) {
   const now = new Date();
   const id = `BK-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(Math.random() * 1000)}`;
   return prisma.booking.create({
@@ -182,15 +182,11 @@ async function createBooking({ customer, provider, serviceName, status, bookingD
       customerId: customer.id,
       providerId: provider.id,
       serviceCategory: serviceName,
-      bookingDate,
-      bookingTimeSlot: timeSlot,
       status,
       paymentStatus: status === 'COMPLETED' ? 'PAID' : 'UNPAID',
-      paymentMethod: 'UPI',
       locationAddress: address,
       city: 'Hyderabad',
       instructions: instructions || '',
-      bookingTime: now,
       reviewed,
       messages: [],
       statusHistory: [
@@ -236,13 +232,14 @@ async function main() {
 
   // Bookings spanning the full lifecycle so every dashboard view has content.
   const bookings = [];
-  bookings.push(await createBooking({ customer: rohan, provider: srinivas.provider, serviceName: 'Electrician', status: 'PENDING', bookingDate: daysFromNow(2), timeSlot: '11:00 AM', address: rohan.address, instructions: 'Main switchboard tripping frequently.' }));
-  bookings.push(await createBooking({ customer: rohan, provider: sanjay.provider, serviceName: 'Plumber', status: 'CONFIRMED', bookingDate: daysFromNow(1), timeSlot: '02:00 PM', address: rohan.address, instructions: 'Kitchen sink leakage.' }));
-  bookings.push(await createBooking({ customer: prathyusha, provider: apex.provider, serviceName: 'AC Repair', status: 'ONGOING', bookingDate: daysFromNow(0), timeSlot: '09:00 AM', address: prathyusha.address, instructions: 'Bedroom AC not cooling.' }));
-  bookings.push(await createBooking({ customer: prathyusha, provider: srinivas.provider, serviceName: 'Electrician', status: 'COMPLETED', bookingDate: daysFromNow(-5), timeSlot: '04:00 PM', address: prathyusha.address, instructions: 'Installed 3 smart geyser panels.', reviewed: true }));
-  bookings.push(await createBooking({ customer: rohan, provider: apex.provider, serviceName: 'AC Repair', status: 'CANCELLED', bookingDate: daysFromNow(-2), timeSlot: '06:00 PM', address: rohan.address, instructions: 'Rescheduled by customer.' }));
+  bookings.push(await createBooking({ customer: rohan, provider: srinivas.provider, serviceName: 'Electrician', status: 'PENDING', address: rohan.address, instructions: 'Main switchboard tripping frequently.' }));
+  bookings.push(await createBooking({ customer: rohan, provider: sanjay.provider, serviceName: 'Plumber', status: 'CONFIRMED', address: rohan.address, instructions: 'Kitchen sink leakage.' }));
+  bookings.push(await createBooking({ customer: prathyusha, provider: apex.provider, serviceName: 'AC Repair', status: 'ONGOING', address: prathyusha.address, instructions: 'Bedroom AC not cooling.' }));
+  bookings.push(await createBooking({ customer: prathyusha, provider: srinivas.provider, serviceName: 'Electrician', status: 'COMPLETED', address: prathyusha.address, instructions: 'Installed 3 smart geyser panels.', reviewed: true }));
+  bookings.push(await createBooking({ customer: rohan, provider: apex.provider, serviceName: 'AC Repair', status: 'COMPLETED', address: rohan.address, instructions: 'Gas refilling done.', reviewed: true }));
+  bookings.push(await createBooking({ customer: prathyusha, provider: sanjay.provider, serviceName: 'Plumber', status: 'COMPLETED', address: prathyusha.address, instructions: 'Bathroom tap replacement.' }));
 
-  // A review tied to the completed booking.
+  // Reviews tied to the completed bookings.
   const completed = bookings[3];
   await prisma.review.create({
     data: {
@@ -253,6 +250,30 @@ async function main() {
       rating: 5,
       comment: 'Very careful and clean work. Installed 3 smart geyser panels efficiently.',
       serviceCategory: 'Electrician',
+    },
+  });
+
+  await prisma.review.create({
+    data: {
+      reviewerId: rohan.id,
+      reviewerName: rohan.name,
+      providerId: apex.provider.id,
+      bookingId: bookings[4].id,
+      rating: 4,
+      comment: 'Quick AC gas refilling. Works perfectly now.',
+      serviceCategory: 'AC Repair',
+    },
+  });
+
+  await prisma.review.create({
+    data: {
+      reviewerId: prathyusha.id,
+      reviewerName: prathyusha.name,
+      providerId: sanjay.provider.id,
+      bookingId: bookings[5].id,
+      rating: 5,
+      comment: 'Replaced the bathroom tap quickly. Very professional.',
+      serviceCategory: 'Plumber',
     },
   });
 

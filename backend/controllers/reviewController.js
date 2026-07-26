@@ -113,10 +113,17 @@ export const ReviewController = {
 
 
       if (bookingId) {
-        await prisma.booking.update({
-          where: { id: bookingId },
-          data: { reviewed: true }
-        });
+        try {
+          await prisma.booking.update({
+            where: { id: bookingId },
+            data: { reviewed: true }
+          });
+        } catch (e) {
+          if (e.code === 'P2025') {
+            return sendApiError(res, 404, 'NOT_FOUND', 'Linked booking no longer exists.');
+          }
+          throw e;
+        }
       }
 
       await refreshProviderReputation(providerId);

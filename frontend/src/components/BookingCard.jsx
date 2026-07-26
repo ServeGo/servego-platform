@@ -1,10 +1,11 @@
 import React from 'react';
-import { Calendar, MapPin, FileText, MessageSquare } from 'lucide-react';
+import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
 
 export default function BookingCard({ 
   booking, 
+  customerVerificationCode,
   onDownloadReceipt, 
   onCancel, 
   onReview,
@@ -41,7 +42,7 @@ export default function BookingCard({
         <div className="md:col-span-5 space-y-2 text-xs font-semibold text-slate-500">
           <div className="flex gap-1.5 items-center">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-slate-800">{booking.bookingDateLabel || booking.bookingDate} • {booking.bookingTimeSlot}</span>
+            <span className="text-slate-800">{booking.bookingDateLabel || booking.createdAt}</span>
           </div>
           <div className="flex gap-1.5 items-center">
             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -57,8 +58,8 @@ export default function BookingCard({
 
         <div className="md:col-span-3 text-left md:text-right flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end gap-2">
           <div>
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Payment</span>
-            <span className="text-xs font-bold text-slate-700 block mt-1 capitalize">{booking.paymentMethod || 'On Completion'}</span>
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Booked</span>
+            <span className="text-xs font-bold text-slate-700 block mt-1">{new Date(booking.createdAt).toLocaleDateString()}</span>
           </div>
 
           {booking.status === 'completed' && (
@@ -100,6 +101,20 @@ export default function BookingCard({
           ))}
         </div>
       </div>
+
+      {/* Verification Code */}
+      {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && customerVerificationCode && (
+        <div className="mb-4 bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <ShieldCheck className="w-5 h-5 text-indigo-600" />
+            <span className="text-xs font-black text-indigo-800 uppercase tracking-wider">Your Verification Code</span>
+          </div>
+          <p className="text-[10px] text-indigo-600 font-semibold mb-2">Share this 4-digit code with the specialist to start the service</p>
+          <div className="text-4xl font-black text-indigo-700 tracking-[0.3em] font-mono bg-white rounded-xl py-3 border border-indigo-100 shadow-sm">
+            {customerVerificationCode}
+          </div>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex justify-end gap-2">

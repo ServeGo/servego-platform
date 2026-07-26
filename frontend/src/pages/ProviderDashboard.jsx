@@ -14,7 +14,6 @@ import ProviderReviews from '../components/ProviderReviews';
 import ProviderSupport from '../components/ProviderSupport';
 import ProviderReferrals from '../components/ProviderReferrals';
 import ProviderProfileView from '../components/ProviderProfileView';
-import ProviderAvailability from '../components/ProviderAvailability';
 import ProviderAnalyticsDashboard from '../components/ProviderAnalyticsDashboard';
 
 
@@ -84,8 +83,8 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   // (provider profile local editing removed; admin flows handle updates elsewhere)
 
   const allocatedBookings = useMemo(() => bookings.filter(b => b.providerId === activeProvider?.id), [bookings, activeProvider]);
-  const activeLeads = useMemo(() => allocatedBookings.filter(b => ['pending', 'confirmed', 'in_progress', 'en_route', 'ongoing'].includes(b.status)), [allocatedBookings]);
-  const completedJobs = useMemo(() => allocatedBookings.filter(b => ['completed', 'reviewed'].includes(b.status)), [allocatedBookings]);
+  const activeLeads = useMemo(() => allocatedBookings.filter(b => ['pending', 'confirmed', 'ongoing'].includes(b.status)), [allocatedBookings]);
+  const completedJobs = useMemo(() => allocatedBookings.filter(b => b.status === 'completed'), [allocatedBookings]);
   const completedCount = completedJobs.length;
 
   
@@ -130,7 +129,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         {isPending && <PendingBanner />}
 
         {!isPending && activeProvider && (
-          <ProviderHeader provider={activeProvider} completedJobs={completedCount} approvedServices={approvedServices} loadingServices={loadingServices} />
+          <ProviderHeader provider={activeProvider} completedJobs={completedCount} totalJobs={allocatedBookings.length} approvedServices={approvedServices} loadingServices={loadingServices} />
         )}
 
         <TabList activeTab={activeTab} setActiveTab={setActiveTab} leadsCount={activeLeads.length} reviewsCount={activeProvider?.reviews?.length || 0} />
@@ -146,7 +145,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             setChatInput={setChatInput}
             onAccept={(id) => updateBookingStatus(id, 'confirmed', 'Accepted.')}
             onReject={(id) => updateBookingStatus(id, 'cancelled', 'Rejected.')}
-            onStartWork={(id) => updateBookingStatus(id, 'ongoing', 'Work started.')}
+            onStartWork={(id, verificationCode) => updateBookingStatus(id, 'ongoing', 'Work started.', verificationCode)}
             onFinishWork={(id) => updateBookingStatus(id, 'completed', 'Completed.')}
             onSendMessage={sendChatMessage}
           />
@@ -200,10 +199,6 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
 
 
-        {activeTab === 'availability' && activeProvider && (
-          <ProviderAvailability />
-        )}
-
         {activeTab === 'profile' && activeProvider && (
           <ProviderProfileView />
         )}
@@ -237,7 +232,6 @@ function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
     { id: 'reviews', label: `Reviews (${reviewsCount})` },
     { id: 'support', label: 'Support' },
     { id: 'referrals', label: '🤝 Ambassador' },
-    { id: 'availability', label: 'Availability' },
     { id: 'profile', label: 'Profile' }
   ];
 
@@ -278,9 +272,16 @@ function LeadsPage({
   onFinishWork,
   onSendMessage
 }) {
-  const [statusFilter, setStatusFilter] = useState('pending'); // pending | active | all
+  const [statusFilter, setStatusFilter] = useState('active'); // pending | active | completed | all
   const [query, setQuery] = useState('');
   const [sortDir, setSortDir] = useState('desc'); // desc | asc
+
+  const subTabCounts = useMemo(() => ({
+    pending: activeLeads.filter(b => b.status === 'pending').length,
+    active: activeLeads.filter(b => ['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(b.status)).length,
+    completed: activeLeads.filter(b => ['completed', 'reviewed', 'cancelled'].includes(b.status)).length,
+    all: activeLeads.length,
+  }), [activeLeads]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -303,8 +304,6 @@ function LeadsPage({
           b.customerName,
           b.locationAddress,
           b.instructions,
-          b.bookingDate,
-          b.bookingTimeSlot,
           b.id
         ]
           .filter(Boolean)
@@ -315,8 +314,7 @@ function LeadsPage({
     }
 
     const toSortableDate = (b) => {
-      // bookingDate is expected like YYYY-MM-DD in most cases; fall back gracefully.
-      const d = b.bookingDate ? new Date(b.bookingDate) : null;
+      const d = b.createdAt ? new Date(b.createdAt) : null;
       return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
     };
 
@@ -348,7 +346,7 @@ function LeadsPage({
                   statusFilter === 'pending' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
-                Pending
+                Pending {subTabCounts.pending > 0 && <span className="opacity-70">({subTabCounts.pending})</span>}
               </button>
               <button
                 onClick={() => setStatusFilter('active')}
@@ -356,7 +354,7 @@ function LeadsPage({
                   statusFilter === 'active' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
-                Active
+                Active {subTabCounts.active > 0 && <span className="opacity-70">({subTabCounts.active})</span>}
               </button>
               <button
                 onClick={() => setStatusFilter('completed')}
@@ -364,7 +362,7 @@ function LeadsPage({
                   statusFilter === 'completed' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
-                Completed
+                Completed {subTabCounts.completed > 0 && <span className="opacity-70">({subTabCounts.completed})</span>}
               </button>
               <button
                 onClick={() => setStatusFilter('all')}
@@ -372,7 +370,7 @@ function LeadsPage({
                   statusFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
                 }`}
               >
-                All
+                All {subTabCounts.all > 0 && <span className="opacity-70">({subTabCounts.all})</span>}
               </button>
             </div>
 

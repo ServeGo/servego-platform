@@ -22,16 +22,12 @@ export default function BookingSuccess({ details, onDashboard, onBrowse }) {
             <span className="text-slate-900">{details.providerName}</span>
           </div>
           <div className="flex justify-between text-slate-500">
-            <span>Scheduled For:</span>
-            <span className="text-slate-900">{details.bookingDateLabel || details.bookingDate}</span>
-          </div>
-          <div className="flex justify-between text-slate-505">
-            <span>Plan:</span>
-            <span className="text-slate-900">{details.bookingTimeSlot}</span>
+            <span>Booked:</span>
+            <span className="text-slate-900">{details.bookingDateLabel || details.createdAt}</span>
           </div>
           <div className="flex justify-between text-slate-550 pt-2 border-t border-slate-200">
-            <span>Payment:</span>
-            <span className="text-slate-900 capitalize">{details.paymentMethod || 'On completion'}</span>
+            <span>Service:</span>
+            <span className="text-slate-900">{details.serviceCategory}</span>
           </div>
         </div>
 

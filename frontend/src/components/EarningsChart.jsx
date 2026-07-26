@@ -37,7 +37,7 @@ function toCsv(rows) {
       [
         r.id,
         r.invoiceNumber || '',
-        safeDateToLabel(r.bookingDate),
+        safeDateToLabel(r.createdAt || r.bookingDate),
         r.customerName || '',
         r.totalAmount,
         r.serviceFee,
@@ -78,7 +78,7 @@ export default function EarningsChart({ completedJobs }) {
     return completedJobs
       .filter(j => {
         if (!rangeMs) return true;
-        const dt = j.bookingDate ? new Date(j.bookingDate) : null;
+        const dt = j.createdAt ? new Date(j.createdAt) : (j.bookingDate ? new Date(j.bookingDate) : null);
         if (!dt || Number.isNaN(dt.getTime())) return false;
         return now - dt.getTime() <= rangeMs;
       })
@@ -91,7 +91,7 @@ export default function EarningsChart({ completedJobs }) {
           j.serviceCategory,
           j.city,
           j.locationAddress,
-          safeDateToLabel(j.bookingDate)
+          safeDateToLabel(j.createdAt || j.bookingDate)
         ]
           .filter(Boolean)
           .join(' ')
@@ -100,8 +100,8 @@ export default function EarningsChart({ completedJobs }) {
       })
       .slice()
       .sort((a, b) => {
-        const da = a.bookingDate ? new Date(a.bookingDate).getTime() : 0;
-        const db = b.bookingDate ? new Date(b.bookingDate).getTime() : 0;
+        const da = (a.createdAt || a.bookingDate) ? new Date(a.createdAt || a.bookingDate).getTime() : 0;
+        const db = (b.createdAt || b.bookingDate) ? new Date(b.createdAt || b.bookingDate).getTime() : 0;
         return db - da;
       });
   }, [completedJobs, timeRange, query]);
@@ -122,7 +122,7 @@ export default function EarningsChart({ completedJobs }) {
     const buckets = Array.from({ length: 7 }, () => 0);
 
     for (const j of completedJobs) {
-      const dt = j.bookingDate ? new Date(j.bookingDate) : null;
+      const dt = j.createdAt ? new Date(j.createdAt) : (j.bookingDate ? new Date(j.bookingDate) : null);
       if (!dt || Number.isNaN(dt.getTime())) continue;
       const diffDays = Math.floor((now - dt.getTime()) / (24 * 60 * 60 * 1000));
       if (diffDays < 0 || diffDays > 6) continue;
@@ -275,7 +275,7 @@ export default function EarningsChart({ completedJobs }) {
                     <tr key={j.id}>
                       <td className="py-3 font-mono text-slate-900">{j.id}</td>
                       <td className="py-3 font-medium">{j.invoiceNumber || '-'}</td>
-                      <td className="py-3 font-medium">{safeDateToLabel(j.bookingDate)}</td>
+                      <td className="py-3 font-medium">{safeDateToLabel(j.createdAt || j.bookingDate)}</td>
                       <td className="py-3 font-medium">{j.customerName || '-'}</td>
                       <td className="py-3 text-right text-emerald-600 font-black">{formatMoney(net)}</td>
                     </tr>

@@ -182,7 +182,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             {userBookings.length === 0 ? (
               <EmptyBookings onNavigate={onNavigate} />
             ) : (
-              <BookingSubTabs bookings={userBookings} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
+              <BookingSubTabs bookings={userBookings} currentUser={currentUser} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
         )}
@@ -265,8 +265,8 @@ const BOOKING_SUB_TABS = [
   { id: 'past', label: 'Past', statuses: ['completed', 'reviewed', 'COMPLETED', 'REVIEWED'] },
 ];
 
-function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
-  const [subTab, setSubTab] = useState('pending');
+function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, onReview, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
+  const [subTab, setSubTab] = useState('active');
 
   const filtered = useMemo(() => {
     const tab = BOOKING_SUB_TABS.find(t => t.id === subTab);
@@ -311,6 +311,7 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, openC
             <BookingCard
               key={bk.id}
               booking={bk}
+              customerVerificationCode={currentUser?.verificationCode}
               onDownloadReceipt={onDownloadReceipt}
               onCancel={onCancel}
               onReview={onReview}

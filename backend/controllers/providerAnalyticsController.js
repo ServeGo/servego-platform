@@ -46,10 +46,7 @@ export const ProviderAnalyticsController = {
         providerId,
       };
       if (since) {
-        whereBookings.OR = [
-          { bookingDate: { gte: since } },
-          { createdAt: { gte: since } }
-        ];
+        whereBookings.createdAt = { gte: since };
       }
 
       const [bookings, payments] = await Promise.all([
@@ -72,10 +69,7 @@ export const ProviderAnalyticsController = {
               providerId,
               ...(since
                 ? {
-                    OR: [
-                      { bookingDate: { gte: since } },
-                      { createdAt: { gte: since } }
-                    ]
+                    createdAt: { gte: since }
                   }
                 : {}),
             },
@@ -111,8 +105,8 @@ export const ProviderAnalyticsController = {
 
       const cancellationRate = offerCount ? cancelledCount / offerCount : 0;
 
-      const pendingBookings = bookings.filter((b) => b.status !== 'PENDING');
-      const responseTimesMs = pendingBookings
+      const respondedBookings = bookings.filter((b) => b.status !== 'PENDING');
+      const responseTimesMs = respondedBookings
         .map((b) => {
           const c = b.createdAt ? new Date(b.createdAt).getTime() : NaN;
           const u = b.updatedAt ? new Date(b.updatedAt).getTime() : NaN;
