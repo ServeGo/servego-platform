@@ -24,11 +24,6 @@ export function normalizeBookingStatus(status) {
 }
 
 
-export function normalizePaymentStatus(status) {
-  const value = String(status || '').trim().toUpperCase();
-  return ['PENDING', 'UNPAID', 'PAID', 'FAILED'].includes(value) ? value : 'PENDING';
-}
-
 export function isValidBookingTransition(currentStatus, nextStatus) {
   const from = normalizeBookingStatus(currentStatus);
   const to = normalizeBookingStatus(nextStatus);

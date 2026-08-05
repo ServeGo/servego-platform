@@ -150,7 +150,7 @@ export default function AdminReportsTab() {
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      {['Booking ID', 'Customer', 'Provider', 'Service', 'Date', 'Status', 'Payment'].map(h => (
+                      {['Booking ID', 'Customer', 'Provider', 'Service', 'Date', 'Status'].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
                       ))}
                     </tr>
@@ -171,7 +171,6 @@ export default function AdminReportsTab() {
                             'bg-sky-50 text-sky-700 border-sky-200'
                           }`}>{b.status}</span>
                         </td>
-                        <td className="px-4 py-3 capitalize text-slate-600">{b.paymentStatus || '—'}</td>
                       </tr>
                     ))}
                   </tbody>

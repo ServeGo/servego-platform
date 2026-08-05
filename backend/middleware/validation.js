@@ -88,6 +88,7 @@ export const loginValidation = [
 
 export const createBookingValidation = [
   body('providerId')
+    .optional()
     .trim()
     .notEmpty().withMessage('Provider ID is required'),
   body('serviceCategory')
@@ -120,6 +121,67 @@ export const createBookingValidation = [
     })
 ];
 
+export const createPermanentServiceRequestValidation = [
+  body('serviceCategory')
+    .trim()
+    .notEmpty().withMessage('Service category is required')
+    .isLength({ max: 200 }).withMessage('Service category too long')
+    .escape(),
+  body('engagementType')
+    .trim()
+    .notEmpty().withMessage('Engagement type is required')
+    .isIn(['PERMANENT', 'CONTRACT']).withMessage('Engagement type must be PERMANENT or CONTRACT'),
+  body('startDate')
+    .notEmpty().withMessage('Start date is required')
+    .custom((value) => {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) throw new Error('Start date must be a valid date');
+      return true;
+    }),
+  body('contractDurationYears')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > 99) throw new Error('Contract years must be a whole number between 1 and 99');
+      return true;
+    }),
+  body('contractDurationDays')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > 3650) throw new Error('Contract days must be a whole number between 1 and 3650');
+      return true;
+    }),
+  body('monthlyBudget')
+    .notEmpty().withMessage('Monthly budget is required')
+    .custom((value) => {
+      const n = Number(value);
+      if (Number.isNaN(n) || n <= 0) throw new Error('Monthly budget must be a positive number');
+      return true;
+    }),
+  body('additionalInfo')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('Additional information too long')
+    .escape()
+];
+
+export const updatePermanentServiceRequestValidation = [
+  body('status')
+    .optional()
+    .isIn(['APPROVED', 'REJECTED']).withMessage('Status must be APPROVED or REJECTED'),
+  body('assignedProviderId')
+    .optional({ values: 'falsy' })
+    .trim(),
+  body('adminNote')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('Admin note too long')
+    .escape()
+];
+
 export const updateBookingStatusValidation = [
   body('status')
     .notEmpty().withMessage('Status is required')
@@ -128,6 +190,111 @@ export const updateBookingStatusValidation = [
     .optional()
     .trim()
     .isLength({ max: 500 }).withMessage('Note too long')
+    .escape()
+];
+
+export const updateBookingLocationValidation = [
+  body('latitude')
+    .notEmpty().withMessage('Latitude is required')
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude must be between -90 and 90'),
+  body('longitude')
+    .notEmpty().withMessage('Longitude is required')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude must be between -180 and 180'),
+  body('accuracy')
+    .optional()
+    .toFloat()
+    .isFloat({ min: 0, max: 100000 }).withMessage('Accuracy must be a non-negative number of meters')
+];
+
+// ==================== Wallet Validations ====================
+
+export const requestWithdrawalValidation = [
+  body('amount')
+    .notEmpty().withMessage('Amount is required')
+    .toFloat()
+    .isFloat({ min: 0.01 }).withMessage('Amount must be a positive number'),
+  body('accountDetails')
+    .optional()
+    .isObject().withMessage('Account details must be an object'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 }).withMessage('Description too long')
+    .escape()
+];
+
+export const processWithdrawalValidation = [
+  body('action')
+    .notEmpty().withMessage('Action is required')
+    .isIn(['APPROVED', 'REJECTED', 'PAID']).withMessage('Action must be APPROVED, REJECTED or PAID'),
+  body('adminNote')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('Admin note too long')
+    .escape()
+];
+
+export const adminCreditWalletValidation = [
+  body('userId')
+    .trim()
+    .notEmpty().withMessage('User ID is required'),
+  body('amount')
+    .notEmpty().withMessage('Amount is required')
+    .toFloat()
+    .isFloat({ min: 0.01 }).withMessage('Amount must be a positive number'),
+  body('category')
+    .optional()
+    .isIn(['PROMOTIONAL_CREDIT', 'ADJUSTMENT', 'BOOKING_REFUND', 'DISPUTE_REFUND']).withMessage('Invalid credit category'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 }).withMessage('Description too long')
+    .escape()
+];
+
+// ==================== Dispute Validations ====================
+
+export const createDisputeValidation = [
+  body('bookingId')
+    .trim()
+    .notEmpty().withMessage('Booking ID is required'),
+  body('reason')
+    .trim()
+    .notEmpty().withMessage('Reason is required')
+    .isIn(['QUALITY_ISSUE', 'SERVICE_NOT_PROVIDED', 'PRICING_ISSUE', 'DAMAGE', 'BEHAVIOR', 'NO_SHOW', 'OTHER']).withMessage('Invalid dispute reason'),
+  body('description')
+    .trim()
+    .notEmpty().withMessage('Description is required')
+    .isLength({ min: 10, max: 4000 }).withMessage('Description must be between 10 and 4000 characters')
+    .escape(),
+  body('raisedBy')
+    .optional()
+    .isIn(['CUSTOMER', 'PROVIDER']).withMessage('raisedBy must be CUSTOMER or PROVIDER'),
+  body('evidence')
+    .optional()
+    .isArray().withMessage('Evidence must be an array')
+];
+
+export const addDisputeMessageValidation = [
+  body('message')
+    .trim()
+    .notEmpty().withMessage('Message is required')
+    .isLength({ max: 4000 }).withMessage('Message too long')
+    .escape()
+];
+
+export const resolveDisputeValidation = [
+  body('resolutionType')
+    .notEmpty().withMessage('Resolution type is required')
+    .isIn(['FULL_REFUND', 'PARTIAL_REFUND', 'NO_REFUND']).withMessage('Resolution must be FULL_REFUND, PARTIAL_REFUND or NO_REFUND'),
+  body('refundAmount')
+    .optional({ values: 'falsy' })
+    .toFloat()
+    .isFloat({ min: 0 }).withMessage('Refund amount must be a non-negative number'),
+  body('adminNote')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('Admin note too long')
     .escape()
 ];
 
@@ -186,27 +353,6 @@ export const resolveTicketValidation = [
     .trim()
     .notEmpty().withMessage('Response is required')
     .isLength({ min: 10, max: 2000 }).withMessage('Response must be between 10 and 2000 characters')
-    .escape()
-];
-
-// ==================== Payment Validations ====================
-
-export const createPaymentValidation = [
-  body('bookingId')
-    .trim()
-    .notEmpty().withMessage('Booking ID is required'),
-  body('paymentMethod')
-    .trim()
-    .notEmpty().withMessage('Payment method is required')
-    .isLength({ max: 50 }).withMessage('Payment method too long')
-    .escape(),
-  body('status')
-    .optional()
-    .isIn(['PENDING', 'UNPAID', 'PAID', 'FAILED']).withMessage('Invalid payment status'),
-  body('transactionId')
-    .optional()
-    .trim()
-    .isLength({ max: 100 }).withMessage('Transaction ID too long')
     .escape()
 ];
 

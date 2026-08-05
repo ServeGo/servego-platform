@@ -1,14 +1,13 @@
 import React from 'react';
 import { AlertCircle, Crown } from 'lucide-react';
 
-export default function BookingModal({ 
-  provider, 
-  onClose, 
-  errorText, 
+export default function BookingModal({
+  provider,
+  onClose,
+  errorText,
 
-  bookingType, setBookingType,
-  address, setAddress, 
-  instructions, setInstructions, 
+  address, setAddress,
+  instructions, setInstructions,
   loyaltyTier,
   onSubmit
 }) {
@@ -18,7 +17,7 @@ export default function BookingModal({
         
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
           <div>
-            <h3 className="text-xl font-bold text-slate-900">Configure Your Service</h3>
+            <h3 className="text-xl font-bold text-slate-900">Temporary Service Booking</h3>
             <p className="text-slate-500 text-xs font-medium">Secure booking with {provider.name}</p>
           </div>
           <button 
@@ -40,34 +39,6 @@ export default function BookingModal({
         <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Form area */}
           <div className="md:col-span-7 space-y-4">
-            <div>
-              <span className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Service Duration</span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBookingType('contract')}
-                  className={`cursor-pointer py-2 px-4 text-xs font-bold rounded-full border transition-all ${
-                    bookingType === 'contract'
-                      ? 'bg-indigo-600 border-indigo-650 text-white shadow-sm'
-                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Contract
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBookingType('permanent')}
-                  className={`cursor-pointer py-2 px-4 text-xs font-bold rounded-full border transition-all ${
-                    bookingType === 'permanent'
-                      ? 'bg-indigo-600 border-indigo-650 text-white shadow-sm'
-                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Permanent
-                </button>
-              </div>
-            </div>
-
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
                 Service Location <span className="text-rose-500">*</span>
@@ -99,7 +70,7 @@ export default function BookingModal({
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block mb-3">Booking Summary</span>
             <div className="space-y-2 pb-3 border-b border-slate-100 text-xs font-bold">
               <BillRow label="Specialist" value={provider.name} />
-              <BillRow label="Plan" value={bookingType === 'contract' ? 'Contract' : 'Permanent'} />
+              <BillRow label="Type" value="Temporary Service" />
             </div>
 
             {loyaltyTier?.tier && (
@@ -110,16 +81,14 @@ export default function BookingModal({
             )}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 font-medium leading-relaxed my-3">
-              {bookingType === 'contract'
-                ? 'Final charges are agreed directly with your specialist after the job is assessed.'
-                : "We'll route this request to the provider and confirm details once they verify availability."}
+              Your request is sent to the specialist, who has a limited time to accept. Final charges are agreed directly with your specialist.
             </div>
 
             <button
               type="submit"
               className="cursor-pointer w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg text-center text-sm transition-all shadow-md focus:outline-none mt-6"
             >
-              {bookingType === 'contract' ? 'Confirm Booking' : 'Request Permanent Service'}
+              Confirm Booking
             </button>
           </div>
         </form>

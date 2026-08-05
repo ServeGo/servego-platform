@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -32,6 +33,9 @@ model User {
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
 
+  latitude                Float?
+  longitude               Float?
+
   // Indexes for common queries
   @@index([role])
   @@index([status])
@@ -42,11 +46,16 @@ model User {
   authEvents              AuthEvent[]
   bookingsAsCustomer      Booking[]      @relation("CustomerBookings")
   notifications           Notification[]
-  payments                Payment[]
   providerProfile         Provider?
   customerProfile         Customer?
   reviews                 Review[]       @relation("ReviewerReviews")
   savedPros               SavedPro[]
+  leadsAsCustomer         Lead[]
+  serviceRequests         PermanentServiceRequest[] @relation("CustomerServiceRequests")
+  wallet                  Wallet?
+  walletTransactions      WalletTransaction[]
+  walletWithdrawalRequests WalletWithdrawalRequest[]
+  disputesAsCustomer      Dispute[]       @relation("CustomerDisputes")
 }
 
 model Customer {
@@ -126,6 +135,7 @@ model Provider {
 
   experienceYears   Int       @default(3)
   jobsCompleted     Int       @default(0)
+  serviceFee        Float     @default(0)
   bio               String?
   specialties       Json      @default("[]")
   serviceAreas      Json      @default("[]")
@@ -133,6 +143,17 @@ model Provider {
   serviceInterested String?
   isVerified        Boolean   @default(false)
   isFeatured        Boolean   @default(false)
+
+  // ServeGo Business Model — permanent provider level & sector (independent of subscription)
+  providerLevel     ProviderLevel @default(BRONZE)
+  promotionDate     DateTime?
+  sector            ProviderSector @default(GENERAL)
+  latitude          Float?
+  longitude         Float?
+  maxRadiusKm       Float?                 // custom service radius; falls back to the admin default
+  isOnline          Boolean       @default(true)
+  acceptingBookings Boolean       @default(true)
+
   availableDays     Json      @default("[]")
   timeSlots         Json      @default("[]")
   createdAt         DateTime  @default(now())
@@ -155,6 +176,20 @@ model Provider {
   providerServices        ProviderService[]
   providerServiceRequests ProviderServiceRequest[]
   availabilitySlots       AvailabilitySlot[]
+  subscription            ProviderSubscription?
+  subscriptionTransactions SubscriptionTransaction[]
+  leads                   Lead[]                    @relation("CurrentLeadProvider")
+  leadAssignments         LeadAssignmentHistory[]
+  leadTransfersFrom       LeadTransferHistory[]     @relation("TransferFrom")
+  leadTransfersTo         LeadTransferHistory[]     @relation("TransferTo")
+  promotionHistory        PromotionHistory[]
+  levelHistory            ProviderLevelHistory[]
+  performance             ProviderPerformance?
+  rankingMetrics          RankingMetrics?
+  locationUpdates         BookingLocationUpdate[]
+  permanentServiceAssignments PermanentServiceRequest[] @relation("PermanentServiceAssignments")
+  walletWithdrawalRequests WalletWithdrawalRequest[]
+  disputes               Dispute[]
 }
 
 model ProviderBadge {
@@ -233,18 +268,39 @@ model Booking {
   serviceCategory String
   bookingDate     DateTime      @default(now())
   status          BookingStatus @default(PENDING)
-  paymentStatus   PaymentStatus @default(PENDING)
   locationAddress String
   city            String
   instructions    String?
+
+  startedAt       DateTime?     // when the provider started work (CONFIRMED → ONGOING)
+  completedAt     DateTime?     // when the job was completed (→ COMPLETED)
 
   cancelledBy     String?
   cancelledReason String?
   amount          Float?
 
+  // Platform charge breakdown (admin-configurable, separate customer/provider rates).
+  // amount = base service cost. customerPlatformCharge is added on top for the
+  // customer's bill (totalAmount). providerPlatformCharge is the provider's
+  // commission on the base amount (providerPayout = amount - providerPlatformCharge).
+  customerPlatformCharge Float   @default(0)
+  providerPlatformCharge Float   @default(0)
+  totalAmount            Float?
+  providerPayout         Float?
+
   messages        Json          @default("[]")
   reviewed        Boolean       @default(false)
   statusHistory   Json          @default("[]")
+
+  // Real-time location tracking.
+  // startLocation = where the provider began the trip (dispatch point).
+  // endLocation = the customer's service location (used for ETA + progress).
+  startLocation         Json?
+  endLocation           Json?
+  providerLatitude      Float?
+  providerLongitude     Float?
+  providerLocationUpdatedAt DateTime?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -253,7 +309,6 @@ model Booking {
   @@index([providerId])
   @@index([status])
   @@index([bookingDate])
-  @@index([paymentStatus])
   @@index([serviceCategory])
   @@index([createdAt])
   @@index([customerId, status])
@@ -262,9 +317,31 @@ model Booking {
   customer        User          @relation("CustomerBookings", fields: [customerId], references: [id])
   provider        Provider      @relation(fields: [providerId], references: [id])
   service         Service?      @relation(fields: [serviceId], references: [id])
-  payment         Payment?
   reviews         Review[]
   events          BookingEvent[]
+  locationUpdates BookingLocationUpdate[]
+  lead            Lead?
+  cancellationReasons CancellationReason[]
+  disputes        Dispute[]
+}
+
+// Bounded history of provider location pings for a booking. Kept for
+// telemetry/audit and ETA verification; pruned after the configured retention
+// window (locationHistoryClearanceHours) once the booking is closed.
+model BookingLocationUpdate {
+  id         String   @id @default(cuid())
+  bookingId  String
+  providerId String
+  latitude   Float
+  longitude  Float
+  recordedAt DateTime @default(now())
+
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([bookingId])
+  @@index([providerId])
+  @@index([recordedAt])
 }
 
 model BookingEvent {
@@ -279,6 +356,52 @@ model BookingEvent {
   booking    Booking  @relation(fields: [bookingId], references: [id])
 
   @@index([bookingId])
+  @@index([createdAt])
+}
+
+// Customer/provider dispute raised against a booking. Admin reviews, exchanges
+// messages with both parties, and resolves with an optional wallet refund.
+model Dispute {
+  id             String            @id @default(cuid())
+  bookingId      String
+  customerId     String
+  providerId     String
+  raisedBy       DisputeActor
+  reason         DisputeReason
+  description    String
+  status         DisputeStatus     @default(OPEN)
+  resolutionType DisputeResolution?
+  refundAmount   Float?
+  evidence       Json              @default("[]")
+  adminNote      String?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  booking   Booking         @relation(fields: [bookingId], references: [id])
+  customer  User            @relation("CustomerDisputes", fields: [customerId], references: [id])
+  provider  Provider        @relation(fields: [providerId], references: [id])
+  messages  DisputeMessage[]
+
+  @@index([bookingId])
+  @@index([customerId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DisputeMessage {
+  id         String   @id @default(cuid())
+  disputeId  String
+  senderId   String
+  senderRole String
+  message    String
+  createdAt  DateTime @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id])
+
+  @@index([disputeId])
   @@index([createdAt])
 }
 
@@ -298,20 +421,6 @@ model Review {
   reviewer        User     @relation("ReviewerReviews", fields: [reviewerId], references: [id])
 
   @@unique([bookingId])
-}
-
-model Payment {
-  id            String        @id @default(cuid())
-  bookingId     String        @unique
-  userId        String
-  paymentMethod String
-  status        PaymentStatus @default(PENDING)
-  transactionId String?
-  paidAt        DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  booking       Booking       @relation(fields: [bookingId], references: [id])
-  user          User          @relation(fields: [userId], references: [id])
 }
 
 enum UserRole {
@@ -346,13 +455,6 @@ enum TicketStatus {
   OPEN
   RESOLVED
   CLOSED
-}
-
-enum PaymentStatus {
-  PENDING
-  UNPAID
-  PAID
-  FAILED
 }
 
 enum ApprovalStatus {
@@ -423,5 +525,508 @@ model AuditLog {
   newValue   Json?
   ip         String?
   createdAt  DateTime @default(now())
+}
+
+// ============================================================
+// ServeGo Business Model — Provider Levels, Subscriptions, Leads
+// ============================================================
+
+// Permanent promotion rules per provider level. Admin-configurable.
+model ProviderLevelRule {
+  id              String        @id @default(cuid())
+  level           ProviderLevel @unique
+  minJobs         Int
+  discountPercent Float         @default(0)
+  description     String?
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([minJobs])
+}
+
+// Admin-configurable subscription packages. Level 0 = one free lead (price 0).
+model SubscriptionPlan {
+  id          String          @id @default(cuid())
+  level       Int             @unique
+  name        String
+  price       Float           @default(0)
+  leadCount   Int             @default(3)
+  sector      ProviderSector  @default(GENERAL)
+  isFree      Boolean         @default(false)
+  description String?
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  subscriptions      ProviderSubscription[]
+  transactions       SubscriptionTransaction[]
+
+  @@index([active])
+}
+
+// Current subscription state — exactly one row per provider.
+// `status` tracks the payment lifecycle; effective "Active" (for lead
+// eligibility) is computed from provider + subscription state (see
+// subscriptionService.subscriptionIsActive).
+model ProviderSubscription {
+  id                               String                    @id @default(cuid())
+  providerId                       String                    @unique
+  level                            Int                       @default(0)
+  status                           SubscriptionStatus        @default(ACTIVE)
+  remainingLeads                   Int                       @default(1)
+  leadCount                        Int                       @default(0)
+  completedJobsCurrentSubscription Int                       @default(0)
+  sector                           ProviderSector            @default(GENERAL)
+  planId                           String?
+  freeLeadUsed                     Boolean                   @default(false)
+
+  // Snapshot of the last successful purchase (mirrors SubscriptionTransaction).
+  price                            Float                     @default(0)
+  discountAmount                   Float                     @default(0)
+  finalAmount                      Float                     @default(0)
+  paymentStatus                    SubscriptionPaymentStatus @default(PENDING)
+  paymentMethod                    String?
+  paymentGateway                   String?
+  transactionId                    String?
+  invoiceNumber                    String?
+
+  lastPurchaseAt                   DateTime?
+  activatedAt                      DateTime?
+  createdAt                        DateTime                  @default(now())
+  updatedAt                        DateTime                  @updatedAt
+
+  provider     Provider                @relation(fields: [providerId], references: [id])
+  plan         SubscriptionPlan?       @relation(fields: [planId], references: [id])
+  transactions SubscriptionTransaction[]
+}
+
+// Purchase history for every subscription level (including the free lead grant).
+model SubscriptionTransaction {
+  id              String                    @id @default(cuid())
+  providerId      String
+  subscriptionId  String?
+  planId          String?
+  levelPurchased  Int
+  planName        String?
+  price           Float                     @default(0)
+  discountPercent Float                     @default(0)
+  discountAmount  Float                     @default(0)
+  finalAmount     Float                     @default(0)
+  leadCount       Int                       @default(0)
+  paymentStatus   SubscriptionPaymentStatus @default(PENDING)
+  paymentMethod   String?
+  paymentGateway  String?
+  transactionId   String?
+  gatewayOrderId  String?
+  gatewayPaymentId String?
+  invoiceNumber   String?
+  errorDetail     String?
+  purchasedAt     DateTime                  @default(now())
+
+  provider     Provider             @relation(fields: [providerId], references: [id])
+  subscription ProviderSubscription? @relation(fields: [subscriptionId], references: [id])
+  plan         SubscriptionPlan?     @relation(fields: [planId], references: [id])
+
+  @@index([providerId])
+  @@index([purchasedAt])
+  @@index([gatewayOrderId])
+}
+
+// A booking's lead lifecycle — created when the customer books.
+model Lead {
+  id               String     @id @default(cuid())
+  bookingId        String?    @unique
+  customerId       String
+  providerId       String?
+  serviceId        String?
+  serviceCategory  String
+  status           LeadStatus @default(NEW)
+  distanceKm       Float?
+  notes            String?
+  expiryTime       DateTime?
+  viewedAt         DateTime?
+  acceptedAt       DateTime?
+  completedAt      DateTime?
+  rejectedAt       DateTime?
+  transferCount    Int        @default(0)
+  lastRejectReason String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  booking            Booking?                @relation(fields: [bookingId], references: [id])
+  customer           User                    @relation(fields: [customerId], references: [id])
+  provider           Provider?               @relation("CurrentLeadProvider", fields: [providerId], references: [id])
+  assignmentHistory  LeadAssignmentHistory[]
+  transferHistory    LeadTransferHistory[]
+  cancellationReasons CancellationReason[]
+
+  @@index([customerId])
+  @@index([providerId])
+  @@index([status])
+  @@index([expiryTime])
+  @@index([createdAt])
+}
+
+model LeadAssignmentHistory {
+  id         String     @id @default(cuid())
+  leadId     String
+  providerId String
+  status     LeadStatus @default(NEW)
+  isCurrent  Boolean    @default(false)
+  assignedAt DateTime   @default(now())
+  actionAt   DateTime?
+  reason     String?
+
+  lead     Lead     @relation(fields: [leadId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([leadId])
+  @@index([providerId])
+}
+
+model LeadTransferHistory {
+  id             String   @id @default(cuid())
+  leadId         String
+  fromProviderId String?
+  toProviderId   String?
+  reason         String   @default("REJECTED")
+  details        Json?
+  transferredAt  DateTime @default(now())
+
+  lead         Lead      @relation(fields: [leadId], references: [id])
+  fromProvider Provider? @relation("TransferFrom", fields: [fromProviderId], references: [id])
+  toProvider   Provider? @relation("TransferTo", fields: [toProviderId], references: [id])
+
+  @@index([leadId])
+}
+
+// Promotion celebration records — one per level-up.
+model PromotionHistory {
+  id                       String       @id @default(cuid())
+  providerId               String
+  fromLevel                ProviderLevel
+  toLevel                  ProviderLevel
+  completedJobsAtPromotion Int
+  promotedAt               DateTime     @default(now())
+  acknowledged             Boolean      @default(false)
+  acknowledgedAt           DateTime?
+
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+  @@index([promotedAt])
+}
+
+// Full ledger of provider level changes.
+model ProviderLevelHistory {
+  id            String        @id @default(cuid())
+  providerId    String
+  level         ProviderLevel
+  previousLevel ProviderLevel?
+  reason        String        @default("INITIAL")
+  completedJobs Int
+  changedAt     DateTime      @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+  @@index([changedAt])
+}
+
+// Permanent / contract service requests — customer submits details, admin
+// reviews and assigns a provider (no direct customer-provider interaction).
+model PermanentServiceRequest {
+  id                     String                     @id @default(cuid())
+  customerId             String
+  serviceCategory        String
+  engagementType         PermanentEngagementType     @default(CONTRACT)
+  startDate              DateTime
+  contractDurationYears  Int?
+  contractDurationDays   Int?
+  monthlyBudget          Float
+  additionalInfo         String?
+  status                 PermanentRequestStatus      @default(PENDING)
+  assignedProviderId     String?
+  adminNote              String?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([serviceCategory])
+
+  customer         User     @relation("CustomerServiceRequests", fields: [customerId], references: [id])
+  assignedProvider Provider? @relation("PermanentServiceAssignments", fields: [assignedProviderId], references: [id])
+}
+
+enum PermanentEngagementType {
+  PERMANENT
+  CONTRACT
+}
+
+enum PermanentRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Live performance metrics used for ranking + cooldown penalties.
+model ProviderPerformance {
+  id                    String    @id @default(cuid())
+  providerId            String    @unique
+  totalLeads            Int       @default(0)
+  acceptedLeads         Int       @default(0)
+  rejectedLeads         Int       @default(0)
+  ignoredLeads          Int       @default(0)
+  expiredLeads          Int       @default(0)
+  completedJobs         Int       @default(0)
+  cancelledJobs         Int       @default(0)
+  jobsStarted           Int       @default(0)
+  acceptanceRate        Float     @default(0)
+  responseRate          Float     @default(0)
+  cancellationRate      Float     @default(0)
+  averageResponseTimeMs Float     @default(0)
+  averageJobCompletionTimeMs Float @default(0)
+  lateArrivalCount      Int       @default(0)
+  lateArrivalRate       Float     @default(0)
+  penaltyScore          Int       @default(0)
+  totalEarnings         Float     @default(0)
+  totalCommission       Float     @default(0)
+  cooldownUntil         DateTime?
+  cooldownCount         Int       @default(0)
+  updatedAt             DateTime  @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id])
+}
+
+// Precomputed snapshot used by the provider ranking algorithm.
+model RankingMetrics {
+  id               String        @id @default(cuid())
+  providerId       String        @unique
+  rankScore        Float         @default(0)
+  distanceKm       Float?
+  rating           Float         @default(0)
+  acceptanceRate   Float         @default(0)
+  responseRate     Float         @default(0)
+  cancellationRate Float         @default(0)
+  experienceYears  Int           @default(0)
+  reviewCount      Int           @default(0)
+  completedJobs    Int           @default(0)
+  providerLevel    ProviderLevel @default(BRONZE)
+  sector           ProviderSector @default(GENERAL)
+  lastComputedAt   DateTime      @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id])
+}
+
+// Structured cancellation reasons for analytics.
+model CancellationReason {
+  id        String            @id @default(cuid())
+  bookingId String?
+  leadId    String?
+  actor     CancellationActor
+  actorId   String?
+  reason    String
+  detail    String?
+  createdAt DateTime          @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  lead    Lead?    @relation(fields: [leadId], references: [id])
+
+  @@index([bookingId])
+  @@index([leadId])
+  @@index([actor])
+  @@index([createdAt])
+}
+
+// ============================================================
+// Wallet — credits-only. Provider earnings land here on booking
+// completion; customers hold referral/promotional/refund credits.
+// Withdrawals are provider-only and admin-approved.
+// ============================================================
+
+// One wallet per user. balance is always a live sum of the ledger.
+model Wallet {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  balance        Float    @default(0)
+  totalCredited  Float    @default(0)
+  totalDebited   Float    @default(0)
+  totalWithdrawn Float    @default(0)
+  totalEarned    Float    @default(0)
+  currency       String   @default("INR")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user              User                     @relation(fields: [userId], references: [id])
+  transactions      WalletTransaction[]
+  withdrawalRequests WalletWithdrawalRequest[]
+
+  @@index([createdAt])
+}
+
+// Immutable ledger of every wallet movement. balanceAfter snapshots the wallet
+// balance at the moment the entry was written.
+model WalletTransaction {
+  id            String                     @id @default(cuid())
+  walletId      String
+  userId        String
+  type          WalletTransactionType
+  category      WalletTransactionCategory
+  amount        Float
+  balanceAfter  Float
+  referenceType String?
+  referenceId   String?
+  description   String?
+  status        WalletTransactionStatus   @default(COMPLETED)
+  createdAt     DateTime                  @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([category])
+  @@index([createdAt])
+}
+
+// Provider payout request. The amount is debited (held) at request time to
+// prevent double spending and returned on rejection.
+model WalletWithdrawalRequest {
+  id             String                  @id @default(cuid())
+  walletId       String
+  userId         String
+  providerId     String
+  amount         Float
+  status         WithdrawalRequestStatus @default(PENDING)
+  accountDetails Json                    @default("{}")
+  description    String?
+  processedBy    String?
+  processedAt    DateTime?
+  adminNote      String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  wallet   Wallet   @relation(fields: [walletId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  provider Provider @relation(fields: [providerId], references: [id])
+
+  @@index([walletId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Admin-configurable platform settings (lead timeout, radius, commission, discounts, thresholds...).
+model AdminConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+enum ProviderLevel {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum ProviderSector {
+  GENERAL
+  PREMIUM
+}
+
+enum LeadStatus {
+  NEW
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  TRANSFERRED
+  COMPLETED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CancellationActor {
+  CUSTOMER
+  PROVIDER
+  ADMIN
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTransactionStatus {
+  COMPLETED
+  PENDING
+  FAILED
+  REVERSED
+}
+
+enum WalletTransactionCategory {
+  BOOKING_EARNING
+  BOOKING_REFUND
+  REFERRAL_BONUS
+  PROMOTIONAL_CREDIT
+  DISPUTE_REFUND
+  WITHDRAWAL
+  ADJUSTMENT
+}
+
+enum WithdrawalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum DisputeActor {
+  CUSTOMER
+  PROVIDER
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum DisputeReason {
+  QUALITY_ISSUE
+  SERVICE_NOT_PROVIDED
+  PRICING_ISSUE
+  DAMAGE
+  BEHAVIOR
+  NO_SHOW
+  OTHER
+}
+
+enum DisputeResolution {
+  FULL_REFUND
+  PARTIAL_REFUND
+  NO_REFUND
 }
 

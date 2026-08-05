@@ -31,13 +31,15 @@ import {
   BarChart3,
   FileText,
   MessageSquare,
-  CreditCard,
   Users,
   Activity,
   LogOut,
   Briefcase,
   ShieldCheck,
   Menu,
+  Sparkles,
+  ClipboardList,
+  Scale,
 } from 'lucide-react';
 
 
@@ -49,14 +51,15 @@ const getAdminTabFromRoute = (routeValue) => {
   if (tab === 'customers') return 'customers';
   if (tab === 'providers') return 'providers';
   if (tab === 'service-requests' || tab === 'providerServiceRequests') return 'providerServiceRequests';
+  if (tab === 'permanent-service-requests' || tab === 'permanentServiceRequests') return 'permanentServiceRequests';
   if (tab === 'services') return 'services';
   if (tab === 'bookings') return 'bookings';
-  if (tab === 'payments') return 'payments';
   if (tab === 'reviews') return 'reviews';
   if (tab === 'tickets') return 'tickets';
   if (tab === 'analytics') return 'analytics';
   if (tab === 'reports') return 'reports';
   if (tab === 'settings') return 'settings';
+  if (tab === 'servego') return 'servego';
   return 'dashboard';
 };
 
@@ -225,6 +228,11 @@ export function MainLayout() {
     window.scrollTo(0, 0);
   };
 
+  const handleViewPermanentRequests = () => {
+    setCustomerActiveTabExternal('requests');
+    handlePageTransition('dashboard-customer');
+  };
+
   const handleSignOutAction = () => {
     logout();
     handlePageTransition('login');
@@ -347,7 +355,7 @@ export function MainLayout() {
         return <Services onNavigate={handlePageTransition} />;
       case 'service-details':
         return (
-          <ServiceDetails catId={selectedCategoryDetail} onNavigate={handlePageTransition} />
+          <ServiceDetails catId={selectedCategoryDetail} onNavigate={handlePageTransition} onViewPermanentRequests={handleViewPermanentRequests} />
         );
       case 'partner':
         return <BecomePartner />;
@@ -490,6 +498,23 @@ export function MainLayout() {
 
               <button
                 onClick={() => {
+                  setAdminActiveTabExternal('permanentServiceRequests');
+                  updateBrowserRoute('admin', null, 'permanentServiceRequests');
+                }}
+                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
+                  adminActiveTabExternal === 'permanentServiceRequests'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'hover:bg-white/5 text-slate-305'
+                }`}
+              >
+
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                <span>Permanent Hires</span>
+              </button>
+
+
+              <button
+                onClick={() => {
                   setAdminActiveTabExternal('bookings');
                   updateBrowserRoute('admin', null, 'bookings');
                 }}
@@ -502,22 +527,6 @@ export function MainLayout() {
 
                 <History className="w-4 h-4 shrink-0" />
                 <span>Bookings</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setAdminActiveTabExternal('payments');
-                  updateBrowserRoute('admin', null, 'payments');
-                }}
-                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
-                  adminActiveTabExternal === 'payments'
-                    ? 'bg-teal-700 text-white shadow-xs'
-                    : 'hover:bg-white/5 text-slate-305'
-                }`}
-              >
-
-                <CreditCard className="w-4 h-4 shrink-0" />
-                <span>Payments</span>
               </button>
 
               <button
@@ -554,6 +563,22 @@ export function MainLayout() {
 
               <button
                 onClick={() => {
+                  setAdminActiveTabExternal('disputes');
+                  updateBrowserRoute('admin', null, 'disputes');
+                }}
+                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
+                  adminActiveTabExternal === 'disputes'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'hover:bg-white/5 text-slate-305'
+                }`}
+              >
+
+                <Scale className="w-4 h-4 shrink-0" />
+                <span>Disputes</span>
+              </button>
+
+              <button
+                onClick={() => {
                   setAdminActiveTabExternal('analytics');
                   updateBrowserRoute('admin', null, 'analytics');
                 }}
@@ -566,6 +591,21 @@ export function MainLayout() {
 
                 <BarChart3 className="w-4 h-4 shrink-0" />
                 <span>Analytics</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setAdminActiveTabExternal('servego');
+                  updateBrowserRoute('admin', null, 'servego');
+                }}
+                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
+                  adminActiveTabExternal === 'servego'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'hover:bg-white/5 text-slate-305'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>ServeGo Business</span>
               </button>
 
               <button
@@ -659,7 +699,10 @@ export function MainLayout() {
               {[
                 { key: 'customers', label: 'Customers', icon: Users },
                 { key: 'providers', label: 'Providers', icon: Briefcase },
+                { key: 'permanentServiceRequests', label: 'Permanent Hires', icon: ClipboardList },
                 { key: 'tickets', label: 'Tickets', icon: MessageSquare },
+                { key: 'disputes', label: 'Disputes', icon: Scale },
+                { key: 'servego', label: 'ServeGo', icon: Sparkles },
                 { key: 'analytics', label: 'Analytics', icon: BarChart3 },
                 { key: 'reports', label: 'Reports', icon: FileText },
                 { key: 'settings', label: 'Settings', icon: Settings },

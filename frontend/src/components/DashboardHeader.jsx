@@ -3,9 +3,12 @@ import React from 'react';
 export default function DashboardHeader({ user, activeTab, setActiveTab, counts }) {
   const tabs = [
     { id: 'bookings', label: `My Bookings (${counts.bookings})` },
+    { id: 'requests', label: `Requests (${counts.requests})` },
     { id: 'favorites', label: `Saved Pros (${counts.favorites})` },
     { id: 'tickets', label: `Help Tickets (${counts.tickets})` },
+    { id: 'disputes', label: `Disputes (${counts.disputes || 0})` },
     { id: 'notifications', label: `Alerts (${counts.notifications})` },
+    { id: 'wallet', label: '💰 Wallet' },
     { id: 'profile', label: 'My Profile' },
     { id: 'referrals', label: '🤝 Referrals' },
     { id: 'settings', label: 'Settings' }

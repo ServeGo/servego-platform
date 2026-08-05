@@ -23,12 +23,8 @@ export const AdminDashboardController = {
         pendingApprovals,
         completedThisMonth,
         completedLastMonth,
-        pendingPayments,
         openTickets,
         resolvedTickets,
-        totalPayments,
-        paidPayments,
-        failedPayments,
         recentSignups,
         verifiedProviders,
         featuredProviders,
@@ -63,17 +59,9 @@ export const AdminDashboardController = {
           } 
         }),
         
-        // Payments
-        prisma.booking.count({ where: { paymentStatus: 'PENDING' } }),
-        
         // Tickets
         prisma.ticket.count({ where: { status: 'OPEN' } }),
         prisma.ticket.count({ where: { status: 'RESOLVED' } }),
-        
-        // Payment counts
-        prisma.payment.count(),
-        prisma.payment.count({ where: { status: 'PAID' } }),
-        prisma.payment.count({ where: { status: 'FAILED' } }),
         
         // Recent signups (last 7 days)
         prisma.user.count({ 
@@ -124,14 +112,6 @@ export const AdminDashboardController = {
           growth: parseFloat(bookingGrowth)
         },
         
-        // Payment metrics
-        payments: {
-          total: totalPayments,
-          paid: paidPayments,
-          failed: failedPayments,
-          pending: pendingPayments
-        },
-        
         // Support metrics
         tickets: {
           open: openTickets,
@@ -150,14 +130,22 @@ export const AdminDashboardController = {
         }
       };
 
-      // Aggregate booking amount for escrow volume (Prisma aggregate supports _sum).
-      const [escrowAgg, paidAgg, disputedTickets] = await Promise.all([
+      // Aggregate platform-charge volume. Booking-level payments were removed; the
+      // only money flows are provider subscriptions (Razorpay) and the
+      // admin-configured platform charge applied to every booking with separate
+      // customer/provider rates.
+      const [chargeAgg, subscriptionAgg, disputedTickets] = await Promise.all([
         prisma.booking.aggregate({
-          _sum: { amount: true },
-          where: { paymentStatus: { in: ['PENDING', 'PAID'] } }
+          _sum: {
+            totalAmount: true,
+            customerPlatformCharge: true,
+            providerPlatformCharge: true,
+            providerPayout: true
+          },
+          where: { status: { not: 'CANCELLED' } }
         }),
-        prisma.booking.aggregate({
-          _sum: { amount: true },
+        prisma.subscriptionTransaction.aggregate({
+          _sum: { finalAmount: true },
           where: { paymentStatus: 'PAID' }
         }),
         prisma.ticket.count({
@@ -165,12 +153,14 @@ export const AdminDashboardController = {
         })
       ]);
 
-      const sumAmount = escrowAgg?._sum?.amount ?? 0;
-      const paidAmount = paidAgg?._sum?.amount ?? 0;
+      const customerCharges = chargeAgg?._sum?.customerPlatformCharge ?? 0;
+      const providerCharges = chargeAgg?._sum?.providerPlatformCharge ?? 0;
 
       summary.aggregates = {
-        grossEscrowVolume: Number(sumAmount),
-        adminNetPayout: Number(paidAmount),
+        grossPlatformVolume: Number(chargeAgg?._sum?.totalAmount ?? 0),
+        platformEarnings: Number(customerCharges) + Number(providerCharges),
+        providerPayouts: Number(chargeAgg?._sum?.providerPayout ?? 0),
+        subscriptionRevenue: Number(subscriptionAgg?._sum?.finalAmount ?? 0),
         vettingBacklogCount: pendingApprovals,
         disputeTicketsCount: disputedTickets
       };

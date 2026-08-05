@@ -12,15 +12,33 @@ async function main() {
   console.log('🗑  Deleting all data except admin user …');
 
   // FK-safe deletion order (children first)
-  await prisma.payment.deleteMany();
-  await prisma.review.deleteMany();
+  await prisma.disputeMessage.deleteMany();
+  await prisma.dispute.deleteMany();
+  await prisma.cancellationReason.deleteMany();
+  await prisma.bookingLocationUpdate.deleteMany();
   await prisma.bookingEvent.deleteMany();
+  await prisma.review.deleteMany();
+  await prisma.leadAssignmentHistory.deleteMany();
+  await prisma.leadTransferHistory.deleteMany();
+  await prisma.lead.deleteMany();
   await prisma.booking.deleteMany();
-  await prisma.savedPro.deleteMany();
+  await prisma.promotionHistory.deleteMany();
+  await prisma.providerLevelHistory.deleteMany();
+  await prisma.providerPerformance.deleteMany();
+  await prisma.rankingMetrics.deleteMany();
+  await prisma.subscriptionTransaction.deleteMany();
+  await prisma.providerSubscription.deleteMany();
+  await prisma.subscriptionPlan.deleteMany();
+  await prisma.providerLevelRule.deleteMany();
   await prisma.availabilitySlot.deleteMany();
+  await prisma.savedPro.deleteMany();
   await prisma.providerService.deleteMany();
   await prisma.providerServiceRequest.deleteMany();
   await prisma.providerBadge.deleteMany();
+  await prisma.walletTransaction.deleteMany();
+  await prisma.walletWithdrawalRequest.deleteMany();
+  await prisma.wallet.deleteMany();
+  await prisma.permanentServiceRequest.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.authEvent.deleteMany();
   await prisma.ticket.deleteMany();

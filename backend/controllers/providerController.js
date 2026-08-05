@@ -293,7 +293,7 @@ export const ProviderController = {
           },
           include: { reviews: true, user: { select: { id: true, name: true, email: true, phone: true, avatar: true } } }
         });
-      });
+      }, { maxWait: 20000, timeout: 30000 });
 
       return sendApiSuccess(res, 200, updated);
     } catch (err) {
@@ -343,7 +343,7 @@ export const ProviderController = {
           },
           include: { availabilitySlots: true }
         });
-      });
+      }, { maxWait: 20000, timeout: 30000 });
       return sendApiSuccess(res, 200, updated);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update calendar availability schedule', err.message);

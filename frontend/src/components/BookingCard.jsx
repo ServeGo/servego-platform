@@ -2,6 +2,7 @@ import React from 'react';
 import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
+import { useApp } from '../context/AppContext';
 
 export default function BookingCard({ 
   booking, 
@@ -15,6 +16,9 @@ export default function BookingCard({
   setChatInput,
   onSendMessage
 }) {
+  const { getBookingLocation } = useApp();
+  const liveLocation = getBookingLocation(booking.id);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-5 sm:p-6 text-left">
       {/* Top line panel */}
@@ -75,9 +79,9 @@ export default function BookingCard({
       </div>
 
       {/* Live Tracking Map */}
-      {['ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
+      {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
         <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
-          <LiveTrackingMap booking={booking} />
+          <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
         </div>
       )}
 

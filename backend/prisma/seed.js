@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import prisma from './client.js';
 import { seedServicesIfEmpty } from '../seeders/servicesSeed.js';
+import { seedBusinessModelIfEmpty, ensureProviderSubscription, getProviderLevelForJobs } from '../seeders/businessModelSeed.js';
 
 /*
  * Full demo seed for ServeGo.
@@ -27,7 +28,19 @@ const HYD_AREAS = ['Gachibowli', 'Madhapur', 'Kondapur', 'Jubilee Hills', 'Hitec
 
 async function clearDatabase() {
   // Delete in FK-safe order.
-  await prisma.payment.deleteMany();
+  await prisma.subscriptionTransaction.deleteMany();
+  await prisma.providerSubscription.deleteMany();
+  await prisma.promotionHistory.deleteMany();
+  await prisma.providerLevelHistory.deleteMany();
+  await prisma.providerPerformance.deleteMany();
+  await prisma.rankingMetrics.deleteMany();
+  await prisma.leadAssignmentHistory.deleteMany();
+  await prisma.leadTransferHistory.deleteMany();
+  await prisma.cancellationReason.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.providerLevelRule.deleteMany();
+  await prisma.subscriptionPlan.deleteMany();
+  await prisma.adminConfig.deleteMany();
   await prisma.review.deleteMany();
   await prisma.bookingEvent.deleteMany();
   await prisma.booking.deleteMany();
@@ -92,6 +105,7 @@ async function createProvider({ name, email, phone, serviceName, serviceId, rati
       rating,
       reviewCount,
       verificationLevel,
+      providerLevel: getProviderLevelForJobs(jobsCompleted),
       experienceYears,
       jobsCompleted,
       bio: `Verified ${serviceName} specialist serving Hyderabad with ${experienceYears}+ years of hands-on field experience.`,
@@ -109,6 +123,17 @@ async function createProvider({ name, email, phone, serviceName, serviceId, rati
   });
 
   await prisma.user.update({ where: { id: user.id }, data: { providerId: provider.id } });
+
+  await prisma.providerLevelHistory.create({
+    data: {
+      providerId: provider.id,
+      level: getProviderLevelForJobs(jobsCompleted),
+      reason: 'INITIAL',
+      completedJobs: jobsCompleted,
+    },
+  });
+
+  await ensureProviderSubscription(provider.id);
 
   if (serviceApprovalStatus === 'APPROVED') {
     // An approved service link makes an active provider discoverable/bookable.
@@ -183,7 +208,6 @@ async function createBooking({ customer, provider, serviceName, status, address,
       providerId: provider.id,
       serviceCategory: serviceName,
       status,
-      paymentStatus: status === 'COMPLETED' ? 'PAID' : 'UNPAID',
       locationAddress: address,
       city: 'Hyderabad',
       instructions: instructions || '',
@@ -203,6 +227,7 @@ async function main() {
   await clearDatabase();
   await createAdmin();
   await seedServicesIfEmpty();
+  await seedBusinessModelIfEmpty();
 
   const providerSpecs = [
     { name: 'Srinivas Rao Electricals', email: 'srinivas.electrician@servego.com', phone: '9876500001', serviceName: 'Electrician', serviceId: 'electrician', rating: 4.8, reviewCount: 124, experienceYears: 9, jobsCompleted: 540, verificationLevel: 'GOLD', isFeatured: true, specialties: ['Wiring & Rewiring', 'Smart Switchboards', 'Inverter Setup'] },
