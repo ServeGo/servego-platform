@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, User, Wrench, ShieldCheck } from 'lucide-react';
+import { MessageSquare, User, Wrench, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 
 export default function LeadCard({ 
@@ -19,7 +19,7 @@ export default function LeadCard({
   const [codeError, setCodeError] = useState('');
   const [codeSubmitting, setCodeSubmitting] = useState(false);
 
-  const handleStartWorkWithCode = async () => {
+  const handleCompleteWithCode = async () => {
     setCodeError('');
     if (!verificationCode.trim() || verificationCode.trim().length !== 4) {
       setCodeError('Please enter the 4-digit verification code from the customer.');
@@ -27,7 +27,7 @@ export default function LeadCard({
     }
     setCodeSubmitting(true);
     try {
-      await onStartWork(lead.id, verificationCode.trim());
+      await onFinishWork(lead.id, verificationCode.trim());
     } finally {
       setCodeSubmitting(false);
     }
@@ -129,13 +129,22 @@ export default function LeadCard({
 
 
         {lead.status === 'confirmed' && (
+          <button
+            onClick={() => onStartWork(lead.id)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+          >
+            <Wrench className="w-3.5 h-3.5" /> Start Work
+          </button>
+        )}
+
+        {lead.status === 'ongoing' && (
           <div className="w-full">
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-3">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-3">
               <div className="flex items-center gap-2 mb-3">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <span className="text-xs font-black text-indigo-800 uppercase tracking-wider">Verify with Customer Code</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span className="text-xs font-black text-emerald-800 uppercase tracking-wider">Verify with Customer Code</span>
               </div>
-              <p className="text-[10px] text-indigo-600 font-semibold mb-3">Ask the customer for their 4-digit verification code to start the job.</p>
+              <p className="text-[10px] text-emerald-700 font-semibold mb-3">Ask the customer for their 4-digit verification code to complete the job.</p>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -143,24 +152,20 @@ export default function LeadCard({
                   onChange={(e) => { setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 4)); setCodeError(''); }}
                   placeholder="0000"
                   maxLength={4}
-                  className="flex-1 bg-white border border-indigo-300 rounded-xl px-4 py-2.5 text-center text-xl font-black text-indigo-700 tracking-[0.2em] font-mono outline-none focus:border-indigo-500"
+                  className="flex-1 bg-white border border-emerald-300 rounded-xl px-4 py-2.5 text-center text-xl font-black text-emerald-700 tracking-[0.2em] font-mono outline-none focus:border-emerald-500"
                 />
-                <button 
-                  onClick={handleStartWorkWithCode}
+                <button
+                  onClick={handleCompleteWithCode}
                   disabled={codeSubmitting || verificationCode.length !== 4}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1"
                 >
-                  <Wrench className="w-3.5 h-3.5" />
-                  {codeSubmitting ? 'Verifying...' : 'Start Work'}
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {codeSubmitting ? 'Verifying...' : 'Complete Job'}
                 </button>
               </div>
               {codeError && <p className="text-[10px] text-rose-600 font-bold mt-2">{codeError}</p>}
             </div>
           </div>
-        )}
-
-        {lead.status === 'ongoing' && (
-          <button onClick={() => onFinishWork(lead.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 text-xs font-bold rounded-xl transition-all">✔ Mark Completed</button>
         )}
       </div>
 

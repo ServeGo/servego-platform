@@ -49,45 +49,19 @@ export const ProviderAnalyticsController = {
         whereBookings.createdAt = { gte: since };
       }
 
-      const [bookings, payments] = await Promise.all([
-        prisma.booking.findMany({
-          where: whereBookings,
-          select: {
-            id: true,
-            customerId: true,
-            status: true,
-            paymentStatus: true,
-            amount: true,
-            createdAt: true,
-            updatedAt: true,
-            bookingDate: true,
-          },
-        }),
-        prisma.payment.findMany({
-          where: {
-            booking: {
-              providerId,
-              ...(since
-                ? {
-                    createdAt: { gte: since }
-                  }
-                : {}),
-            },
-          },
-          select: {
-            status: true,
-            paidAt: true,
-            createdAt: true,
-            bookingId: true,
-          },
-        })
-      ]);
-
-      const paidBookingIds = new Set(
-        payments
-          .filter((p) => p.status === 'PAID')
-          .map((p) => p.bookingId)
-      );
+      const bookings = await prisma.booking.findMany({
+        where: whereBookings,
+        select: {
+          id: true,
+          customerId: true,
+          status: true,
+          amount: true,
+          providerPayout: true,
+          createdAt: true,
+          updatedAt: true,
+          bookingDate: true,
+        },
+      });
 
       const completedCount = bookings.filter((b) => b.status === 'COMPLETED').length;
       const cancelledCount = bookings.filter((b) => b.status === 'CANCELLED').length;
@@ -152,10 +126,10 @@ export const ProviderAnalyticsController = {
         if (b.status === 'CANCELLED') existing.cancelled += 1;
         bookingTrendsByMonth.set(key, existing);
 
-        const revExisting = revenueSeriesByMonth.get(key) || { month: key, paidBookings: 0, earnings: 0 };
-        if (paidBookingIds.has(b.id) || b.paymentStatus === 'PAID') {
-          revExisting.paidBookings += 1;
-          revExisting.earnings += Number(b.amount) || 0;
+        const revExisting = revenueSeriesByMonth.get(key) || { month: key, completed: 0, earnings: 0 };
+        if (b.status === 'COMPLETED') {
+          revExisting.completed += 1;
+          revExisting.earnings += Number(b.providerPayout) || 0;
         }
         revenueSeriesByMonth.set(key, revExisting);
       }
@@ -163,17 +137,16 @@ export const ProviderAnalyticsController = {
       const bookingTrends = Array.from(bookingTrendsByMonth.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
       const revenueSeries = Array.from(revenueSeriesByMonth.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
 
-      const paidCount = paidBookingIds.size;
       const totalEarnings = bookings
-        .filter((b) => paidBookingIds.has(b.id) || b.paymentStatus === 'PAID')
-        .reduce((sum, booking) => sum + (Number(booking.amount) || 0), 0);
+        .filter((b) => b.status === 'COMPLETED')
+        .reduce((sum, booking) => sum + (Number(booking.providerPayout) || 0), 0);
 
       return sendApiSuccess(res, 200, {
         providerId,
         range,
         totals: {
           totalEarnings,
-          totalPaidBookings: paidCount,
+          totalCompletedBookings: completedCount,
           completionRate,
           acceptanceRate,
           cancellationRate,

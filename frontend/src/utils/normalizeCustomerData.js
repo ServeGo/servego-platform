@@ -9,7 +9,7 @@ const lc = (value) => (value ?? '').toString().trim().toLowerCase();
 
 /**
  * Canonical booking shape consumed by the customer dashboard.
- * - status / paymentStatus -> lowercase
+ * - status -> lowercase
  * - providerName / providerAvatar -> flattened from nested relation
  * - bookingDateLabel -> human readable date
  */
@@ -24,7 +24,6 @@ export function normalizeBooking(booking) {
     customerId: booking.customerId,
     providerId: booking.providerId,
     status: lc(booking.status),
-    paymentStatus: lc(booking.paymentStatus),
 
     providerName:
       booking.providerName || providerUser.name || booking.provider?.name || 'Assigned Specialist',
@@ -106,6 +105,33 @@ export function normalizeNotification(notification) {
 
 export const normalizeNotifications = (list) =>
   Array.isArray(list) ? list.map(normalizeNotification) : [];
+
+/**
+ * Canonical dispute shape. Backend returns UPPERCASE statuses and nested
+ * booking/customer/provider relations; the UI consumes lowercased status plus
+ * flattened labels for the two parties.
+ */
+export function normalizeDispute(dispute) {
+  if (!dispute) return dispute;
+  const providerUser = dispute.provider?.user || {};
+  return {
+    ...dispute,
+    status: lc(dispute.status),
+    raisedBy: (dispute.raisedBy || '').toString().toUpperCase(),
+    reason: dispute.reason || 'OTHER',
+    resolutionType: dispute.resolutionType || null,
+    evidence: Array.isArray(dispute.evidence) ? dispute.evidence : [],
+    messages: Array.isArray(dispute.messages) ? dispute.messages : [],
+    customerName: dispute.customer?.name || dispute.customerName || 'Customer',
+    providerName: providerUser.name || dispute.providerName || 'Specialist',
+    serviceCategory: dispute.booking?.serviceCategory || '',
+    bookingAmount: Number(dispute.booking?.amount) || Number(dispute.bookingAmount) || 0,
+    createdAtLabel: formatDate(dispute.createdAt),
+  };
+}
+
+export const normalizeDisputes = (list) =>
+  Array.isArray(list) ? list.map(normalizeDispute) : [];
 
 function formatDate(value) {
   if (!value) return '';

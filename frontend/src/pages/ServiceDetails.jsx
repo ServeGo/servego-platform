@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SERVICE_CATEGORIES } from '../data';
 
@@ -9,8 +9,10 @@ import FilterPanel from '../components/FilterPanel';
 import ProviderListItem from '../components/ProviderListItem';
 import BookingModal from '../components/BookingModal';
 import BookingSuccess from '../components/BookingSuccess';
+import ServiceEngagementChoice from '../components/ServiceEngagementChoice';
+import PermanentServiceRequestModal from '../components/PermanentServiceRequestModal';
 
-export const ServiceDetails = ({ catId, onNavigate }) => {
+export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) => {
   const {
     providersByApprovedService,
     fetchProvidersByApprovedServiceName,
@@ -44,8 +46,12 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
   const [bookingStep, setBookingStep] = useState(0); // 0: Browse, 1: Checkout, 2: Loading, 3: Success
   const [selectedProvider, setSelectedProvider] = useState(null);
 
+  // Engagement choice: Temporary (lead flow) vs Permanent/Contract (admin-managed)
+  const [showEngagementChoice, setShowEngagementChoice] = useState(false);
+  const [showPermanentRequest, setShowPermanentRequest] = useState(false);
+  const [permanentSuccess, setPermanentSuccess] = useState(null);
+
   // Form fields
-  const [bookingType, setBookingType] = useState('contract');
   const [address, setAddress] = useState('');
   const [instructions, setInstructions] = useState('');
   const [errorText, setErrorText] = useState('');
@@ -73,12 +79,6 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
 
   const loyaltyTier = useMemo(() => getCustomerLoyaltyTier(customerCompletedBookingsCount), [customerCompletedBookingsCount, getCustomerLoyaltyTier]);
 
-  // Booking summary (pricing is handled offline between customer and provider).
-  const billMetrics = useMemo(() => {
-    const durationLabel = bookingType === 'contract' ? 'Contract' : 'Ongoing';
-    return { durationLabel };
-  }, [bookingType]);
-
   const handleStartBooking = (prov) => {
     if (!currentUser) {
       // Store booking intent so we can resume after login
@@ -91,11 +91,24 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
       return;
     }
     setSelectedProvider(prov);
-    setBookingStep(1);
+    setShowEngagementChoice(true);
+  };
 
-    setBookingType('contract');
+  const handleChooseTemporary = () => {
+    setShowEngagementChoice(false);
     setAddress('');
     setErrorText('');
+    setBookingStep(1);
+  };
+
+  const handleChoosePermanent = () => {
+    setShowEngagementChoice(false);
+    setShowPermanentRequest(true);
+  };
+
+  const handlePermanentSuccess = (request) => {
+    setShowPermanentRequest(false);
+    setPermanentSuccess(request);
   };
 
   // Resume booking intent after login
@@ -109,11 +122,10 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
         const prov = categoryProviders.find(p => p.id === intent.providerId);
         if (prov) {
           sessionStorage.removeItem('servego_booking_intent');
-          setBookingType('contract');
           setAddress('');
           setErrorText('');
           setSelectedProvider(prov);
-          setBookingStep(1);
+          setShowEngagementChoice(true);
         }
       }
     } catch {
@@ -176,12 +188,36 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
           <span>Back to Checklists</span>
         </button>
 
+        {showEngagementChoice && (
+          <ServiceEngagementChoice
+            serviceName={categoryMeta.name}
+            onTemporary={handleChooseTemporary}
+            onPermanent={handleChoosePermanent}
+            onClose={() => setShowEngagementChoice(false)}
+          />
+        )}
+
+        {showPermanentRequest && (
+          <PermanentServiceRequestModal
+            serviceName={categoryMeta.name}
+            onClose={() => setShowPermanentRequest(false)}
+            onSuccess={handlePermanentSuccess}
+          />
+        )}
+
+        {permanentSuccess && (
+          <PermanentRequestSuccess
+            request={permanentSuccess}
+            onDashboard={onViewPermanentRequests}
+            onBrowse={() => { setPermanentSuccess(null); onNavigate('services'); }}
+          />
+        )}
+
         {bookingStep === 1 && selectedProvider && (
             <BookingModal 
               provider={selectedProvider}
               onClose={() => setBookingStep(0)}
               errorText={errorText}
-              bookingType={bookingType} setBookingType={setBookingType}
               address={address} setAddress={setAddress}
               instructions={instructions} setInstructions={setInstructions}
               loyaltyTier={loyaltyTier}
@@ -244,3 +280,65 @@ export const ServiceDetails = ({ catId, onNavigate }) => {
     </div>
   );
 };
+
+function PermanentRequestSuccess({ request, onDashboard, onBrowse }) {
+  const formatDate = (d) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const durationText =
+    request.engagementType === 'CONTRACT'
+      ? request.contractDurationYears
+        ? `${request.contractDurationYears} year${request.contractDurationYears > 1 ? 's' : ''}`
+        : `${request.contractDurationDays} day${request.contractDurationDays > 1 ? 's' : ''}`
+      : 'Ongoing';
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl border border-slate-200 p-8 max-w-md w-full text-center shadow-2xl animate-fade-in">
+        <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 className="w-7 h-7" />
+        </div>
+        <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">Request Submitted</h3>
+        <p className="text-slate-500 text-xs mt-2 font-medium leading-relaxed">
+          Your {request.serviceCategory} request for a {request.engagementType === 'CONTRACT' ? 'contract' : 'permanent'} engagement
+          has been received. Our team will review it and arrange a suitable specialist for you.
+        </p>
+
+        <div className="mt-5 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 text-xs font-bold">
+          <SummaryRow label="Type" value={request.engagementType === 'CONTRACT' ? 'Contract' : 'Permanent'} />
+          <SummaryRow label="Start Date" value={formatDate(request.startDate)} />
+          <SummaryRow label="Duration" value={durationText} />
+          <SummaryRow label="Monthly Budget" value={`₹${Number(request.monthlyBudget).toLocaleString('en-IN')}`} />
+          <SummaryRow label="Status" value="Pending review" />
+        </div>
+
+        <div className="flex flex-col gap-2 mt-6">
+          <button
+            onClick={onDashboard}
+            className="cursor-pointer w-full bg-teal-600 hover:bg-teal-700 text-white font-bold p-3 rounded-lg text-center text-sm transition-all shadow-md"
+          >
+            View My Requests
+          </button>
+          <button
+            onClick={onBrowse}
+            className="cursor-pointer w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-3 rounded-lg text-center text-sm transition-all"
+          >
+            Continue Browsing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-slate-500 uppercase tracking-wide text-[10px]">{label}</span>
+      <span className="text-slate-800 capitalize">{value}</span>
+    </div>
+  );
+}

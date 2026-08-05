@@ -17,7 +17,6 @@ const ROLE_ACTIONS = {
     approve_provider_service: true,
     verify_provider: true,
     manage_users: true,
-    refund_payment: true,
     update_booking_status: true
   }
 };

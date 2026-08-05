@@ -12,6 +12,9 @@ import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/securi
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
 import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
+import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
+import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
+import { updateProviderLocation } from './services/trackingService.js';
 
 dotenv.config();
 
@@ -38,6 +41,9 @@ async function bootstrap() {
   app.use(generalRateLimiter);
 
   // Request parsing
+  // Razorpay webhooks must receive the RAW body (not JSON-parsed) so the
+  // signature can be verified against the exact bytes that were sent.
+  app.use('/api/subscriptions/payment/webhook', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
@@ -99,6 +105,23 @@ async function bootstrap() {
   app.use('/api', apiRouter);
 
   // Socket.io
+  // Authenticate sockets from the connection token so privileged handlers can
+  // rely on socket.userId / socket.userRole. Anonymous sockets stay connected
+  // (they only receive public/broadcast events); stale or invalid tokens are
+  // treated as anonymous rather than dropped so reconnects stay stable.
+  io.use((socket, next) => {
+    const token = socket.handshake?.auth?.token || socket.handshake?.query?.token;
+    if (!token) return next();
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'servego-dev-secret');
+      socket.userId = decoded.id;
+      socket.userRole = decoded.role;
+    } catch {
+      // ignore — anonymous connection
+    }
+    next();
+  });
+
   io.on('connection', (socket) => {
     console.log(`🔌 Socket connected: ${socket.id}, IP: ${socket.handshake.address}`);
 
@@ -133,6 +156,31 @@ async function bootstrap() {
       }
     });
 
+    // Real-time location sharing — provider pushes a live fix for an active
+    // booking; the customer's room receives the broadcast. REST fallback lives
+    // in BookingController.updateLocation for clients without sockets.
+    socket.on('location:update', async (payload, ack) => {
+      try {
+        if (!socket.userId || socket.userRole !== 'provider') {
+          if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
+          return;
+        }
+        const result = await updateProviderLocation({
+          bookingId: payload?.bookingId,
+          providerUserId: socket.userId,
+          latitude: payload?.latitude,
+          longitude: payload?.longitude,
+          io
+        });
+        if (typeof ack === 'function') ack({ ok: true, data: result.payload });
+      } catch (err) {
+        console.error(`🔌 location:update failed:`, err.message);
+        if (typeof ack === 'function') {
+          ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
+        }
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       console.log(`🔌 Socket disconnected: ${socket.id}, Reason: ${reason}`);
     });
@@ -162,6 +210,9 @@ async function bootstrap() {
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');
     startAutoCancelCron(io);
+    void scheduleAllLeadTimers(io).catch((err) => {
+      console.error('Lead timer scheduling failed:', err.message);
+    });
   });
 
   httpServer.on('error', (err) => {
@@ -175,6 +226,10 @@ async function bootstrap() {
 
   void seedServicesIfEmpty().catch((seedErr) => {
     console.error('Service catalog seed skipped:', seedErr.message);
+  });
+
+  void seedBusinessModelIfEmpty().catch((seedErr) => {
+    console.error('Business model seed skipped:', seedErr.message);
   });
 
   // Graceful shutdown

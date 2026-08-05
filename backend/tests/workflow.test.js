@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidBookingTransition, normalizeBookingStatus, normalizePaymentStatus } from '../utils/workflow.js';
+import { isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 
 test('allows standard booking lifecycle transitions', () => {
@@ -17,8 +17,6 @@ test('rejects invalid booking transition', () => {
 
 test('normalizes statuses consistently', () => {
   assert.equal(normalizeBookingStatus('pending'), 'PENDING');
-  assert.equal(normalizePaymentStatus('paid'), 'PAID');
-  assert.equal(normalizePaymentStatus(undefined), 'PENDING');
 });
 
 test('maps legacy workflow aliases to canonical statuses', () => {

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { api } from '../utils/apiClient';
 
 // Components
 import DashboardHeader from '../components/DashboardHeader';
@@ -12,6 +13,9 @@ import ReferralsView from '../components/ReferralsView';
 import SettingsView from '../components/SettingsView';
 import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
+import PermanentRequestsView from '../components/PermanentRequestsView';
+import WalletView from '../components/WalletView';
+import DisputesView from '../components/DisputesView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
   const { 
@@ -59,6 +63,20 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   }, [savedProsData, providers, favoriteProviders]);
   const userTickets = useMemo(() => tickets.filter(t => t.email === currentUser?.email), [tickets, currentUser]);
   const userNotifications = useMemo(() => notifications.filter(n => n.userId === currentUser?.id), [notifications, currentUser]);
+
+  const [permanentCount, setPermanentCount] = useState(0);
+  const fetchPermanentCount = useCallback(async () => {
+    const res = await api.get('/permanent-service-requests/mine');
+    if (res.ok && Array.isArray(res.data)) setPermanentCount(res.data.length);
+  }, []);
+  useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);
+
+  const [disputesCount, setDisputesCount] = useState(0);
+  const fetchDisputesCount = useCallback(async () => {
+    const res = await api.get('/disputes/mine');
+    if (res.ok && Array.isArray(res.data)) setDisputesCount(res.data.length);
+  }, []);
+  useEffect(() => { fetchDisputesCount(); }, [fetchDisputesCount]);
 
   // Loyalty progression based on completed bookings.
   const completedCount = useMemo(
@@ -172,7 +190,9 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             bookings: userBookings.length,
             favorites: userFavorites.length,
             tickets: userTickets.length,
-            notifications: userNotifications.length
+            notifications: userNotifications.length,
+            requests: permanentCount,
+            disputes: disputesCount
           }}
         />
 
@@ -185,6 +205,10 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
               <BookingSubTabs bookings={userBookings} currentUser={currentUser} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
+        )}
+
+        {activeTab === 'requests' && (
+          <PermanentRequestsView onNavigate={onNavigate} />
         )}
 
         {activeTab === 'favorites' && (
@@ -205,6 +229,8 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             submitting={ticketSubmitting}
           />
         )}
+
+        {activeTab === 'disputes' && <DisputesView userBookings={userBookings} />}
 
         {activeTab === 'notifications' && (
           <NotificationsView 
@@ -234,6 +260,8 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             refSuccess={refSuccess}
           />
         )}
+
+        {activeTab === 'wallet' && <WalletView />}
 
         {activeTab === 'settings' && <SettingsView />}
 

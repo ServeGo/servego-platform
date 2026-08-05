@@ -1,9 +1,36 @@
 import prisma from '../prisma/client.js';
-import { refreshProviderReputation } from '../services/providerReputationService.js';
-import { notifyBookingStatusChanged } from '../services/notificationService.js';
+import { recordJobCancelled, recordJobStarted } from '../services/providerPerformanceService.js';
+import {
+  createBookingWithLead,
+  acceptLeadForBooking,
+  completeBooking,
+  rejectLead,
+  redistributeLead,
+  cancelOpenOffers,
+  buildLeadPayload
+} from '../services/leadService.js';
+import { scheduleLeadExpiry, cancelLeadExpiry } from '../services/leadExpiryService.js';
+import {
+  notifyBookingStatusChanged,
+  notifyNewLead,
+  notifyLeadAccepted,
+  notifyLeadRejected,
+  notifyLeadTransferred,
+  notifyLeadCancelled,
+  notifyNoProviderFound,
+  notifyProviderCooldown,
+  notifySubscriptionExpired,
+  notifyRemainingLeadsLow
+} from '../services/notificationService.js';
 import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import {
+  updateProviderLocation,
+  getBookingTracking,
+  getBookingLocationHistory,
+  clearLocationHistory
+} from '../services/trackingService.js';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -13,7 +40,6 @@ const BOOKING_INCLUDE = {
     }
   },
   service: true,
-  payment: true
 };
 
 export const BookingController = {
@@ -122,39 +148,18 @@ export const BookingController = {
       if (actorRole === 'customer' && bookingData.customerId && bookingData.customerId !== actorId) {
         return sendApiError(res, 403, 'FORBIDDEN', 'You can only create bookings for yourself.');
       }
-      if (!bookingData.providerId || !bookingData.serviceCategory) {
-        return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required fields: providerId, serviceCategory.');
+      if (!bookingData.serviceCategory) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: serviceCategory.');
       }
 
       const customerId = actorRole === 'customer' ? actorId : bookingData.customerId;
       if (!customerId) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: customerId.');
 
-      const [customer, provider] = await Promise.all([
-        prisma.user.findUnique({ where: { id: customerId }, select: { id: true, name: true } }),
-        prisma.provider.findUnique({
-          where: { id: bookingData.providerId },
-          select: { id: true, accountStatus: true, isVerified: true, user: { select: { id: true, name: true, status: true } } }
-        })
-      ]);
-
-      if (!customer || !provider) {
-        return sendApiError(res, 404, 'NOT_FOUND', 'Customer or provider not found.');
-      }
-      if (provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE') {
-        return sendApiError(res, 409, 'PROVIDER_UNAVAILABLE', 'This provider is not currently accepting new bookings.');
-      }
-      if (!provider.isVerified) {
-        return sendApiError(res, 403, 'NOT_VERIFIED', 'This provider has not been verified yet and cannot accept bookings.');
-      }
-
-      // One job at a time — provider
-      const providerActiveBooking = await prisma.booking.findFirst({
-        where: { providerId: provider.id, status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } },
-        select: { id: true }
+      const customer = await prisma.user.findUnique({
+        where: { id: customerId },
+        select: { id: true, name: true, latitude: true, longitude: true }
       });
-      if (providerActiveBooking) {
-        return sendApiError(res, 409, 'PROVIDER_BUSY', 'This provider is currently busy with another job. Please try again later.');
-      }
+      if (!customer) return sendApiError(res, 404, 'NOT_FOUND', 'Customer not found.');
 
       // One booking at a time — customer
       const customerActiveBooking = await prisma.booking.findFirst({
@@ -165,76 +170,41 @@ export const BookingController = {
         return sendApiError(res, 409, 'CUSTOMER_BUSY', 'You already have an active booking. Please complete or cancel it before booking another.');
       }
 
-      const approvedService = await prisma.providerService.findFirst({
-        where: {
-          providerId: provider.id,
-          ...(bookingData.serviceId
-            ? { serviceId: bookingData.serviceId }
-            : { service: { name: { equals: bookingData.serviceCategory, mode: 'insensitive' } } })
-        },
-        select: { serviceId: true }
+      const result = await createBookingWithLead({
+        customerId,
+        preferredProviderId: bookingData.providerId || null,
+        serviceId: bookingData.serviceId || null,
+        serviceCategory: bookingData.serviceCategory,
+        amount: bookingData.amount,
+        locationAddress: bookingData.locationAddress || '',
+        city: bookingData.city || 'Hyderabad',
+        instructions: bookingData.instructions || '',
+        notes: bookingData.notes || null,
+        customerLat: customer.latitude ?? null,
+        customerLng: customer.longitude ?? null
       });
-      if (!approvedService) {
-        return sendApiError(res, 409, 'SERVICE_NOT_APPROVED', 'This provider is not approved for the requested service.');
-      }
-
-      const timestamp = new Date();
-
-      const result = await prisma.$transaction(async (tx) => {
-        const booking = await tx.booking.create({
-          data: {
-            customerId,
-            providerId: bookingData.providerId,
-            serviceId: approvedService.serviceId,
-            serviceCategory: bookingData.serviceCategory,
-            locationAddress: bookingData.locationAddress || '',
-            city: bookingData.city || 'Hyderabad',
-            instructions: bookingData.instructions || '',
-            amount: bookingData.amount != null && !Number.isNaN(Number(bookingData.amount)) ? Number(bookingData.amount) : null,
-            messages: [],
-            reviewed: false,
-            statusHistory: [
-              { status: 'PENDING', timestamp: timestamp.toISOString(), note: 'Booking created by customer' }
-            ]
-          },
-          include: BOOKING_INCLUDE
-        });
-
-        await tx.bookingEvent.create({
-          data: {
-            bookingId: booking.id,
-            actorId: customerId,
-            actorRole: 'customer',
-            action: 'CREATED',
-            note: 'Booking created'
-          }
-        });
-        const providerNotification = await tx.notification.create({
-          data: {
-            userId: provider.user.id,
-            title: 'New Service Request',
-            message: `You have a new ${booking.serviceCategory} request from ${customer.name}.`,
-            type: 'BOOKING',
-            relatedBookingId: booking.id
-          }
-        });
-        return { booking, providerNotification };
-      }, { isolationLevel: 'Serializable' });
 
       const io = req.app.get('socketio');
       if (io) {
-        io.to(`user:${provider.user.id}`).emit('newJobLead', result.booking);
-        io.to(`user:${provider.user.id}`).emit('notification', result.providerNotification);
-        io.to(`user:${provider.user.id}`).emit('booking:created', { bookingId: result.booking.id });
-        io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id });
-        io.to(`user:${provider.user.id}`).emit('notification:new', { notificationId: result.providerNotification.id, type: result.providerNotification.type });
+        // Broadcast the request to every eligible subscribed provider at once.
+        for (const provider of result.providers || []) {
+          await notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider));
+        }
+        io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id, status: 'PENDING' });
       }
+      scheduleLeadExpiry(result.lead, io);
 
-      return sendApiSuccess(res, 201, result.booking);
+      return sendApiSuccess(res, 201, {
+        booking: result.booking,
+        lead: buildLeadPayload(result.lead, result.booking, result.provider)
+      });
     } catch (err) {
       console.error('[BookingController.create] Error:', err.message, err.stack);
-      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to create booking.',
-        process.env.NODE_ENV !== 'production' ? err.message : undefined);
+      const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+      const isClientError = code !== 'INTERNAL_ERROR';
+      return sendApiError(res, isClientError ? 409 : 500, code,
+        isClientError ? err.message : 'Failed to create booking.',
+        process.env.NODE_ENV !== 'production' && !isClientError ? err.message : undefined);
     }
   },
 
@@ -286,11 +256,11 @@ export const BookingController = {
 
       if (!canUpdate) return sendApiError(res, 403, 'FORBIDDEN', 'You are not allowed to perform this status transition.');
 
-      // Verification code check: CONFIRMED -> ONGOING requires customer's 4-digit code
-      if (currentStatus === 'CONFIRMED' && updatedStatus === 'ONGOING') {
+      // Verification code check: ONGOING -> COMPLETED requires customer's 4-digit code.
+      if (currentStatus === 'ONGOING' && updatedStatus === 'COMPLETED') {
         const { verificationCode } = req.body;
         if (!verificationCode) {
-          return sendApiError(res, 400, 'MISSING_FIELDS', 'Verification code is required to start work. Ask the customer for their 4-digit code.');
+          return sendApiError(res, 400, 'MISSING_FIELDS', 'Verification code is required to complete the job. Ask the customer for their 4-digit code.');
         }
         const customerUser = await prisma.user.findUnique({
           where: { id: booking.customerId },
@@ -301,20 +271,33 @@ export const BookingController = {
         }
       }
 
-      const newHistory = buildStatusHistory(booking.statusHistory, updatedStatus, note);
+      const io = req.app.get('socketio');
 
+      if (updatedStatus === 'CONFIRMED') {
+        return handleAccept(req, res, { booking, provider, note, io });
+      }
+      if (updatedStatus === 'COMPLETED') {
+        return handleCompletion(req, res, { booking, provider, note, io });
+      }
+      if (updatedStatus === 'CANCELLED') {
+        return handleCancellation(req, res, { booking, provider, requesterId, role, note, io });
+      }
+
+      // ONGOING — provider starts work: record the start time + performance metric.
+      const newHistory = buildStatusHistory(booking.statusHistory, updatedStatus, note);
       const updated = await prisma.booking.update({
         where: { id },
         data: {
           status: updatedStatus,
-          statusHistory: newHistory,
-          ...(updatedStatus === 'CANCELLED' ? {
-            cancelledBy: requesterId,
-            cancelledReason: note || null
-          } : {})
+          startedAt: updatedStatus === 'ONGOING' ? new Date() : null,
+          statusHistory: newHistory
         },
         include: BOOKING_INCLUDE
       });
+
+      if (updatedStatus === 'ONGOING') {
+        await recordJobStarted(booking.providerId);
+      }
 
       await prisma.bookingEvent.create({
         data: {
@@ -326,24 +309,19 @@ export const BookingController = {
         }
       });
 
-      if (updatedStatus === 'COMPLETED') {
-        await refreshProviderReputation(booking.providerId);
-      }
-
-      const io = req.app.get('socketio');
       await notifyBookingStatusChanged(io, booking, updatedStatus, provider?.userId);
       if (io) {
-        const event = updatedStatus === 'CANCELLED' ? 'booking:cancelled' : 'booking:statusChanged';
-        const payload = { bookingId: updated.id, status: updatedStatus };
-        io.to(`user:${booking.customerId}`).emit(event, payload);
-        if (provider?.userId) io.to(`user:${provider.userId}`).emit(event, payload);
+        io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: updated.id, status: updatedStatus });
+        if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: updated.id, status: updatedStatus });
       }
 
       return sendApiSuccess(res, 200, updated);
     } catch (err) {
       console.error('[BookingController.updateStatus] Error:', err);
-      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update booking status',
-        process.env.NODE_ENV !== 'production' ? err.message : undefined);
+      const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+      return sendApiError(res, code === 'INTERNAL_ERROR' ? 500 : 409, code,
+        code === 'INTERNAL_ERROR' ? 'Failed to update booking status' : err.message,
+        process.env.NODE_ENV !== 'production' && code === 'INTERNAL_ERROR' ? err.message : undefined);
     }
   },
 
@@ -355,6 +333,52 @@ export const BookingController = {
     if (status === 'CANCELLED') req.body = { ...(req.body || {}), note: req.body.reason || req.body.note };
     req.body = { ...(req.body || {}), status };
     return BookingController.updateStatus(req, res);
+  },
+
+  // REST fallback for provider location pings (primary path is the socket).
+  updateLocation: async (req, res) => {
+    try {
+      const result = await updateProviderLocation({
+        bookingId: req.params.id,
+        providerUserId: req.user.id,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
+        io: req.app.get('socketio')
+      });
+      return sendApiSuccess(res, 200, result.payload);
+    } catch (err) {
+      return sendApiError(res, 400, err.code || 'INTERNAL_ERROR', err.message,
+        process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
+    }
+  },
+
+  getTracking: async (req, res) => {
+    try {
+      const tracking = await getBookingTracking({
+        bookingId: req.params.id,
+        userId: req.user.id,
+        role: req.user.role
+      });
+      return sendApiSuccess(res, 200, tracking);
+    } catch (err) {
+      return sendApiError(res, err.code === 'BOOKING_NOT_FOUND' ? 404 : 403, err.code || 'INTERNAL_ERROR', err.message,
+        process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
+    }
+  },
+
+  getTrackHistory: async (req, res) => {
+    try {
+      const history = await getBookingLocationHistory({
+        bookingId: req.params.id,
+        userId: req.user.id,
+        role: req.user.role,
+        limit: req.query.limit
+      });
+      return sendApiSuccess(res, 200, history);
+    } catch (err) {
+      return sendApiError(res, err.code === 'BOOKING_NOT_FOUND' ? 404 : 403, err.code || 'INTERNAL_ERROR', err.message,
+        process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
+    }
   },
 
   getMessages: async (req, res) => {
@@ -472,3 +496,207 @@ export const BookingController = {
     }
   }
 };
+
+// ============================================================
+// Lead-aware lifecycle handlers
+// ============================================================
+
+async function handleAccept(req, res, { booking, provider, io }) {
+  try {
+    const result = await acceptLeadForBooking({ bookingId: booking.id, providerId: booking.providerId });
+    if (result.lead) cancelLeadExpiry(result.lead.id);
+
+    const updated = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+    const leadPayload = result.lead ? buildLeadPayload(result.lead, updated) : null;
+
+    if (result.lead) await notifyLeadAccepted(io, booking.customerId, leadPayload);
+    await notifyBookingStatusChanged(io, booking, 'CONFIRMED', provider?.userId);
+    if (io) {
+      io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'CONFIRMED' });
+      if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'CONFIRMED' });
+      // Auto-cancel the remaining offers — tell every losing provider.
+      for (const loser of result.cancelledProviders || []) {
+        await notifyLeadCancelled(io, loser.userId, leadPayload);
+      }
+    }
+
+    return sendApiSuccess(res, 200, updated);
+  } catch (err) {
+    const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+    return sendApiError(res, code === 'INTERNAL_ERROR' ? 500 : 409, code,
+      code === 'INTERNAL_ERROR' ? 'Failed to accept booking.' : err.message,
+      process.env.NODE_ENV !== 'production' && code === 'INTERNAL_ERROR' ? err.message : undefined);
+  }
+}
+
+async function handleCompletion(req, res, { booking, provider, io }) {
+  try {
+    const result = await completeBooking({ bookingId: booking.id, providerId: booking.providerId });
+    void clearLocationHistory({ bookingId: booking.id }).catch((err) => {
+      console.error('[BookingController] Location history cleanup failed:', err.message);
+    });
+
+    if (result.promotion && provider?.userId && io) {
+      io.to(`user:${provider.userId}`).emit('promotion', { promotion: result.promotion });
+    }
+    if (provider?.userId) {
+      const subPayload = { remainingLeads: result.subscription.remainingLeads };
+      if (result.subscription.justExpired) {
+        await notifySubscriptionExpired(io, provider.userId, subPayload);
+      } else if (result.subscription.lowLeads) {
+        await notifyRemainingLeadsLow(io, provider.userId, subPayload);
+      }
+    }
+
+    await notifyBookingStatusChanged(io, booking, 'COMPLETED', provider?.userId);
+    if (io) {
+      io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'COMPLETED' });
+      if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'COMPLETED' });
+    }
+
+    return sendApiSuccess(res, 200, result.booking);
+  } catch (err) {
+    const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+    return sendApiError(res, code === 'INTERNAL_ERROR' ? 500 : 409, code,
+      code === 'INTERNAL_ERROR' ? 'Failed to complete booking.' : err.message,
+      process.env.NODE_ENV !== 'production' && code === 'INTERNAL_ERROR' ? err.message : undefined);
+  }
+}
+
+async function handleCancellation(req, res, { booking, provider, requesterId, role, note, io }) {
+  try {
+    const providerId = booking.providerId;
+    const actorRole = role === 'provider' ? 'PROVIDER' : role === 'admin' ? 'ADMIN' : 'CUSTOMER';
+    const lead = await prisma.lead.findUnique({ where: { bookingId: booking.id } });
+
+    // Provider declined a PENDING booking — withdraw their own offer. Other
+    // providers offered the same request keep their open offers.
+    if (actorRole === 'PROVIDER' && booking.status === 'PENDING') {
+      if (lead) {
+        const rejection = await rejectLead({ leadId: lead.id, providerId, reason: note || 'PROVIDER_DECLINED' });
+        const updated = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+
+        cancelLeadExpiry(rejection.lead?.id);
+        if (rejection.settled) {
+          await notifyBookingStatusChanged(io, booking, 'CANCELLED', provider?.userId);
+          await notifyNoProviderFound(io, booking.customerId, buildLeadPayload(rejection.lead, updated));
+          if (io) {
+            io.to(`user:${booking.customerId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+            if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+          }
+        }
+        return sendApiSuccess(res, 200, updated);
+      }
+
+      // Legacy booking without a lead — plain cancellation.
+      const updated = await cancelBookingPlain(booking, requesterId, role, note);
+      await notifyBookingStatusChanged(io, booking, 'CANCELLED', provider?.userId);
+      return sendApiSuccess(res, 200, updated);
+    }
+
+    // Provider cancelled a CONFIRMED / ONGOING booking — cooldown + reassign when possible.
+    if (actorRole === 'PROVIDER') {
+      const cooldown = await recordJobCancelled(providerId, requesterId, note || 'PROVIDER_CANCELLED', {
+        bookingId: booking.id,
+        leadId: lead?.id || null
+      });
+
+      let redistribution = null;
+      let updated = null;
+      if (booking.status === 'CONFIRMED' && lead) {
+        redistribution = await redistributeLead({
+          leadId: lead.id,
+          reason: 'PROVIDER_CANCELLED',
+          details: { cancelledBy: 'provider', reason: note || null }
+        });
+        updated = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+      }
+
+      if (!updated) {
+        updated = await cancelBookingPlain(booking, requesterId, role, note);
+      }
+
+      if (cooldown.cooldownTriggered && provider?.userId) {
+        await notifyProviderCooldown(io, provider.userId, { cooldownUntil: cooldown.cooldownUntil });
+      }
+
+      if (redistribution?.reassigned && redistribution.nextProvider) {
+        scheduleLeadExpiry(redistribution.lead, io);
+        const payload = buildLeadPayload(redistribution.lead, updated, redistribution.nextProvider);
+        await notifyLeadRejected(io, booking.customerId, payload);
+        await notifyLeadTransferred(io, redistribution.nextProvider.user?.id, payload);
+        return sendApiSuccess(res, 200, updated);
+      }
+
+      if (redistribution?.settled) {
+        await notifyNoProviderFound(io, booking.customerId, buildLeadPayload(redistribution.lead ?? null, updated));
+      }
+      await notifyBookingStatusChanged(io, booking, 'CANCELLED', provider?.userId);
+      if (io) {
+        io.to(`user:${booking.customerId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+        if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+      }
+      return sendApiSuccess(res, 200, updated);
+    }
+
+    // Customer / Admin cancellation.
+    if (lead) {
+      cancelLeadExpiry(lead.id);
+      await cancelOpenOffers({
+        leadId: lead.id,
+        reason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED'
+      });
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { status: 'REJECTED', lastRejectReason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED' }
+      });
+    }
+    await prisma.cancellationReason.create({
+      data: {
+        bookingId: booking.id,
+        leadId: lead?.id || null,
+        actor: actorRole,
+        actorId: requesterId,
+        reason: note || (actorRole === 'CUSTOMER' ? 'Customer cancelled the booking' : 'Admin cancelled the booking')
+      }
+    });
+
+    const updated = await cancelBookingPlain(booking, requesterId, role, note);
+    await notifyBookingStatusChanged(io, booking, 'CANCELLED', provider?.userId);
+    if (io) {
+      io.to(`user:${booking.customerId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+      if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+    }
+    return sendApiSuccess(res, 200, updated);
+  } catch (err) {
+    console.error('[BookingController.handleCancellation] Error:', err);
+    const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+    return sendApiError(res, code === 'INTERNAL_ERROR' ? 500 : 409, code,
+      code === 'INTERNAL_ERROR' ? 'Failed to cancel booking.' : err.message,
+      process.env.NODE_ENV !== 'production' && code === 'INTERNAL_ERROR' ? err.message : undefined);
+  }
+}
+
+async function cancelBookingPlain(booking, requesterId, role, note) {
+  const newHistory = buildStatusHistory(booking.statusHistory, 'CANCELLED', note);
+  const updated = await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      status: 'CANCELLED',
+      statusHistory: newHistory,
+      cancelledBy: requesterId,
+      cancelledReason: note || null
+    },
+    include: BOOKING_INCLUDE
+  });
+  await prisma.bookingEvent.create({
+    data: {
+      bookingId: booking.id,
+      actorId: requesterId,
+      actorRole: role,
+      action: 'STATUS_CANCELLED',
+      note: note || null
+    }
+  });
+  return updated;
+}

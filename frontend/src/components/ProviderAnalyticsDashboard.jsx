@@ -69,7 +69,7 @@ export default function ProviderAnalyticsDashboard({ providerId }) {
 
   const revenueSeries = useMemo(() => {
     if (!Array.isArray(monthly)) return [];
-    return monthly.map((m) => ({ month: m.month, amount: m.paidBookings ?? m.totalEarnings ?? 0 }));
+    return monthly.map((m) => ({ month: m.month, amount: m.earnings ?? 0 }));
   }, [monthly]);
 
   const revenueMax = useMemo(() => {
@@ -249,7 +249,7 @@ export default function ProviderAnalyticsDashboard({ providerId }) {
       </div>
 
       <div className="text-xs text-slate-500 italic font-semibold">
-        Note: Current analytics derive revenue from PAID bookings because the Payment model has no amount fields.
+        Note: Earnings reflect provider payouts (service amount minus the admin-configured provider platform charge) on completed bookings.
       </div>
     </div>
   );

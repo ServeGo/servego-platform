@@ -9,9 +9,11 @@ import AdminBookingsTab from './Tabs/AdminBookingsTab';
 import AdminTicketsTab from './Tabs/AdminTicketsTab';
 import AdminAnalyticsTab from './Tabs/AdminAnalyticsTab';
 import AdminSettingsTab from './Tabs/AdminSettingsTab';
-import AdminPaymentsTab from './Tabs/AdminPaymentsTab';
 import AdminReviewsTab from './Tabs/AdminReviewsTab';
 import AdminReportsTab from './Tabs/AdminReportsTab';
+import AdminServeGoTab from './Tabs/AdminServeGoTab';
+import AdminPermanentServicesTab from './Tabs/AdminPermanentServicesTab';
+import AdminDisputesTab from './Tabs/AdminDisputesTab';
 
 
 export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
@@ -34,11 +36,17 @@ export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
       return <AdminAnalyticsTab />;
     case 'settings':
       return <AdminSettingsTab {...tabProps} />;
+    case 'servego':
+      return <AdminServeGoTab />;
+
+    case 'permanentServiceRequests':
+      return <AdminPermanentServicesTab {...tabProps} />;
+
+    case 'disputes':
+      return <AdminDisputesTab />;
 
     // Optional sidebar entries that currently have no dedicated implementation.
     // Keeping them mapped to existing tabs prevents the UI from appearing broken/blank.
-    case 'payments':
-      return <AdminPaymentsTab {...tabProps} />;
     case 'reviews':
       return <AdminReviewsTab {...tabProps} />;
     case 'reports':

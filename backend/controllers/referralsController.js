@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { creditWallet } from '../services/walletService.js';
 
 const normalizeCode = (code) => (code || '').toString().trim();
 
@@ -41,6 +42,17 @@ export const ReferralsController = {
           data: { referralsCount: { increment: 1 } }
         });
 
+        // The referral reward lands in the applicant's wallet as spendable credits.
+        await creditWallet({
+          userId: applicant.id,
+          amount: BONUS_EARNED,
+          category: 'REFERRAL_BONUS',
+          referenceType: 'REFERRAL',
+          referenceId: sponsor.id,
+          description: `Referral bonus from ${sponsor.referralCode}`,
+          client: tx
+        });
+
         const sponsorUpdated = await tx.user.findUnique({
           where: { id: sponsor.id },
           select: { referralsCount: true, referralDiscountBalance: true }
@@ -51,7 +63,7 @@ export const ReferralsController = {
           referredCount: sponsorUpdated.referralsCount,
           bonusEarned: BONUS_EARNED
         };
-      });
+      }, { maxWait: 20000, timeout: 30000 });
 
       return sendApiSuccess(res, 200, result);
     } catch (err) {

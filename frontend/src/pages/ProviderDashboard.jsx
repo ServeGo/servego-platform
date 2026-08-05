@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 
-import { ShieldAlert, ListOrdered } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 
 // Components
 import ProviderHeader from '../components/ProviderHeader';
-import LeadCard from '../components/LeadCard';
-// EarningsChart intentionally removed; keep code minimal to avoid unused imports.
+import ProviderLeadsInbox from '../components/ProviderLeadsInbox';
+import ProviderPlans from '../components/ProviderPlans';
+import ProviderLevelPerformance from '../components/ProviderLevelPerformance';
 
 import ProviderServicesPanel from '../components/ProviderServicesPanel';
 import ProviderReviews from '../components/ProviderReviews';
@@ -15,14 +16,16 @@ import ProviderSupport from '../components/ProviderSupport';
 import ProviderReferrals from '../components/ProviderReferrals';
 import ProviderProfileView from '../components/ProviderProfileView';
 import ProviderAnalyticsDashboard from '../components/ProviderAnalyticsDashboard';
+import ProviderWallet from '../components/ProviderWallet';
+import ProviderDisputesView from '../components/ProviderDisputesView';
 
 
 export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
 
-  const { 
+  const {
     currentUser, providers, bookings, services,
     updateBookingStatus, submitSupportTicket, tickets,
-    applyReferralCode, sendChatMessage
+    applyReferralCode
   } = useApp();
 
   const activeProvider = useMemo(() => {
@@ -64,8 +67,6 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const setActiveTab = setActiveTabExternal || setInternalActiveTab;
 
   // Local UI States
-  const [openChatBookingId, setOpenChatBookingId] = useState(null);
-  const [chatInput, setChatInput] = useState('');
   const [supportSubject, setSupportSubject] = useState('');
   const [supportMsg, setSupportMsg] = useState('');
   const [ticketSuccess, setTicketSuccess] = useState(false);
@@ -80,14 +81,12 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     bonusEarned: 0
   });
 
-  // (provider profile local editing removed; admin flows handle updates elsewhere)
-
   const allocatedBookings = useMemo(() => bookings.filter(b => b.providerId === activeProvider?.id), [bookings, activeProvider]);
   const activeLeads = useMemo(() => allocatedBookings.filter(b => ['pending', 'confirmed', 'ongoing'].includes(b.status)), [allocatedBookings]);
   const completedJobs = useMemo(() => allocatedBookings.filter(b => b.status === 'completed'), [allocatedBookings]);
   const completedCount = completedJobs.length;
 
-  
+
 
   const handleSupportSubmit = async (e) => {
     e.preventDefault();
@@ -125,7 +124,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   return (
     <div id="provider-dashboard-page" className="bg-slate-50 min-h-screen py-10 px-4">
       <div className="max-w-6xl mx-auto">
-        
+
         {isPending && <PendingBanner />}
 
         {!isPending && activeProvider && (
@@ -135,24 +134,16 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         <TabList activeTab={activeTab} setActiveTab={setActiveTab} leadsCount={activeLeads.length} reviewsCount={activeProvider?.reviews?.length || 0} />
 
         {activeTab === 'leads' && (
-
-          <LeadsPage
-
-            activeLeads={allocatedBookings}
-            openChatBookingId={openChatBookingId}
-            onToggleChat={(id) => setOpenChatBookingId(openChatBookingId === id ? null : id)}
-            chatInput={chatInput}
-            setChatInput={setChatInput}
-            onAccept={(id) => updateBookingStatus(id, 'confirmed', 'Accepted.')}
-            onReject={(id) => updateBookingStatus(id, 'cancelled', 'Rejected.')}
-            onStartWork={(id, verificationCode) => updateBookingStatus(id, 'ongoing', 'Work started.', verificationCode)}
-            onFinishWork={(id) => updateBookingStatus(id, 'completed', 'Completed.')}
-            onSendMessage={sendChatMessage}
-          />
+          <ProviderLeadsInbox providerId={activeProvider?.id} updateBookingStatus={updateBookingStatus} />
         )}
 
+        {activeTab === 'plans' && (
+          <ProviderPlans providerId={activeProvider?.id} />
+        )}
 
-
+        {activeTab === 'level' && (
+          <ProviderLevelPerformance providerId={activeProvider?.id} />
+        )}
 
         {activeTab === 'services' && activeProvider && (
           <ProviderServicesPanel
@@ -172,9 +163,13 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
         {activeTab === 'reviews' && <ProviderReviews rating={activeProvider?.rating} reviews={activeProvider?.reviews} />}
 
+        {activeTab === 'disputes' && (
+          <ProviderDisputesView providerId={activeProvider?.id} bookings={allocatedBookings} />
+        )}
+
 
         {activeTab === 'support' && (
-          <ProviderSupport 
+          <ProviderSupport
             tickets={tickets.filter(t => t.requesterEmail === currentUser?.email)}
             onSubmit={handleSupportSubmit}
             subject={supportSubject} setSubject={setSupportSubject}
@@ -184,8 +179,12 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           />
         )}
 
+        {activeTab === 'wallet' && (
+          <ProviderWallet providerId={activeProvider?.id} />
+        )}
+
         {activeTab === 'referrals' && (
-          <ProviderReferrals 
+          <ProviderReferrals
             provider={activeProvider}
             referralInput={referralInput} setReferralInput={setReferralInput}
             onApply={handleApplyReferral}
@@ -227,9 +226,13 @@ function PendingBanner() {
 function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
   const tabs = [
     { id: 'leads', label: `Leads (${leadsCount})` },
+    { id: 'plans', label: 'Subscription' },
+    { id: 'level', label: 'Level & Performance' },
     { id: 'services', label: 'My Services' },
     { id: 'analytics', label: 'Analytics' },
     { id: 'reviews', label: `Reviews (${reviewsCount})` },
+    { id: 'disputes', label: 'Disputes' },
+    { id: 'wallet', label: '💰 Wallet' },
     { id: 'support', label: 'Support' },
     { id: 'referrals', label: '🤝 Ambassador' },
     { id: 'profile', label: 'Profile' }
@@ -243,177 +246,3 @@ function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
     </div>
   );
 }
-
-function EmptyLeads({ variant = 'pending' }) {
-  const title = variant === 'active' ? 'No Active Leads' : 'No Pending Lead Proposals';
-  const desc =
-    variant === 'active'
-      ? 'Once you accept an offer, it will move to Active Duty.'
-      : 'When customers choose you in your zones, new orders will appear here.';
-
-  return (
-    <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-2xs max-w-md mx-auto">
-      <ListOrdered className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-      <h4 className="text-base font-bold text-slate-900">{title}</h4>
-      <p className="text-slate-500 text-xs mt-1 font-medium">{desc}</p>
-    </div>
-  );
-}
-
-function LeadsPage({
-  activeLeads,
-  openChatBookingId,
-  onToggleChat,
-  chatInput,
-  setChatInput,
-  onAccept,
-  onReject,
-  onStartWork,
-  onFinishWork,
-  onSendMessage
-}) {
-  const [statusFilter, setStatusFilter] = useState('active'); // pending | active | completed | all
-  const [query, setQuery] = useState('');
-  const [sortDir, setSortDir] = useState('desc'); // desc | asc
-
-  const subTabCounts = useMemo(() => ({
-    pending: activeLeads.filter(b => b.status === 'pending').length,
-    active: activeLeads.filter(b => ['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(b.status)).length,
-    completed: activeLeads.filter(b => ['completed', 'reviewed', 'cancelled'].includes(b.status)).length,
-    all: activeLeads.length,
-  }), [activeLeads]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    let arr = [...activeLeads];
-
-    if (statusFilter === 'pending') {
-      arr = arr.filter(b => b.status === 'pending');
-    } else if (statusFilter === 'active') {
-      arr = arr.filter(b => ['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(b.status));
-    } else if (statusFilter === 'completed') {
-      arr = arr.filter(b => ['completed', 'reviewed', 'cancelled'].includes(b.status));
-    }
-    // 'all' — no filter
-
-    if (q) {
-      arr = arr.filter(b => {
-        const hay = [
-          b.serviceCategory,
-          b.customerName,
-          b.locationAddress,
-          b.instructions,
-          b.id
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
-
-    const toSortableDate = (b) => {
-      const d = b.createdAt ? new Date(b.createdAt) : null;
-      return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
-    };
-
-    arr.sort((a, b) => {
-      const diff = toSortableDate(a) - toSortableDate(b);
-      return sortDir === 'desc' ? -diff : diff;
-    });
-
-    return arr;
-  }, [activeLeads, query, statusFilter, sortDir]);
-
-  const leadsLabel = statusFilter === 'pending' ? 'Pending Offers' : statusFilter === 'active' ? 'Active Duty' : 'All Leads';
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white border border-slate-200 rounded-3xl p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
-          <div>
-              <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight text-left">{leadsLabel}</h3>
-
-            <p className="text-xs text-slate-500 font-semibold mt-1">Accept, coordinate, and complete jobs directly from here.</p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-            <div className="flex gap-2 bg-slate-50 border border-slate-200 p-1 rounded-2xl">
-              <button
-                onClick={() => setStatusFilter('pending')}
-                className={`px-4 py-2 text-xs font-black rounded-xl transition-all ${
-                  statusFilter === 'pending' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                Pending {subTabCounts.pending > 0 && <span className="opacity-70">({subTabCounts.pending})</span>}
-              </button>
-              <button
-                onClick={() => setStatusFilter('active')}
-                className={`px-4 py-2 text-xs font-black rounded-xl transition-all ${
-                  statusFilter === 'active' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                Active {subTabCounts.active > 0 && <span className="opacity-70">({subTabCounts.active})</span>}
-              </button>
-              <button
-                onClick={() => setStatusFilter('completed')}
-                className={`px-4 py-2 text-xs font-black rounded-xl transition-all ${
-                  statusFilter === 'completed' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                Completed {subTabCounts.completed > 0 && <span className="opacity-70">({subTabCounts.completed})</span>}
-              </button>
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 text-xs font-black rounded-xl transition-all ${
-                  statusFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                All {subTabCounts.all > 0 && <span className="opacity-70">({subTabCounts.all})</span>}
-              </button>
-            </div>
-
-            <div className="flex gap-2 items-center">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by client, address, date, ID..."
-                className="w-full sm:w-64 bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
-              />
-              <button
-                onClick={() => setSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'))}
-                className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl transition-all"
-              >
-                Sort: {sortDir === 'desc' ? 'Newest' : 'Oldest'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <EmptyLeads variant={statusFilter === 'active' ? 'active' : 'pending'} />
-      ) : (
-        <div className="space-y-4">
-          {filtered.map(bk => (
-            <LeadCard
-              key={bk.id}
-              lead={bk}
-              onAccept={onAccept}
-              onReject={onReject}
-              onStartWork={onStartWork}
-              onFinishWork={onFinishWork}
-              chatOpen={openChatBookingId === bk.id}
-              onToggleChat={() => onToggleChat(bk.id)}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              onSendMessage={onSendMessage}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-

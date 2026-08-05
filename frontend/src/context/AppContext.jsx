@@ -161,6 +161,14 @@ export const AppProvider = ({ children }) => {
   const socketRef = useRef(null);
   const providersRef = useRef([]);
 
+  // Latest live location per booking, keyed by booking id.
+  // { [bookingId]: { latitude, longitude, timestamp, etaMinutes, distanceKm } }
+  const [locationUpdates, setLocationUpdates] = useState({});
+
+  const getBookingLocation = useCallback((bookingId) => {
+    return locationUpdates[bookingId] || null;
+  }, [locationUpdates]);
+
   const fetchProvidersByApprovedServiceName = useCallback(async (serviceName, { location = '', sort = 'rating' } = {}) => {
     if (!serviceName) return [];
     try {
@@ -563,6 +571,22 @@ export const AppProvider = ({ children }) => {
       socket.on('newJobLead', () => fetchBookings());
       socket.on('bookingUpdated', () => fetchBookings());
       socket.on('bookingStatusChanged', () => fetchBookings());
+      // Live provider location for an active booking (customer side)
+      socket.on('location:update', (payload) => {
+        if (!payload?.bookingId) return;
+        setLocationUpdates((prev) => ({
+          ...prev,
+          [payload.bookingId]: {
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            timestamp: payload.timestamp || new Date().toISOString(),
+            etaMinutes: payload.etaMinutes ?? null,
+            distanceKm: payload.distanceKm ?? null,
+            destination: payload.destination || null,
+            status: payload.status || null
+          }
+        }));
+      });
       // Refresh service catalog when a provider service is approved (active-specialist count changes)
       socket.on('serviceApproved', () => fetchServices());
       // Admin: refresh pending service requests when a new one arrives
@@ -619,6 +643,67 @@ export const AppProvider = ({ children }) => {
     // Socket should only reconnect when user identity/role changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, currentUser?.role]);
+
+  /**
+   * Provider pushes a live location fix for an active booking.
+   * Prefers the real-time socket (with ack); falls back to REST when the socket
+   * is not connected so tracking keeps working in degraded mode.
+   */
+  const shareProviderLocation = useCallback(async (bookingId, latitude, longitude) => {
+    if (!bookingId) return { ok: false, error: 'Booking ID is required.' };
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return { ok: false, error: 'Valid coordinates are required.' };
+    }
+
+    const socket = socketRef?.current;
+    if (socket?.connected) {
+      try {
+        const ack = await new Promise((resolve) => {
+          socket.emit('location:update', { bookingId, latitude, longitude }, resolve);
+          setTimeout(() => resolve({ ok: false, error: 'tracking:timeout' }), 5000);
+        });
+        if (ack?.ok && ack?.data) {
+          setLocationUpdates((prev) => ({
+            ...prev,
+            [bookingId]: {
+              latitude: ack.data.latitude,
+              longitude: ack.data.longitude,
+              timestamp: ack.data.timestamp,
+              etaMinutes: ack.data.etaMinutes,
+              distanceKm: ack.data.distanceKm,
+              destination: ack.data.destination,
+              status: ack.data.status
+            }
+          }));
+          return ack;
+        }
+        if (ack?.error && ack.error !== 'tracking:timeout') return ack;
+      } catch {
+        // fall through to REST fallback
+      }
+    }
+
+    try {
+      const res = await apiClient.patch(`/bookings/${bookingId}/location`, { latitude, longitude });
+      if (res.ok && res.data) {
+        setLocationUpdates((prev) => ({
+          ...prev,
+          [bookingId]: {
+            latitude: res.data.latitude,
+            longitude: res.data.longitude,
+            timestamp: res.data.timestamp,
+            etaMinutes: res.data.etaMinutes,
+            distanceKm: res.data.distanceKm,
+            destination: res.data.destination,
+            status: res.data.status
+          }
+        }));
+      }
+      return { ok: res.ok, error: res.data?.message, data: res.data };
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Network error while sharing location.' };
+    }
+  }, []);
 
   const createBooking = async (bookingData) => {
     try {
@@ -1131,7 +1216,11 @@ export const AppProvider = ({ children }) => {
       actionSpinner,
       runWithActionSpinner,
       connectionStatus,
-      isInitializing
+      socketRef,
+      isInitializing,
+      locationUpdates,
+      getBookingLocation,
+      shareProviderLocation
     }}>
 
 
