@@ -2,3 +2,8 @@
 node_modules/
 .DS_Store
 npm-debug.log
+data/
+*-err.txt
+*-out.txt
+test-error.txt
+test-output.txt
