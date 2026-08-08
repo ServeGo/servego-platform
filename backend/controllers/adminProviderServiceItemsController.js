@@ -1,51 +1,45 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
+
+const SELECT_PROVIDER = {
+  include: {
+    provider: {
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true, avatar: true }
+        }
+      }
+    }
+  }
+};
 
 export const AdminProviderServiceItemsController = {
   getAll: async (req, res) => {
     try {
-      const [pendingRequests, deniedRequests, approvedLinks] = await Promise.all([
+      const { page, limit } = parsePagination(req.query, { limit: 50 });
+      const [pendingRequests, deniedRequests, approvedLinks, pendingCount, deniedCount, approvedCount] = await Promise.all([
         prisma.providerServiceRequest.findMany({
           where: { status: 'PENDING' },
           orderBy: { createdAt: 'desc' },
-          include: {
-            provider: {
-              include: {
-                user: {
-                  select: { id: true, name: true, email: true, phone: true, avatar: true }
-                }
-              }
-            }
-          }
+          ...SELECT_PROVIDER
         }),
 
         prisma.providerServiceRequest.findMany({
           where: { status: 'DENIED' },
           orderBy: { createdAt: 'desc' },
-          include: {
-            provider: {
-              include: {
-                user: {
-                  select: { id: true, name: true, email: true, phone: true, avatar: true }
-                }
-              }
-            }
-          }
+          ...SELECT_PROVIDER
         }),
 
         prisma.providerService.findMany({
-          include: {
-            provider: {
-              include: {
-                user: {
-                  select: { id: true, name: true, email: true, phone: true, avatar: true }
-                }
-              }
-            },
-            service: true
-          },
+          ...SELECT_PROVIDER,
+          include: { ...SELECT_PROVIDER.include, service: true },
           orderBy: { createdAt: 'desc' }
-        })
+        }),
+
+        prisma.providerServiceRequest.count({ where: { status: 'PENDING' } }),
+        prisma.providerServiceRequest.count({ where: { status: 'DENIED' } }),
+        prisma.providerService.count()
       ]);
 
       const pendingMapped = pendingRequests.map((r) => ({
@@ -90,7 +84,10 @@ export const AdminProviderServiceItemsController = {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
 
-      return sendApiSuccess(res, 200, combined);
+      const total = pendingCount + deniedCount + approvedCount;
+      const items = combined.slice((page - 1) * limit, page * limit);
+
+      return sendApiSuccess(res, 200, { items, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch provider service items', err.message);
     }

@@ -12,11 +12,20 @@ import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/securi
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
 import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
+import { startBackupCron, stopBackupCron } from './services/backupService.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
 import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
-import { updateProviderLocation } from './services/trackingService.js';
+import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
+import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
+import { maintenanceMode } from './middleware/maintenance.js';
 
 dotenv.config();
+
+// API version registry — the single source of truth for which API versions
+// are live. Add an entry when a new version ships; keep retired versions in
+// API_VERSION_DEPRECATED for the remainder of their deprecation window.
+const API_VERSIONS = ['v1'];
+const API_VERSION_DEPRECATED = {};
 
 async function bootstrap() {
   const app = express();
@@ -43,7 +52,7 @@ async function bootstrap() {
   // Request parsing
   // Razorpay webhooks must receive the RAW body (not JSON-parsed) so the
   // signature can be verified against the exact bytes that were sent.
-  app.use('/api/subscriptions/payment/webhook', express.raw({ type: () => true, limit: '1mb' }));
+  app.use('/api/v1/subscriptions/payment/webhook', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
@@ -101,8 +110,23 @@ async function bootstrap() {
     });
   });
 
-  // API routes
-  app.use('/api', apiRouter);
+  // Version discovery — unversioned by design so clients can always find the
+  // available versions without knowing which versions exist.
+  app.get('/api/versions', (req, res) => {
+    return sendApiSuccess(res, 200, {
+      name: 'servego-api',
+      currentVersion: API_VERSIONS[API_VERSIONS.length - 1],
+      versions: API_VERSIONS.map((version) => ({
+        version,
+        basePath: `/api/${version}`,
+        deprecated: Boolean(API_VERSION_DEPRECATED[version])
+      }))
+    });
+  });
+
+  // API routes (maintenance gate first: the whole public surface 503s while
+  // `maintenanceMode` is on, except admin/login/feature-flags — see middleware).
+  app.use('/api/v1', maintenanceMode, apiRouter);
 
   // Socket.io
   // Authenticate sockets from the connection token so privileged handlers can
@@ -181,6 +205,44 @@ async function bootstrap() {
       }
     });
 
+    // Dispatch lifecycle (provider): "On my way" and "Arrived at location".
+    // Emits `provider:onTheWay` / `provider:arrived` to the customer's room.
+    socket.on('provider:onTheWay', async (payload, ack) => {
+      try {
+        if (!socket.userId || socket.userRole !== 'provider') {
+          if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
+          return;
+        }
+        const result = await markProviderOnTheWay({
+          bookingId: payload?.bookingId,
+          providerUserId: socket.userId,
+          io
+        });
+        if (typeof ack === 'function') ack({ ok: true, data: result.payload });
+      } catch (err) {
+        console.error(`🔌 provider:onTheWay failed:`, err.message);
+        if (typeof ack === 'function') ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
+      }
+    });
+
+    socket.on('provider:arrived', async (payload, ack) => {
+      try {
+        if (!socket.userId || socket.userRole !== 'provider') {
+          if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
+          return;
+        }
+        const result = await markProviderArrived({
+          bookingId: payload?.bookingId,
+          providerUserId: socket.userId,
+          io
+        });
+        if (typeof ack === 'function') ack({ ok: true, data: result.payload });
+      } catch (err) {
+        console.error(`🔌 provider:arrived failed:`, err.message);
+        if (typeof ack === 'function') ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       console.log(`🔌 Socket disconnected: ${socket.id}, Reason: ${reason}`);
     });
@@ -210,9 +272,17 @@ async function bootstrap() {
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');
     startAutoCancelCron(io);
+    startBackupCron();
     void scheduleAllLeadTimers(io).catch((err) => {
       console.error('Lead timer scheduling failed:', err.message);
     });
+    // Recover any jobs a previous process left mid-flight, then drain the
+    // async side-effect queue (email, analytics, invoices, performance).
+    void recoverInterruptedJobs()
+      .then(() => startQueueWorkers())
+      .catch((err) => {
+        console.error('Queue recovery failed:', err.message);
+      });
   });
 
   httpServer.on('error', (err) => {
@@ -236,6 +306,9 @@ async function bootstrap() {
   const shutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
     stopAutoCancelCron();
+    stopBackupCron();
+    stopQueueWorkers();
+    await drainQueueWorkers(10000);
     httpServer.close(async () => {
       const { default: prisma } = await import('./prisma/client.js');
       await prisma.$disconnect();

@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Compass, MapPin, Clock, Radio, Truck } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Map as MapLibreMap, Marker, NavigationControl, LngLatBounds } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Compass, MapPin, Clock, Radio, Truck, UserCheck } from 'lucide-react';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
@@ -16,14 +18,37 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 const fmtCoord = (v) => (v == null ? '—' : Number(v).toFixed(6));
 const fmtKm = (v) => (v == null ? '—' : `${Number(v).toFixed(1)} km`);
 
+// OpenStreetMap raster tiles (free, keyless). Swap in Google/MapTiler tiles by
+// changing this style object — the marker/route logic below is tile-agnostic.
+const OSM_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors'
+    }
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+};
+
 /**
- * Production live-tracking panel. Driven entirely by the provider's real GPS
- * fix (pushed over the socket via `location:update`, with a REST fallback) and
- * the booking's recorded destination. No simulated motion — every value comes
- * from the backend.
+ * Live-tracking map backed by the provider's real GPS fix (`location:update`
+ * socket payload or the booking's last persisted position) and the booking
+ * destination. Renders a real tile map with:
+ *  - the provider marker (live position)
+ *  - the destination marker
+ *  - the route line (road polyline from the backend when available, otherwise
+ *    a straight great-circle line)
+ *  - the dispatch phase banner: null → ON_THE_WAY → ARRIVED
  */
 export const LiveTrackingMap = ({ booking, liveLocation }) => {
   const [now, setNow] = useState(Date.now());
+  const [mapReady, setMapReady] = useState(false);
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef({ provider: null, destination: null });
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -41,19 +66,121 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
         latitude: booking.providerLatitude,
         longitude: booking.providerLongitude,
         timestamp: booking.providerLocationUpdatedAt || null,
-        etaMinutes: null,
-        distanceKm: null,
+        etaMinutes: booking.etaMinutes ?? null,
+        distanceKm: booking.distanceKm ?? null,
+        routePolyline: booking.routePolyline ?? null,
         destination: booking.endLocation || null
       };
     }
     return null;
   }, [liveLocation, booking]);
 
-  const hasLocation = live !== null;
-
   const destination = live?.destination || booking.endLocation || null;
   const hasDestination =
     destination && Number.isFinite(destination.latitude) && Number.isFinite(destination.longitude);
+  const hasLocation = live !== null;
+
+  const phase = String(live?.providerPhase ?? booking.providerPhase ?? '').toUpperCase();
+
+  const routeGeoJson = useMemo(() => {
+    if (!hasLocation || !hasDestination) return null;
+    if (Array.isArray(live.routePolyline) && live.routePolyline.length >= 2) {
+      const pts = live.routePolyline.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length >= 2) return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
+    }
+    return {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [Number(live.longitude), Number(live.latitude)],
+          [Number(destination.longitude), Number(destination.latitude)]
+        ]
+      }
+    };
+  }, [live, destination, hasLocation, hasDestination]);
+
+  // Create the map once, then keep markers + route in sync with live data.
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+    const map = new MapLibreMap({
+      container: mapContainerRef.current,
+      style: OSM_STYLE,
+      attributionControl: true,
+      center: [72.8777, 19.076],
+      zoom: 11
+    });
+    map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
+
+    const providerEl = document.createElement('div');
+    providerEl.className = 'live-map-provider-marker';
+    providerEl.innerHTML = '<div class="live-map-marker-pulse"></div><div class="live-map-marker-truck">🚚</div>';
+
+    const destEl = document.createElement('div');
+    destEl.className = 'live-map-dest-marker';
+    destEl.innerHTML = '<div class="live-map-dest-dot"></div>';
+
+    markersRef.current.provider = new Marker({ element: providerEl, anchor: 'center' }).addTo(map);
+    markersRef.current.destination = new Marker({ element: destEl, anchor: 'center' }).addTo(map);
+
+    map.on('load', () => setMapReady(true));
+
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current = { provider: null, destination: null };
+      setMapReady(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Provider marker.
+    if (hasLocation) {
+      markersRef.current.provider?.setLngLat([Number(live.longitude), Number(live.latitude)]);
+    }
+
+    // Destination marker.
+    if (hasDestination) {
+      markersRef.current.destination?.setLngLat([Number(destination.longitude), Number(destination.latitude)]);
+    }
+
+    // Route line.
+    if (routeGeoJson && mapReady) {
+      const source = map.getSource('route');
+      if (source) {
+        source.setData(routeGeoJson);
+      } else {
+        map.addSource('route', { type: 'geojson', data: routeGeoJson });
+        map.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#6366f1', 'line-width': 4, 'line-opacity': 0.9 }
+        });
+      }
+    }
+
+    // Fit the view to the provider + destination whenever the fix moves.
+    if (hasLocation && hasDestination) {
+      const bounds = new LngLatBounds();
+      bounds.extend([Number(live.longitude), Number(live.latitude)]);
+      bounds.extend([Number(destination.longitude), Number(destination.latitude)]);
+      if (bounds.getWest() === bounds.getEast() && bounds.getSouth() === bounds.getNorth()) {
+        map.setCenter([Number(live.longitude), Number(live.latitude)]);
+      } else {
+        map.fitBounds(bounds, { padding: 56, maxZoom: 15, duration: 900 });
+      }
+    } else if (hasLocation) {
+      map.setCenter([Number(live.longitude), Number(live.latitude)]);
+      map.setZoom(14);
+    }
+  }, [live, destination, hasLocation, hasDestination, routeGeoJson, mapReady]);
 
   const distanceKm =
     live?.distanceKm ??
@@ -63,23 +190,10 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
   const etaMinutes = live?.etaMinutes ?? null;
 
   const status = String(booking.status || '').toLowerCase();
-  const isOnSite = status === 'ongoing' || status === 'in_progress' || status === 'en_route';
+  const isOnSite = status === 'ongoing' || status === 'in_progress' || status === 'en_route' || phase === 'ARRIVED';
   const lastUpdateAt = live?.timestamp ? new Date(live.timestamp).getTime() : 0;
   const isStale = lastUpdateAt > 0 && now - lastUpdateAt > 90000; // no fix for 90s
   const lastUpdateLabel = lastUpdateAt ? new Date(lastUpdateAt).toLocaleTimeString() : null;
-
-  // Map marker position along a stylized route based on real progress.
-  const progress = useMemo(() => {
-    if (!hasLocation || !hasDestination) return 0;
-    const origin = booking.startLocation || null;
-    if (origin && Number.isFinite(origin.latitude) && Number.isFinite(origin.longitude)) {
-      const total = haversineKm(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
-      if (total > 0.05) return Math.min(0.98, Math.max(0.02, 1 - distanceKm / total));
-    }
-    return 0.5; // origin unknown — center marker
-  }, [hasLocation, hasDestination, booking.startLocation, destination, distanceKm]);
-
-  const markerPoint = getPointOnPath(progress);
 
   return (
     <div className="bg-slate-900 rounded-2xl border border-slate-800 text-white overflow-hidden">
@@ -97,6 +211,18 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
         </span>
       </div>
 
+      {/* Dispatch phase banner */}
+      {phase && (
+        <div className={`px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-2 border-b ${
+          phase === 'ARRIVED'
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20'
+        }`}>
+          <UserCheck className="w-3.5 h-3.5" />
+          {phase === 'ON_THE_WAY' ? 'Provider is on the way' : 'Provider has arrived at your location'}
+        </div>
+      )}
+
       {!hasLocation ? (
         <div className="h-56 flex flex-col items-center justify-center gap-3 text-center px-6">
           <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
@@ -111,47 +237,18 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
         </div>
       ) : (
         <>
-          {/* Map canvas */}
-          <div className="relative h-56 border-b border-slate-800 bg-teal-950/20 overflow-hidden">
-            <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 600 240">
-              <defs>
-                <pattern id="gridPattern" width="30" height="30" patternUnits="userSpaceOnUse">
-                  <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(51, 65, 85, 0.15)" strokeWidth="0.8" />
-                </pattern>
-              </defs>
-              <rect width="600" height="240" fill="url(#gridPattern)" />
-              <path
-                d="M 40 200 Q 90 180 140 165 T 260 120 T 380 130 T 470 80 T 560 70"
-                fill="none" stroke="#334155" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"
-              />
-              <path
-                d="M 40 200 Q 90 180 140 165 T 260 120 T 380 130 T 470 80 T 560 70"
-                fill="none" stroke="#1e1e38" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"
-              />
-              <path
-                d="M 40 200 Q 90 180 140 165 T 260 120 T 380 130 T 470 80 T 560 70"
-                fill="none" stroke="#6366f1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray="720"
-                strokeDashoffset={720 * (1 - progress)}
-                className="transition-all duration-700 ease-out opacity-90"
-              />
-              <circle cx="40" cy="200" r="12" fill="#0f172a" stroke="#475569" strokeWidth="2" />
-              <circle cx="560" cy="70" r="16" fill="rgba(99, 102, 241, 0.25)" className="animate-pulse" />
-              <circle cx="560" cy="70" r="11" fill="#4338ca" stroke="#818cf8" strokeWidth="2.5" />
-              <circle cx={markerPoint.x} cy={markerPoint.y} r="16" fill="rgba(245, 158, 11, 0.25)" className="animate-ping" />
-            </svg>
+          {/* Real tile map */}
+          <div className="relative h-56 border-b border-slate-800 overflow-hidden">
+            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
-            <div className="absolute left-3 bottom-2 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold">
+            <div className="absolute left-3 bottom-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold">
               <MapPin className="w-2.5 h-2.5 inline-block mr-1 text-teal-400" />
               {booking.locationAddress || 'Customer location'}
             </div>
 
-            <div
-              className="absolute -translate-x-1/2 bg-amber-500 text-slate-950 font-extrabold px-2.5 py-1 rounded-xl text-[9px] shadow-lg flex items-center gap-1.5 leading-none"
-              style={{ left: `${markerPoint.x / 6}%`, top: `${Math.max(12, markerPoint.y - 42)}px` }}
-            >
-              <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-950" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
-              <Truck className="w-3.5 h-3.5 shrink-0" />
+            <div className="absolute right-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1">
+              <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-600" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
+              <Truck className="w-3 h-3 text-amber-400" />
               <span>{booking.providerName || 'Provider'}</span>
             </div>
           </div>
@@ -209,27 +306,3 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
     </div>
   );
 };
-
-const PATH = [
-  { x: 40, y: 200 },
-  { x: 90, y: 180 },
-  { x: 140, y: 165 },
-  { x: 260, y: 120 },
-  { x: 380, y: 130 },
-  { x: 470, y: 80 },
-  { x: 560, y: 70 }
-];
-
-function getPointOnPath(t) {
-  const clamped = Math.min(1, Math.max(0, t));
-  const segments = PATH.length - 1;
-  const scaled = clamped * segments;
-  const index = Math.min(segments - 1, Math.floor(scaled));
-  const fraction = scaled - index;
-  const p1 = PATH[index];
-  const p2 = PATH[index + 1];
-  return {
-    x: p1.x + (p2.x - p1.x) * fraction,
-    y: p1.y + (p2.y - p1.y) * fraction
-  };
-}

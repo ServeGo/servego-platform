@@ -1,12 +1,20 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { creditWallet } from '../services/walletService.js';
+import { getConfig } from '../services/adminConfigService.js';
 
 const normalizeCode = (code) => (code || '').toString().trim();
 
 export const ReferralsController = {
   applyReferral: async (req, res) => {
     try {
+      // Feature flag: the whole referral program can be paused without a deploy.
+      const referralEnabled = await getConfig('referralEnabled', true);
+      if (referralEnabled === false) {
+        return sendApiError(res, 403, 'REFERRALS_DISABLED', 'The referral program is currently disabled.');
+      }
+      const BONUS_EARNED = Number(await getConfig('referralBonusAmount', 250)) || 0;
+
       const { code } = req.body || {};
       const userId = req.user.id;
       if (!code) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: code');
@@ -28,8 +36,6 @@ export const ReferralsController = {
       if (applicant.referredBy) {
         return sendApiError(res, 409, 'DUPLICATE_ENTRY', 'Referral code already applied.');
       }
-
-      const BONUS_EARNED = 250;
 
       const result = await prisma.$transaction(async (tx) => {
         await tx.user.update({

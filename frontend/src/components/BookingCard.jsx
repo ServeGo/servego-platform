@@ -1,8 +1,46 @@
 import React from 'react';
-import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck, Navigation, UserCheck } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
 import { useApp } from '../context/AppContext';
+
+function DispatchStepper({ phase }) {
+  const steps = [
+    { key: null, label: 'Confirmed', icon: Calendar, desc: 'Provider assigned' },
+    { key: 'ON_THE_WAY', label: 'On the way', icon: Navigation, desc: 'Provider is travelling to you' },
+    { key: 'ARRIVED', label: 'Arrived', icon: UserCheck, desc: 'Provider is at your location' }
+  ];
+  const reached = (stepKey) => {
+    if (stepKey === null) return true;
+    if (stepKey === 'ON_THE_WAY') return phase === 'ON_THE_WAY' || phase === 'ARRIVED';
+    return phase === 'ARRIVED';
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      {steps.map((step, idx) => {
+        const active = reached(step.key);
+        const Icon = step.icon;
+        return (
+          <div key={step.key ?? 'start'} className="flex-1 flex items-center gap-1">
+            <div className={`flex flex-col sm:flex-row sm:items-center gap-1.5 ${active ? 'opacity-100' : 'opacity-40'}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center border ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
+                <Icon className="w-3 h-3" />
+              </div>
+              <div className="leading-none">
+                <span className={`text-[9px] font-extrabold uppercase tracking-wide block ${active ? 'text-slate-800' : 'text-slate-400'}`}>{step.label}</span>
+                <span className="hidden sm:block text-[9px] text-slate-400 font-semibold">{step.desc}</span>
+              </div>
+            </div>
+            {idx < steps.length - 1 && (
+              <div className={`flex-1 h-px mx-1 ${reached(steps[idx + 1].key) ? 'bg-indigo-500' : 'bg-slate-200'}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function BookingCard({ 
   booking, 
@@ -82,6 +120,14 @@ export default function BookingCard({
       {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
         <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
           <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+        </div>
+      )}
+
+      {/* Dispatch stepper (Uber-style): requested → on the way → arrived */}
+      {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
+        <div className="mb-4 bg-white border border-slate-200 rounded-xl px-4 py-3">
+          <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-2 block">Dispatch Progress</span>
+          <DispatchStepper phase={liveLocation?.providerPhase || booking.providerPhase || null} />
         </div>
       )}
 

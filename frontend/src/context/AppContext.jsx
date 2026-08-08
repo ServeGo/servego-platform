@@ -201,9 +201,10 @@ export const AppProvider = ({ children }) => {
     try {
       const res = await api(`${API_BASE_URL}/saved-pros`);
       const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        setSavedProsData(data);
-        setFavoriteProviders(data.map(sp => sp.providerId || sp.provider?.id).filter(Boolean));
+      const list = Array.isArray(data?.savedPros) ? data.savedPros : Array.isArray(data) ? data : [];
+      if (res.ok) {
+        setSavedProsData(list);
+        setFavoriteProviders(list.map(sp => sp.providerId || sp.provider?.id).filter(Boolean));
       }
     } catch (err) {
       console.error('Failed to fetch saved pros:', err);
@@ -583,10 +584,27 @@ export const AppProvider = ({ children }) => {
             etaMinutes: payload.etaMinutes ?? null,
             distanceKm: payload.distanceKm ?? null,
             destination: payload.destination || null,
+            routePolyline: payload.routePolyline || null,
+            providerPhase: payload.providerPhase || prev[payload.bookingId]?.providerPhase || null,
             status: payload.status || null
           }
         }));
       });
+      // Dispatch lifecycle: provider taps "On My Way" / "Arrived".
+      const applyDispatchPhase = (payload) => {
+        if (!payload?.bookingId) return;
+        setLocationUpdates((prev) => ({
+          ...prev,
+          [payload.bookingId]: {
+            ...(prev[payload.bookingId] || {}),
+            providerPhase: payload.providerPhase,
+            status: payload.status || prev[payload.bookingId]?.status || null,
+            timestamp: payload.timestamp || prev[payload.bookingId]?.timestamp
+          }
+        }));
+      };
+      socket.on('provider:onTheWay', applyDispatchPhase);
+      socket.on('provider:arrived', applyDispatchPhase);
       // Refresh service catalog when a provider service is approved (active-specialist count changes)
       socket.on('serviceApproved', () => fetchServices());
       // Admin: refresh pending service requests when a new one arrives
@@ -672,6 +690,8 @@ export const AppProvider = ({ children }) => {
               etaMinutes: ack.data.etaMinutes,
               distanceKm: ack.data.distanceKm,
               destination: ack.data.destination,
+              routePolyline: ack.data.routePolyline || null,
+              providerPhase: ack.data.providerPhase || prev[bookingId]?.providerPhase || null,
               status: ack.data.status
             }
           }));
@@ -695,6 +715,8 @@ export const AppProvider = ({ children }) => {
             etaMinutes: res.data.etaMinutes,
             distanceKm: res.data.distanceKm,
             destination: res.data.destination,
+            routePolyline: res.data.routePolyline || null,
+            providerPhase: res.data.providerPhase || prev[bookingId]?.providerPhase || null,
             status: res.data.status
           }
         }));
@@ -702,6 +724,55 @@ export const AppProvider = ({ children }) => {
       return { ok: res.ok, error: res.data?.message, data: res.data };
     } catch (err) {
       return { ok: false, error: err?.message || 'Network error while sharing location.' };
+    }
+  }, []);
+
+  /**
+   * Provider signals a dispatch lifecycle step ("on the way" / "arrived").
+   * Mirrors shareProviderLocation: socket first, REST fallback.
+   */
+  const setProviderDispatchPhase = useCallback(async (bookingId, phase) => {
+    if (!bookingId) return { ok: false, error: 'Booking ID is required.' };
+    const event = phase === 'ARRIVED' ? 'provider:arrived' : 'provider:onTheWay';
+    const socket = socketRef?.current;
+    if (socket?.connected) {
+      try {
+        const ack = await new Promise((resolve) => {
+          socket.emit(event, { bookingId }, resolve);
+          setTimeout(() => resolve({ ok: false, error: 'tracking:timeout' }), 5000);
+        });
+        if (ack?.ok && ack?.data) {
+          setLocationUpdates((prev) => ({
+            ...prev,
+            [bookingId]: {
+              ...(prev[bookingId] || {}),
+              providerPhase: ack.data.providerPhase,
+              status: ack.data.status || prev[bookingId]?.status || null
+            }
+          }));
+          return ack;
+        }
+        if (ack?.error && ack.error !== 'tracking:timeout') return ack;
+      } catch {
+        // fall through to REST fallback
+      }
+    }
+    try {
+      const path = phase === 'ARRIVED' ? `/bookings/${bookingId}/arrived` : `/bookings/${bookingId}/on-the-way`;
+      const res = await apiClient.post(path, {});
+      if (res.ok && res.data) {
+        setLocationUpdates((prev) => ({
+          ...prev,
+          [bookingId]: {
+            ...(prev[bookingId] || {}),
+            providerPhase: res.data.providerPhase,
+            status: res.data.status || prev[bookingId]?.status || null
+          }
+        }));
+      }
+      return { ok: res.ok, error: res.data?.message, data: res.data };
+    } catch (err) {
+      return { ok: false, error: err?.message || `Network error while updating ${phase}.` };
     }
   }, []);
 
@@ -835,6 +906,43 @@ export const AppProvider = ({ children }) => {
       console.error('Failed to update provider profile:', err);
       throw err;
     }
+  };
+
+  // Provider base location + service radius (origin for the route planner and
+  // nearby-provider matching).
+  const updateProviderDispatchLocation = async ({ latitude, longitude, maxRadiusKm }) => {
+    try {
+      const res = await apiClient.patch('/providers/me/location', { latitude, longitude, maxRadiusKm });
+      if (res.ok && res.data?.id) {
+        setProviders(prev => prev.map(p => p.id === res.data.id ? res.data : p));
+        return res.data;
+      }
+      throw new Error(res.data?.message || res.data?.error || 'Failed to save provider location.');
+    } catch (err) {
+      console.error('Failed to update provider location:', err);
+      throw err;
+    }
+  };
+
+  // Online / accepting-bookings toggle (powers Nearby Providers matching).
+  const updateProviderAvailabilityStatus = async ({ isOnline, acceptingBookings }) => {
+    try {
+      const res = await apiClient.patch('/providers/me/availability-status', { isOnline, acceptingBookings });
+      if (res.ok && res.data?.id) {
+        setProviders(prev => prev.map(p => p.id === res.data.id ? res.data : p));
+        return res.data;
+      }
+      throw new Error(res.data?.message || res.data?.error || 'Failed to update availability status.');
+    } catch (err) {
+      console.error('Failed to update availability status:', err);
+      throw err;
+    }
+  };
+
+  // Route optimization: upcoming active bookings ordered into a visit sequence.
+  const fetchProviderRoutePlan = async () => {
+    const res = await apiClient.get('/providers/me/route-plan');
+    return res.ok && res.data ? res.data : { stops: [] };
   };
 
   const updateUserProfile = async (userId, profileData) => {
@@ -1064,11 +1172,12 @@ export const AppProvider = ({ children }) => {
   const fetchProviderServiceRequests = async () => {
     if (currentUser?.role !== 'admin') return;
     try {
-      const res = await api(`${API_BASE_URL}/admin/provider-service-requests`);
+      const res = await api(`${API_BASE_URL}/admin/provider-service-requests?limit=100`);
 
       const data = await res.json();
       if (res.ok) {
-        setProviderServiceRequests(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data?.requests) ? data.requests : Array.isArray(data) ? data : [];
+        setProviderServiceRequests(list);
       } else {
         console.error('Failed to fetch provider service requests:', data);
       }
@@ -1080,10 +1189,11 @@ export const AppProvider = ({ children }) => {
   const fetchProviderServiceItems = async () => {
     if (currentUser?.role !== 'admin') return;
     try {
-      const res = await api(`${API_BASE_URL}/admin/provider-service-items`);
+      const res = await api(`${API_BASE_URL}/admin/provider-service-items?limit=100`);
       const data = await res.json();
       if (res.ok) {
-        setProviderServiceItems(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        setProviderServiceItems(list);
       } else {
         console.error('Failed to fetch provider service items:', data);
       }
@@ -1178,6 +1288,9 @@ export const AppProvider = ({ children }) => {
       verifyProvider,
       updateProviderAvailability,
       updateProviderProfile,
+      updateProviderDispatchLocation,
+      updateProviderAvailabilityStatus,
+      fetchProviderRoutePlan,
       updateUserProfile,
       toggleFavoriteProvider,
       favoriteProviders,
@@ -1220,7 +1333,8 @@ export const AppProvider = ({ children }) => {
       isInitializing,
       locationUpdates,
       getBookingLocation,
-      shareProviderLocation
+      shareProviderLocation,
+      setProviderDispatchPhase
     }}>
 
 

@@ -86,6 +86,7 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@index([type])
+  @@index([userId, isRead])
 
   user      User     @relation(fields: [userId], references: [id])
 }
@@ -166,6 +167,7 @@ model Provider {
   @@index([isVerified])
   @@index([isFeatured])
   @@index([createdAt])
+  @@index([accountStatus])
 
   bookings          Booking[]
   user              User      @relation(fields: [userId], references: [id])
@@ -235,6 +237,8 @@ model ProviderService {
 
   @@unique([providerId, serviceId])
   @@unique([providerServiceRequestId])
+  @@index([providerId])
+  @@index([serviceId])
 }
 
 // Provider’s pending/denied service registration request
@@ -257,6 +261,8 @@ model ProviderServiceRequest {
 
   provider              Provider @relation(fields: [providerId], references: [id])
   providerServices     ProviderService[]
+
+  @@index([status, createdAt])
 }
 
 
@@ -300,6 +306,11 @@ model Booking {
   providerLatitude      Float?
   providerLongitude     Float?
   providerLocationUpdatedAt DateTime?
+
+  // Dispatch lifecycle phase driven by the provider: null → ON_THE_WAY → ARRIVED.
+  // Independent of the booking state machine so tracking UX stays decoupled from
+  // the CONFIRMED/ONGOING/COMPLETED status flow.
+  providerPhase         String?
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -421,6 +432,8 @@ model Review {
   reviewer        User     @relation("ReviewerReviews", fields: [reviewerId], references: [id])
 
   @@unique([bookingId])
+  @@index([providerId, createdAt])
+  @@index([reviewerId])
 }
 
 enum UserRole {
@@ -890,6 +903,7 @@ model WalletTransaction {
   @@index([userId])
   @@index([category])
   @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // Provider payout request. The amount is debited (held) at request time to
@@ -1028,5 +1042,94 @@ enum DisputeResolution {
   FULL_REFUND
   PARTIAL_REFUND
   NO_REFUND
+}
+
+// ============================================================
+// Job queue (durable, PostgreSQL-backed) & async side-effects
+// ============================================================
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  DEAD
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  type        String
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  priority    Int       @default(0)
+  dedupeKey   String?
+  availableAt DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Indexes for the claim query (status + due time) and admin stats.
+  @@index([status, availableAt])
+  @@index([type, status])
+  @@index([dedupeKey])
+}
+
+model PlatformDailyStat {
+  id                String   @id @default(cuid())
+  date              DateTime @unique
+  bookingsCreated   Int      @default(0)
+  bookingsCompleted Int      @default(0)
+  bookingsCancelled Int      @default(0)
+  leadsCreated      Int      @default(0)
+  leadsAccepted     Int      @default(0)
+  revenue           Float    @default(0)
+  commission        Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BookingInvoice {
+  id              String   @id @default(cuid())
+  invoiceNumber   String   @unique
+  bookingId       String   @unique
+  customerId      String?
+  providerId      String?
+  serviceCategory String?
+  amount          Float    @default(0)
+  totalAmount     Float    @default(0)
+  platformCharge  Float    @default(0)
+  providerPayout  Float    @default(0)
+  status          String   @default("GENERATED")
+  issuedAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([issuedAt])
+}
+
+// Database backup manifest — one row per logical snapshot written by
+// services/backupService.js (daily/weekly cron + manual admin runs). The
+// snapshot file itself lives on disk (BACKUP_DIR); this row tracks its
+// schedule kind, status, size, per-table row counts and restore history.
+model Backup {
+  id         String   @id @default(cuid())
+  kind       String // DAILY | WEEKLY | MANUAL
+  status     String   @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  filePath   String
+  sizeBytes  Int?
+  rowCounts  Json     @default("{}")
+  error      String?
+  createdAt  DateTime @default(now())
+  restoredAt DateTime?
+
+  @@index([kind, createdAt])
+  @@index([status])
+  @@index([createdAt])
 }
 

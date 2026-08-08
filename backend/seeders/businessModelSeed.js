@@ -65,7 +65,22 @@ export const ADMIN_CONFIG_DEFAULTS = [
   { key: 'generalCategories', value: [], description: 'Service categories open to General-sector providers (defaults to every category not in premiumCategories).' },
 
   // Ranking
-  { key: 'rankingWeights', value: { distanceKm: 0.25, rating: 0.2, providerLevel: 0.15, acceptanceRate: 0.1, cancellationRate: 0.08, responseRate: 0.08, experienceYears: 0.06, reviewCount: 0.05, serviceFee: 0.03 }, description: 'Ranking weights used to compute a provider rank score (tie-breaker model; live matching keeps the fixed priority order).' }
+  { key: 'rankingWeights', value: { distanceKm: 0.25, rating: 0.2, providerLevel: 0.15, acceptanceRate: 0.1, cancellationRate: 0.08, responseRate: 0.08, experienceYears: 0.06, reviewCount: 0.05, serviceFee: 0.03 }, description: 'Ranking weights used to compute a provider rank score (tie-breaker model; live matching keeps the fixed priority order).' },
+
+  // Feature flags (admin toggles, effective within 30s — no redeploy).
+  // Source of truth for definitions/descriptions: services/featureFlagsService.js
+  { key: 'premiumCategoriesEnabled', value: true, description: 'When on, categories in premiumCategories are served only by Premium-sector providers.' },
+  { key: 'discountEnabled', value: true, description: 'When off, provider level discounts are not applied to subscription purchases.' },
+  { key: 'referralEnabled', value: true, description: 'When off, applying referral codes is blocked and no referral bonus is awarded.' },
+  { key: 'referralBonusAmount', value: 250, description: 'Referral bonus (₹) credited to the applicant when a referral code is applied.' },
+  { key: 'maintenanceMode', value: false, description: 'When on, the public API returns 503 (admin routes, login and feature flags stay up).' },
+  { key: 'newFeatureEnabled', value: false, description: 'When on, the newest release is announced to users (dashboard banner).' },
+
+  // Database backup scheduler (services/backupService.js)
+  { key: 'backupScheduleEnabled', value: true, description: 'Master switch for automatic daily/weekly logical backups.' },
+  { key: 'backupDailyTimeUtc', value: '02:00', description: 'Daily backup time in UTC (HH:MM, 24h).' },
+  { key: 'backupWeeklyDay', value: 0, description: 'Weekly backup day of week, 0 = Sunday … 6 = Saturday (UTC).' },
+  { key: 'backupRetentionCount', value: 14, description: 'Number of most recent backups to keep on disk (older snapshots are pruned automatically).' }
 ];
 
 export async function seedBusinessModelIfEmpty() {

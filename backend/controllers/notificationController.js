@@ -1,11 +1,41 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parseCursor, sliceCursorPage } from '../utils/pagination.js';
 
 export const NotificationController = {
   getAll: async (req, res) => {
     try {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const where = req.user.role === 'admin' ? {} : { userId: req.user.id };
+      const cursorToken = String(req.query.cursor || '').trim();
+      const cursorMode = cursorToken || String(req.query.mode || '').toLowerCase() === 'cursor';
+
+      // Cursor (keyset) mode — opt-in. Backward-compatible: without `cursor`
+      // or `mode=cursor` the endpoint keeps returning a plain array.
+      if (cursorMode) {
+        const cursor = cursorToken ? parseCursor(cursorToken) : null;
+        if (cursorToken && !cursor) {
+          return sendApiError(res, 400, 'INVALID_CURSOR', 'Invalid pagination cursor.');
+        }
+        const cursorWhere = cursor
+          ? (cursor.date
+              ? { OR: [{ createdAt: { lt: cursor.date } }, { createdAt: cursor.date, id: { lt: cursor.id } }] }
+              : { id: { lt: cursor.id } })
+          : {};
+
+        const [raw, total] = await Promise.all([
+          prisma.notification.findMany({
+            where: { ...where, ...cursorWhere },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: limit + 1
+          }),
+          prisma.notification.count({ where })
+        ]);
+
+        const { items, nextCursor, hasMore } = sliceCursorPage(raw, limit);
+        return sendApiSuccess(res, 200, { notifications: items, pagination: { total, nextCursor, hasMore } });
+      }
+
       const notifications = await prisma.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },

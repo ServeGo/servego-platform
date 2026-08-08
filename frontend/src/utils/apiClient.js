@@ -2,7 +2,7 @@
  * Production-grade API client with retry logic, error handling, and token refresh
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 const API_BASES = [API_BASE_URL];
 

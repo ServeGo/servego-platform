@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
 
 export const TicketController = {
   getAll: async (req, res) => {
@@ -9,17 +10,18 @@ export const TicketController = {
       }
 
       const role = req.user.role;
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
 
-      if (role !== 'admin') {
-        const tickets = await prisma.ticket.findMany({
-          where: { OR: [{ userId: req.user.id }, { userId: null, requesterEmail: req.user.email }] },
-          orderBy: { createdAt: 'desc' }
-        });
-        return sendApiSuccess(res, 200, tickets);
-      }
+      const where = role !== 'admin'
+        ? { OR: [{ userId: req.user.id }, { userId: null, requesterEmail: req.user.email }] }
+        : {};
 
-      const tickets = await prisma.ticket.findMany({ orderBy: { createdAt: 'desc' } });
-      return sendApiSuccess(res, 200, tickets);
+      const [tickets, total] = await Promise.all([
+        prisma.ticket.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
+        prisma.ticket.count({ where })
+      ]);
+
+      return sendApiSuccess(res, 200, { tickets, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve support tickets', err.message);
     }

@@ -20,6 +20,9 @@
 13. [Customer architecture & workflows](#13-customer-architecture--workflows)
 14. [Frontend architecture & data orchestration](#14-frontend-architecture--data-orchestration)
 15. [Background services (cron / lead timers / email / cloudinary / audit)](#15-background-services-cron--lead-timers--email--cloudinary--audit)
+    - [15.5 Durable job queue (Postgres-backed)](#155-durable-job-queue-postgres-backed)
+    - [15.6 Maps & live location tracking](#156-maps--live-location-tracking)
+    - [15.7 Search & discovery (ranked Postgres)](#157-search--discovery-ranked-postgres)
 16. [Runtime behavior (server boot & realtime)](#16-runtime-behavior-server-boot--realtime)
 17. [Testing](#17-testing)
 18. [Known implementation caveats](#18-known-implementation-caveats)
@@ -28,6 +31,7 @@
 21. [Environment variables](#21-environment-variables)
 22. [Non-functional requirements](#22-non-functional-requirements)
 23. [Project metrics](#23-project-metrics)
+24. [Sparse-Plus additions](#24-sparse-plus-additions)
 
 ---
 
@@ -72,9 +76,9 @@
 
 ### 1.3 Database (Prisma + PostgreSQL)
 - Location: `backend/prisma/`
-- Prisma schema: `backend/prisma/schema.prisma` (30 models + 16 enums)
+- Prisma schema: `backend/prisma/schema.prisma` (40 models + 26 enums)
 - Client singleton: `backend/prisma/client.js`
-- Migrations: `backend/prisma/migrations/*` — 20 migrations from the initial schema through the business-model v2 upgrade (see §6.7)
+- Migrations: `backend/prisma/migrations/*` — 33 migrations from the initial schema through the durable job queue, ranked search (§6.7, §15.7), DB backups and performance indexes (§6.7, §24)
 
 ### 1.4 Service catalog & business-model seeding
 - `backend/seeders/servicesSeed.js` — 20 curated service categories (Electrician, Plumber, AC Repair, Home Cleaning, Deep Cleaning, Painting, Appliance Repair, Carpentry, Home Maintenance, Pest Control, Salon at Home, Sofa Cleaning, Water Tank Cleaning, Appliance Installation, Modular Kitchen, Interior Design, Packers & Movers, CCTV Installation, Geyser & Water Heater, Tile & Grouting)
@@ -225,7 +229,7 @@ servego-platform/
 │   ├── seeders/                    # servicesSeed.js, businessModelSeed.js
 │   ├── prisma/                     # schema.prisma, client.js, seed.js, migrations/
 │   ├── scripts/                    # cleanup-db.js, migrate-photos-to-cloudinary.js, fix-html-entity-descriptions.js, check-experience.js
-│   └── tests/                      # node --test suite (auth, availability, integration, response, runtimeConfig, socketAuth, workflow)
+│   └── tests/                      # node --test suite (auth, availability, integration, response, runtimeConfig, socketAuth, workflow, queue, maps, tracking, search, payment, featureFlags, backups, pagination)
 └── frontend/
     ├── src/
     │   ├── App.jsx                 # routing + role layouts + admin sidebar
@@ -275,204 +279,214 @@ Each module below is documented as **Purpose / Endpoints / Permissions / Busines
 ### 3.1 Authentication & user management
 **Purpose:** Registration, login, password reset, token refresh and profile/identity management for all three roles.
 **Endpoints:**
-- `POST /api/auth/register` → `UserController.register` (customer/provider signup; creates linked `Customer`/`Provider`, referral code, 4-digit verification code, `AuthEvent`)
-- `POST /api/auth/login` → `UserController.login` (rate-limited; IP failed-attempt lockout after 5; blocks non-ACTIVE accounts and blocked providers)
-- `POST /api/auth/forgot-password` → `UserController.forgotPassword` (rate-limited; SHA-256 token hash, 15-min expiry, nodemailer reset email)
-- `POST /api/auth/reset-password` → `UserController.resetPassword` (rate-limited; validates strength, updates password)
-- `POST /api/auth/refresh` → `UserController.refreshToken` (returns new token pair)
-- `GET /api/auth/me` → `UserController.getMe` (requireAuth; includes customerProfile + providerProfile)
-- `GET /api/users` → `UserController.getUsers` (admin; paginated + role/status/search filters)
-- `PATCH /api/users/:id/profile` → `UserController.updateProfile` (self or admin)
+- `POST /api/v1/auth/register` → `UserController.register` (customer/provider signup; creates linked `Customer`/`Provider`, referral code, 4-digit verification code, `AuthEvent`)
+- `POST /api/v1/auth/login` → `UserController.login` (rate-limited; IP failed-attempt lockout after 5; blocks non-ACTIVE accounts and blocked providers)
+- `POST /api/v1/auth/forgot-password` → `UserController.forgotPassword` (rate-limited; SHA-256 token hash, 15-min expiry, nodemailer reset email)
+- `POST /api/v1/auth/reset-password` → `UserController.resetPassword` (rate-limited; validates strength, updates password)
+- `POST /api/v1/auth/refresh` → `UserController.refreshToken` (returns new token pair)
+- `GET /api/v1/auth/me` → `UserController.getMe` (requireAuth; includes customerProfile + providerProfile)
+- `GET /api/v1/users` → `UserController.getUsers` (admin; paginated + role/status/search filters)
+- `PATCH /api/v1/users/:id/profile` → `UserController.updateProfile` (self or admin)
 **Permissions:** auth endpoints public (rate-limited); `GET /users` admin-only; `PATCH /users/:id/profile` self or admin.
 **Business rules:** non-ACTIVE accounts blocked at login; password reset token hashed (SHA-256) with 15-min TTL; 5-failed-attempt IP lockout in a 15-min window.
 
 ### 3.2 Service Providers (Partners)
 **Purpose:** Public provider discovery, profile management, availability and verification.
 **Endpoints:**
-- `GET /api/providers` → `ProviderController.getAll` (optionalAuth; public = ACTIVE + verified; admin sees all; providers see own)
-- `GET /api/providers/by-approved-service` → `ProviderServiceDiscoveryController.getApprovedProvidersByServiceName` (public; rating/experience sort, location filter)
-- `GET /api/providers/:id` → `ProviderController.getById` (optionalAuth; hides contact details from non-owner/admin)
-- `GET /api/providers/:id/services` → `ProviderController.getProviderServices` (optionalAuth; pending/denied private to owner/admin)
-- `GET /api/providers/:id/analytics` → `ProviderAnalyticsController.getProviderAnalytics` (provider or admin; 7d/30d/90d)
-- `PUT /api/providers/me/availability` → `ProviderController.updateMyAvailability` (provider)
-- `POST /api/providers/:id/services/register` → `ProviderController.registerProviderService` (duplicate-guarded)
-- `PATCH /api/providers/:id/profile` → `ProviderController.updateProfile` (recomputes `profileComplete`)
-- `PATCH /api/providers/:id/availability` / `PUT /api/providers/:id/availability` → `ProviderController.updateAvailability` (validates non-overlapping slots, syncs `AvailabilitySlot`)
-- `PATCH /api/providers/:id/verify` → `ProviderController.verify` (admin; triggers reputation refresh + audit log)
+- `GET /api/v1/providers` → `ProviderController.getAll` (optionalAuth; public = ACTIVE + verified; admin sees all; providers see own)
+- `GET /api/v1/providers/by-approved-service` → `ProviderServiceDiscoveryController.getApprovedProvidersByServiceName` (public; rating/experience sort, location filter)
+- `GET /api/v1/providers/:id` → `ProviderController.getById` (optionalAuth; hides contact details from non-owner/admin)
+- `GET /api/v1/providers/:id/services` → `ProviderController.getProviderServices` (optionalAuth; pending/denied private to owner/admin)
+- `GET /api/v1/providers/:id/analytics` → `ProviderAnalyticsController.getProviderAnalytics` (provider or admin; 7d/30d/90d)
+- `PUT /api/v1/providers/me/availability` → `ProviderController.updateMyAvailability` (provider)
+- `PATCH /api/v1/providers/me/location` → `ProviderController.updateMyLocation` (provider; base GPS + `maxRadiusKm`)
+- `PATCH /api/v1/providers/me/availability-status` → `ProviderController.updateMyAvailabilityStatus` (provider; `isOnline` / `acceptingBookings` toggles)
+- `GET /api/v1/providers/me/route-plan` → `ProviderController.getMyRoutePlan` (provider; optimized visit order for upcoming jobs, §15.6)
+- `POST /api/v1/providers/:id/services/register` → `ProviderController.registerProviderService` (duplicate-guarded)
+- `PATCH /api/v1/providers/:id/profile` → `ProviderController.updateProfile` (recomputes `profileComplete`)
+- `PATCH /api/v1/providers/:id/availability` / `PUT /api/v1/providers/:id/availability` → `ProviderController.updateAvailability` (validates non-overlapping slots, syncs `AvailabilitySlot`)
+- `PATCH /api/v1/providers/:id/verify` → `ProviderController.verify` (admin; triggers reputation refresh + audit log)
 **Permissions:** public read; profile/availability writes = owner (provider) or admin; verify = admin.
 **Business rules:** public listings only show ACTIVE + verified providers; availability slots must not overlap; profile edits recompute `profileComplete`; verification refreshes reputation and writes an audit log.
 
 ### 3.3 Provider-owned service registry
 **Purpose:** Provider-offered service registration and the admin approval/denial workflow.
 **Endpoints:**
-- `POST /api/provider-services` → `ProviderController.registerOwnProviderService` (provider; requires complete + verified profile)
-- `GET /api/provider-services/mine` → `ProviderController.getMyProviderServices` (provider)
-- `GET /api/provider-services` → `AdminProviderServiceController.getPendingRequests` (admin; `?status=` filter)
-- `GET /api/admin/provider-service-requests` → `AdminProviderServiceController.getPendingRequests` (admin)
-- `PATCH /api/admin/provider-service-requests/:id/approve` → `AdminProviderServiceController.approveService`
-- `PATCH /api/admin/provider-service-requests/:id/deny` → `AdminProviderServiceController.denyService`
-- `GET /api/admin/provider-service-items` → `AdminProviderServiceItemsController.getAll` (combined PENDING/DENIED/APPROVED feed)
-- `POST /api/admin/providers/reputation/refresh` → `AdminProviderServiceController.refreshReputation`
+- `POST /api/v1/provider-services` → `ProviderController.registerOwnProviderService` (provider; requires complete + verified profile)
+- `GET /api/v1/provider-services/mine` → `ProviderController.getMyProviderServices` (provider)
+- `GET /api/v1/provider-services` → `AdminProviderServiceController.getPendingRequests` (admin; `?status=` filter)
+- `GET /api/v1/admin/provider-service-requests` → `AdminProviderServiceController.getPendingRequests` (admin)
+- `PATCH /api/v1/admin/provider-service-requests/:id/approve` → `AdminProviderServiceController.approveService`
+- `PATCH /api/v1/admin/provider-service-requests/:id/deny` → `AdminProviderServiceController.denyService`
+- `GET /api/v1/admin/provider-service-items` → `AdminProviderServiceItemsController.getAll` (combined PENDING/DENIED/APPROVED feed)
+- `POST /api/v1/admin/providers/reputation/refresh` → `AdminProviderServiceController.refreshReputation`
 **Permissions:** provider can register + view own; admin approves/denies and refreshes reputation.
 **Business rules:** service requests are duplicate-guarded; approval emits `serviceApproved` / `providerService:approved` socket events and updates the active-specialist count.
 
 ### 3.4 Bookings
 **Purpose:** Core booking lifecycle: create, view, timeline audit, state-machine transitions and booking chat.
 **Endpoints:**
-- `GET /api/bookings` → `BookingController.getAll` (role-scoped: customer=own, provider=own providerId, admin=all; paginated)
-- `GET /api/bookings/:id` → `BookingController.getById` (ownership enforced)
-- `GET /api/bookings/:id/timeline` → `BookingController.getTimeline` (admin; statusHistory + `BookingEvent` audit trail)
-- `POST /api/bookings` → `BookingController.create` (broadcast: creates booking + lead and opens an offer to every eligible provider; double-booking guards; `Serializable` transaction; socket events)
-- `PATCH /api/bookings/:id/status` → `BookingController.updateStatus` (state machine + permissions + verification code for ONGOING→COMPLETED)
-- `PATCH /api/bookings/:id/accept` → `BookingController.transition('CONFIRMED')` (provider)
-- `PATCH /api/bookings/:id/decline` → `BookingController.transition('CANCELLED')` (provider, reason required; withdraws only that provider's open offer)
-- `PATCH /api/bookings/:id/cancel` → `BookingController.transition('CANCELLED')` (customer/provider/admin, reason required)
-- `PATCH /api/bookings/:id/complete` → `BookingController.transition('COMPLETED')` (provider; requires the customer's 4-digit verification code; consumes a lead, credits earnings, checks promotion)
-- `POST /api/bookings/:id/messages` → `BookingController.addMessage` (booking chat, 2000-char limit, socket events)
-- `GET /api/bookings/:id/messages` → `BookingController.getMessages`
-- `GET /api/admin/bookings` → `BookingController.getAll` (admin alias of the bookings list)
+- `GET /api/v1/bookings` → `BookingController.getAll` (role-scoped: customer=own, provider=own providerId, admin=all; paginated)
+- `GET /api/v1/bookings/:id` → `BookingController.getById` (ownership enforced)
+- `GET /api/v1/bookings/:id/timeline` → `BookingController.getTimeline` (admin; statusHistory + `BookingEvent` audit trail)
+- `POST /api/v1/bookings` → `BookingController.create` (broadcast: creates booking + lead and opens an offer to every eligible provider; double-booking guards; `Serializable` transaction; socket events)
+- `PATCH /api/v1/bookings/:id/status` → `BookingController.updateStatus` (state machine + permissions + verification code for ONGOING→COMPLETED)
+- `PATCH /api/v1/bookings/:id/accept` → `BookingController.transition('CONFIRMED')` (provider)
+- `PATCH /api/v1/bookings/:id/decline` → `BookingController.transition('CANCELLED')` (provider, reason required; withdraws only that provider's open offer)
+- `PATCH /api/v1/bookings/:id/cancel` → `BookingController.transition('CANCELLED')` (customer/provider/admin, reason required)
+- `PATCH /api/v1/bookings/:id/complete` → `BookingController.transition('COMPLETED')` (provider; requires the customer's 4-digit verification code; consumes a lead, credits earnings, checks promotion)
+- `POST /api/v1/bookings/:id/messages` → `BookingController.addMessage` (booking chat, 2000-char limit, socket events)
+- `GET /api/v1/bookings/:id/messages` → `BookingController.getMessages`
+- `GET /api/v1/bookings/:id/tracking` → `BookingController.getTracking` (customer/provider/admin snapshot with live ETA, distance, route polyline, dispatch phase)
+- `GET /api/v1/bookings/:id/track-history` → `BookingController.getTrackHistory` (bounded `BookingLocationUpdate` telemetry)
+- `PATCH /api/v1/bookings/:id/location` → `BookingController.updateLocation` (provider; REST fallback for live GPS pings)
+- `POST /api/v1/bookings/:id/on-the-way` → `BookingController.onTheWay` (provider; dispatch phase → `ON_THE_WAY`, notifies customer)
+- `POST /api/v1/bookings/:id/arrived` → `BookingController.arrived` (provider; dispatch phase → `ARRIVED`, notifies customer)
+- `GET /api/v1/admin/bookings` → `BookingController.getAll` (admin alias of the bookings list)
 **Permissions:** customers = own bookings; providers = own; admin = all; state transitions are role-gated (accept/decline/complete = provider, cancel = any party, status = owner).
 **Business rules:** creation runs in a `Serializable` transaction with double-booking guards; the request is broadcast to every eligible provider and the first to accept wins (other open offers auto-cancelled); CONFIRMED→ONGOING stamps `startedAt` (no code); ONGOING→COMPLETED requires the customer's 4-digit verification code and stamps `completedAt`, consumes one lead, credits earnings net of commission, refreshes reputation and evaluates promotion; every transition writes statusHistory + `BookingEvent`.
 
 ### 3.5 Leads (ServeGo lead engine — provider-facing)
 **Purpose:** Broadcast, view, accept, reject and track booking leads (paid marketplace interaction).
 **Endpoints:**
-- `GET /api/leads` → `LeadController.getMine` (provider → open offers + accepted history; customer → their leads; admin blocked)
-- `GET /api/leads/:id` → `LeadController.getById` (full assignment/transfer ledger; role-aware ownership)
-- `PATCH /api/leads/:id/view` → `LeadController.view` (provider; NEW → VIEWED, does not consume a lead)
-- `PATCH /api/leads/:id/accept` → `LeadController.accept` (provider; first-accept-wins via `acceptLeadForBooking`)
-- `PATCH /api/leads/:id/reject` → `LeadController.reject` (provider; withdraws ONLY their own open offer; if any remain the lead/booking stay PENDING and are re-pointed to another offered provider, otherwise the lead is settled and the booking auto-cancelled)
+- `GET /api/v1/leads` → `LeadController.getMine` (provider → open offers + accepted history; customer → their leads; admin blocked)
+- `GET /api/v1/leads/:id` → `LeadController.getById` (full assignment/transfer ledger; role-aware ownership)
+- `PATCH /api/v1/leads/:id/view` → `LeadController.view` (provider; NEW → VIEWED, does not consume a lead)
+- `PATCH /api/v1/leads/:id/accept` → `LeadController.accept` (provider; first-accept-wins via `acceptLeadForBooking`)
+- `PATCH /api/v1/leads/:id/reject` → `LeadController.reject` (provider; withdraws ONLY their own open offer; if any remain the lead/booking stay PENDING and are re-pointed to another offered provider, otherwise the lead is settled and the booking auto-cancelled)
 **Permissions:** provider = leads with an open offer (`LeadAssignmentHistory.isCurrent`) or accepted history; customer = their leads; admin blocked on the public lead routes (admin uses §3.15).
 **Business rules:** `view` does not consume a lead; `accept` is first-accept-wins — the booking flips PENDING→CONFIRMED and every other provider's open offer is auto-cancelled (`LeadStatus.CANCELLED`, `isCurrent=false`, reason `ACCEPTED_BY_ANOTHER_PROVIDER`); `reject` withdraws only the rejecting provider's offer and never consumes a lead; the whole broadcast is recorded in `LeadAssignmentHistory` and runs in a `Serializable` transaction.
 
 ### 3.6 Subscriptions (provider)
 **Purpose:** Plan catalog, current subscription state, remaining leads, purchase/upgrade and invoice history.
 **Endpoints:**
-- `GET /api/subscriptions/plans` → `SubscriptionController.getPlans` (active plans annotated with provider-level discount)
-- `GET /api/subscriptions/me` → `SubscriptionController.getCurrent` (level, remaining leads, sector, plan)
-- `GET /api/subscriptions/remaining` → `SubscriptionController.remaining` (remainingLeads, leadCount, level, status, paymentStatus, computed `active` via `subscriptionIsActive`)
-- `POST /api/subscriptions/purchase` → `SubscriptionController.purchase` (purchase/upgrade; applies level discount; emits payment-success → invoice → `subscription:purchased` notifications)
-- `GET /api/subscriptions/transactions` → `SubscriptionController.history` (invoice history)
-- `GET /api/subscriptions/transactions/:id` → `SubscriptionController.getTransaction` (provider owner or admin)
+- `GET /api/v1/subscriptions/plans` → `SubscriptionController.getPlans` (active plans annotated with provider-level discount)
+- `GET /api/v1/subscriptions/me` → `SubscriptionController.getCurrent` (level, remaining leads, sector, plan)
+- `GET /api/v1/subscriptions/remaining` → `SubscriptionController.remaining` (remainingLeads, leadCount, level, status, paymentStatus, computed `active` via `subscriptionIsActive`)
+- `POST /api/v1/subscriptions/purchase` → `SubscriptionController.purchase` (purchase/upgrade; applies level discount; emits payment-success → invoice → `subscription:purchased` notifications)
+- `GET /api/v1/subscriptions/transactions` → `SubscriptionController.history` (invoice history)
+- `GET /api/v1/subscriptions/transactions/:id` → `SubscriptionController.getTransaction` (provider owner or admin)
 **Permissions:** all provider-role routes; transaction detail also admin.
 **Business rules:** the free lead is granted automatically and cannot be purchased; discounts come from the permanent provider level and never apply to the free plan; first purchase upgrades the provider sector GENERAL → PREMIUM (permanent); the subscription row mirrors the last purchase (price, discount, finalAmount, paymentStatus, paymentMethod/gateway, transactionId, invoiceNumber).
 
 ### 3.7 Provider levels / performance
 **Purpose:** Live level, performance metrics, promotions and level history for the provider dashboard.
 **Endpoints:**
-- `GET /api/provider-performance/me` → `ProviderBusinessController.getMyPerformance` (level + live metrics + `levelOrder`)
-- `GET /api/level-rules` → `ProviderBusinessController.getLevelRules` (active rules: thresholds + discounts)
-- `GET /api/promotions/me` → `ProviderBusinessController.getMyPromotions`
-- `POST /api/promotions/:id/acknowledge` → `ProviderBusinessController.acknowledgePromotion`
-- `GET /api/provider-level-history/me` → `ProviderBusinessController.getMyLevelHistory`
+- `GET /api/v1/provider-performance/me` → `ProviderBusinessController.getMyPerformance` (level + live metrics + `levelOrder`)
+- `GET /api/v1/level-rules` → `ProviderBusinessController.getLevelRules` (active rules: thresholds + discounts)
+- `GET /api/v1/promotions/me` → `ProviderBusinessController.getMyPromotions`
+- `POST /api/v1/promotions/:id/acknowledge` → `ProviderBusinessController.acknowledgePromotion`
+- `GET /api/v1/provider-level-history/me` → `ProviderBusinessController.getMyLevelHistory`
 **Permissions:** provider role.
 **Business rules:** provider level is PERMANENT and based purely on lifetime completed jobs (BRONZE→DIAMOND); promotions are recorded once per level-up and can be acknowledged; level rules are cached 60s.
 
 ### 3.8 Notifications
 **Purpose:** In-app notification inbox + realtime push.
 **Endpoints:**
-- `GET /api/notifications` → `NotificationController.getAll` (limit param; admin sees all)
-- `POST /api/notifications` → `NotificationController.create` (self or admin only)
-- `PATCH /api/notifications/:id/read` → `NotificationController.read`
-- `PATCH /api/notifications/read-all` → `NotificationController.readAll`
-- `DELETE /api/notifications` → `NotificationController.clearAll`
+- `GET /api/v1/notifications` → `NotificationController.getAll` (limit param; admin sees all)
+- `POST /api/v1/notifications` → `NotificationController.create` (self or admin only)
+- `PATCH /api/v1/notifications/:id/read` → `NotificationController.read`
+- `PATCH /api/v1/notifications/read-all` → `NotificationController.readAll`
+- `DELETE /api/v1/notifications` → `NotificationController.clearAll`
 **Permissions:** self or admin (create); reads scoped to owner (admin sees all).
 **Business rules:** notifications persist in `Notification` rows and are pushed to the owner's socket room (`notification:new`).
 
 ### 3.9 Support tickets
 **Purpose:** Support ticket creation (authenticated + public contact form), resolution and status management.
 **Endpoints:**
-- `GET /api/tickets` → `TicketController.getAll` (role-scoped; matches own userId OR requesterEmail)
-- `POST /api/tickets` → `TicketController.create` (authenticated; optional `relatedBookingId` ownership check)
-- `PATCH /api/tickets/:id/resolve` → `TicketController.resolve` (admin; response text required)
-- `PATCH /api/admin/tickets/:id/resolve` → `TicketController.resolve` (admin alias)
-- `POST /api/support-tickets` → `TicketController.create` (public contact form, optionalAuth, rate-limited)
-- `PATCH /api/support-tickets/:id/status` → `TicketController.setStatus` (admin; OPEN/RESOLVED/CLOSED)
+- `GET /api/v1/tickets` → `TicketController.getAll` (role-scoped; matches own userId OR requesterEmail)
+- `POST /api/v1/tickets` → `TicketController.create` (authenticated; optional `relatedBookingId` ownership check)
+- `PATCH /api/v1/tickets/:id/resolve` → `TicketController.resolve` (admin; response text required)
+- `PATCH /api/v1/admin/tickets/:id/resolve` → `TicketController.resolve` (admin alias)
+- `POST /api/v1/support-tickets` → `TicketController.create` (public contact form, optionalAuth, rate-limited)
+- `PATCH /api/v1/support-tickets/:id/status` → `TicketController.setStatus` (admin; OPEN/RESOLVED/CLOSED)
 **Permissions:** resolve/status admin-only; public form rate-limited (15-min window).
 **Business rules:** new tickets raise `adminAlert:newSupportTicket` to the admin room; resolution requires a response.
 
 ### 3.10 Reviews
 **Purpose:** Customer reviews after completed bookings + admin moderation.
 **Endpoints:**
-- `GET /api/reviews` → `ReviewController.getAll` (admin)
-- `POST /api/reviews` → `ReviewController.create` (customer-only, 1 review per booking (`@@unique([bookingId])`), requires COMPLETED booking, refreshes provider reputation)
-- `GET /api/providers/:id/reviews` → `ReviewController.getByProvider` (public)
-- `DELETE /api/reviews/:id` → `ReviewController.deleteOne` (admin moderation, reason required)
+- `GET /api/v1/reviews` → `ReviewController.getAll` (admin)
+- `POST /api/v1/reviews` → `ReviewController.create` (customer-only, 1 review per booking (`@@unique([bookingId])`), requires COMPLETED booking, refreshes provider reputation)
+- `GET /api/v1/providers/:id/reviews` → `ReviewController.getByProvider` (public)
+- `DELETE /api/v1/reviews/:id` → `ReviewController.deleteOne` (admin moderation, reason required)
 **Permissions:** create = customer; delete = admin; provider reviews public.
 **Business rules:** one review per booking (unique `bookingId`); review creation refreshes the provider's aggregated reputation.
 
 ### 3.11 Payments
 **Purpose:** Payment ledger for bookings.
 **Endpoints:**
-- `GET /api/payments` → `PaymentController.getAll` (role-scoped; admin=all)
-- `POST /api/payments` → `PaymentController.create` (cash-after-job only; UPI/card rejected until gateway configured)
-- `POST /api/payments/initiate` → `PaymentController.create` (alias)
-- `POST /api/payments/webhook` → `PaymentController.webhook` (501 — no gateway configured)
+- `GET /api/v1/payments` → `PaymentController.getAll` (role-scoped; admin=all)
+- `POST /api/v1/payments` → `PaymentController.create` (cash-after-job only; UPI/card rejected until gateway configured)
+- `POST /api/v1/payments/initiate` → `PaymentController.create` (alias)
+- `POST /api/v1/payments/webhook` → `PaymentController.webhook` (501 — no gateway configured)
 **Permissions:** role-scoped reads; creation authenticated.
 **Business rules:** only `CASH` payment mode is accepted; online-gateway flows return `501 NOT_IMPLEMENTED` until a gateway is wired in.
 
 ### 3.12 Referrals / ambassador
 **Purpose:** Customer referral program with a ₹250 bonus.
 **Endpoints:**
-- `POST /api/referrals/apply` → `ReferralsController.applyReferral` (₹250 bonus, transactional)
-- `GET /api/referrals/me` → `ReferralsController.getMeReferral`
-- `POST /api/referrals/generate` → `ReferralsController.generate`
-- `POST /api/referrals/claim` → `ReferralsController.applyReferral` (alias)
+- `POST /api/v1/referrals/apply` → `ReferralsController.applyReferral` (₹250 bonus, transactional)
+- `GET /api/v1/referrals/me` → `ReferralsController.getMeReferral`
+- `POST /api/v1/referrals/generate` → `ReferralsController.generate`
+- `POST /api/v1/referrals/claim` → `ReferralsController.applyReferral` (alias)
 **Permissions:** authenticated customers.
 **Business rules:** referral bonus is bookkeeping only (no automatic wallet payout) — see §18.
 
 ### 3.13 Services (global catalog)
 **Purpose:** Global service-category catalog, search, category pages and admin CRUD/hide.
 **Endpoints:**
-- `GET /api/services` → `ServiceController.getAll` (public, includes derived `activeSpecialistCount`)
-- `GET /api/services/search` → `ServiceController.search` (query/location/category filters)
-- `GET /api/categories/:slug` → `ServiceController.getCategoryBySlug` (includes providers + active specialist count)
-- `GET /api/categories/:slug/providers` → `ProviderServiceDiscoveryController.getApprovedProvidersByCategory`
-- `GET /api/categories/:id/active-count` → `ServiceController.getActiveCount`
-- `POST /api/services` → `ServiceController.create` (admin)
-- `DELETE /api/services/:id` → `ServiceController.deleteOne` (admin; `confirm=true` guard)
-- `PATCH /api/services/:id` → `ServiceController.updateOne` (admin)
-- `PATCH /api/services/:id/hide` → `ServiceController.hideOne` (admin)
+- `GET /api/v1/services` → `ServiceController.getAll` (public, includes derived `activeSpecialistCount`)
+- `GET /api/v1/services/search` → `ServiceController.search` (query/location/category filters)
+- `GET /api/v1/categories/:slug` → `ServiceController.getCategoryBySlug` (includes providers + active specialist count)
+- `GET /api/v1/categories/:slug/providers` → `ProviderServiceDiscoveryController.getApprovedProvidersByCategory`
+- `GET /api/v1/categories/:id/active-count` → `ServiceController.getActiveCount`
+- `POST /api/v1/services` → `ServiceController.create` (admin)
+- `DELETE /api/v1/services/:id` → `ServiceController.deleteOne` (admin; `confirm=true` guard)
+- `PATCH /api/v1/services/:id` → `ServiceController.updateOne` (admin)
+- `PATCH /api/v1/services/:id/hide` → `ServiceController.hideOne` (admin)
 **Permissions:** reads public; writes/hide admin.
 **Business rules:** delete is blocked (409) when active providers or bookings reference the category; `activeSpecialistCount` is derived from approved `ProviderService` links.
 
 ### 3.14 Admin: dashboard & ops
 **Purpose:** Admin dashboard aggregates, analytics, audit logs and provider account-status control.
 **Endpoints:**
-- `GET /api/admin/dashboard` → `AdminDashboardController.getSummary` (users/bookings/payments/tickets/services/quality aggregates + escrow volume)
-- `GET /api/admin/analytics` → `AdminDashboardController.getAnalytics` (7d/30d/90d trends, top providers, top services, rating distribution)
-- `GET /api/admin/audit-logs` → `AdminDashboardController.getAuditLogs` (paginated, enriched)
-- `GET /api/admin/providers` → `AdminDashboardController.getPaginatedProviders`
-- `PATCH /api/admin/providers/:id/status` → `AdminProviderStatusController.setStatus` (ACTIVE/ON_HOLD/BLOCKED, notification + audit + socket event)
+- `GET /api/v1/admin/dashboard` → `AdminDashboardController.getSummary` (users/bookings/payments/tickets/services/quality aggregates + escrow volume)
+- `GET /api/v1/admin/analytics` → `AdminDashboardController.getAnalytics` (7d/30d/90d trends, top providers, top services, rating distribution)
+- `GET /api/v1/admin/audit-logs` → `AdminDashboardController.getAuditLogs` (paginated, enriched)
+- `GET /api/v1/admin/providers` → `AdminDashboardController.getPaginatedProviders`
+- `PATCH /api/v1/admin/providers/:id/status` → `AdminProviderStatusController.setStatus` (ACTIVE/ON_HOLD/BLOCKED, notification + audit + socket event)
+- `GET /api/v1/admin/queue/stats` → `QueueController.getStats` (job counts per type/status + worker state, §15.5)
+- `POST /api/v1/admin/queue/requeue` → `QueueController.requeueDead` (all DEAD jobs → PENDING)
 **Permissions:** admin role on every route.
 **Business rules:** provider status changes persist notification + audit log and push `accountStatusChanged` to the provider's socket room.
 
 ### 3.15 Admin: ServeGo business model
 **Purpose:** Admin control of config keys, subscription plans, level rules, the lead ledger, provider performance and business analytics.
 **Endpoints:**
-- `GET /api/admin/configs` → `AdminBusinessController.getConfigs`
-- `PUT/PATCH /api/admin/configs/:key` → `AdminBusinessController.updateConfig` (upsert + cache invalidation)
-- `GET /api/admin/subscription-plans` → `AdminBusinessController.getPlans`
-- `POST /api/admin/subscription-plans` → `AdminBusinessController.createPlan` (level must be unique)
-- `PATCH /api/admin/subscription-plans/:id` → `AdminBusinessController.updatePlan`
-- `GET /api/admin/level-rules` → `AdminBusinessController.getLevelRules`
-- `PATCH /api/admin/level-rules/:id` → `AdminBusinessController.updateLevelRule` (also invalidates the level cache)
-- `GET /api/admin/leads` → `AdminBusinessController.getLeads` (paginated + status filter)
-- `GET /api/admin/leads/:id` → `AdminBusinessController.getLeadById` (full ledger)
-- `GET /api/admin/providers/performance` → `AdminBusinessController.getProviderPerformance` (paginated + search)
-- `GET /api/admin/analytics/cancellations` → `AdminBusinessController.getCancellationAnalytics` (byActor, byReason, recent 50)
-- `GET /api/admin/analytics/subscriptions` → `AdminBusinessController.getSubscriptionAnalytics` (byPlan, revenue totals, recent 20)
-- `GET /api/admin/analytics/promotions` → `AdminBusinessController.getPromotionAnalytics` (byLevel, recent 30)
+- `GET /api/v1/admin/configs` → `AdminBusinessController.getConfigs`
+- `PUT/PATCH /api/v1/admin/configs/:key` → `AdminBusinessController.updateConfig` (upsert + cache invalidation)
+- `GET /api/v1/admin/subscription-plans` → `AdminBusinessController.getPlans`
+- `POST /api/v1/admin/subscription-plans` → `AdminBusinessController.createPlan` (level must be unique)
+- `PATCH /api/v1/admin/subscription-plans/:id` → `AdminBusinessController.updatePlan`
+- `GET /api/v1/admin/level-rules` → `AdminBusinessController.getLevelRules`
+- `PATCH /api/v1/admin/level-rules/:id` → `AdminBusinessController.updateLevelRule` (also invalidates the level cache)
+- `GET /api/v1/admin/leads` → `AdminBusinessController.getLeads` (paginated + status filter)
+- `GET /api/v1/admin/leads/:id` → `AdminBusinessController.getLeadById` (full ledger)
+- `GET /api/v1/admin/providers/performance` → `AdminBusinessController.getProviderPerformance` (paginated + search)
+- `GET /api/v1/admin/analytics/cancellations` → `AdminBusinessController.getCancellationAnalytics` (byActor, byReason, recent 50)
+- `GET /api/v1/admin/analytics/subscriptions` → `AdminBusinessController.getSubscriptionAnalytics` (byPlan, revenue totals, recent 20)
+- `GET /api/v1/admin/analytics/promotions` → `AdminBusinessController.getPromotionAnalytics` (byLevel, recent 30)
 **Permissions:** admin role on every route.
 **Business rules:** config edits invalidate the 30s `AdminConfig` cache; level-rule edits invalidate the 60s level cache; plan level is unique.
 
 ### 3.16 Saved pros & images
 **Purpose:** Customer-saved provider favorites and image uploads to Cloudinary.
 **Endpoints:**
-- `GET /api/saved-pros` → `SavedProController.getMine` (customer)
-- `POST /api/saved-pros` → `SavedProController.save` (upsert; only verified ACTIVE providers)
-- `DELETE /api/saved-pros/:providerId` → `SavedProController.unsave`
-- `POST /api/images/upload` → `ImageController.upload` (optionalAuth; multer memory → Cloudinary; 5MB; JPEG/PNG/WebP/GIF)
+- `GET /api/v1/saved-pros` → `SavedProController.getMine` (customer)
+- `POST /api/v1/saved-pros` → `SavedProController.save` (upsert; only verified ACTIVE providers)
+- `DELETE /api/v1/saved-pros/:providerId` → `SavedProController.unsave`
+- `POST /api/v1/images/upload` → `ImageController.upload` (optionalAuth; multer memory → Cloudinary; 5MB; JPEG/PNG/WebP/GIF)
 **Permissions:** customer role for saved pros; optionalAuth for image upload.
 **Business rules:** favorites only for verified ACTIVE providers; uploads capped at 5MB images.
 
@@ -524,7 +538,7 @@ Each module below is documented as **Purpose / Endpoints / Permissions / Busines
 
 ## 6) Data model architecture (Prisma)
 
-Schema: `backend/prisma/schema.prisma` — 30 models, 16 enums, 20 migrations.
+Schema: `backend/prisma/schema.prisma` — 40 models, 26 enums, 33 migrations.
 
 ### 6.1 User & identity
 | Model | Purpose |
@@ -576,10 +590,10 @@ Schema: `backend/prisma/schema.prisma` — 30 models, 16 enums, 20 migrations.
 | `Ticket` | Support tickets (requesterName/email, subject, message, `status` OPEN/RESOLVED/CLOSED, `adminResponse`, relatedBookingId, resolvedAt) |
 | `AuditLog` | Admin audit trail (actorId/role, action, targetType/targetId, old/new value, ip) |
 
-### 6.6 Enums (16)
-`UserRole, AccountStatus, AuthEventType, BookingStatus, TicketStatus, PaymentStatus, ApprovalStatus, VerificationLevel, ProviderAccountStatus, BadgeType, ProviderLevel, ProviderSector, LeadStatus, SubscriptionStatus, SubscriptionPaymentStatus, CancellationActor`
+### 6.6 Enums (17)
+`UserRole, AccountStatus, AuthEventType, BookingStatus, JobStatus, TicketStatus, PaymentStatus, ApprovalStatus, VerificationLevel, ProviderAccountStatus, BadgeType, ProviderLevel, ProviderSector, LeadStatus, SubscriptionStatus, SubscriptionPaymentStatus, CancellationActor`
 
-### 6.7 Migration history (27)
+### 6.7 Migration history (33)
 1. `init_schema` — core identity, booking, service, review, payment, availability
 2. `approval_status` — provider service approval workflow
 3. `functionality` — notifications, support tickets, referrals
@@ -607,6 +621,12 @@ Schema: `backend/prisma/schema.prisma` — 30 models, 16 enums, 20 migrations.
 25. `wallet` — provider wallet + withdrawal requests
 26. `disputes` — dispute tickets + refunds
 27. `lead_broadcast` — broadcast leads: `LeadStatus.CANCELLED`, first-accept-wins auto-cancel of other offers, verification code moved to completion
+28. `job_queue` — durable queue: `JobStatus` enum + `Job` model (attempts, backoff, priority, dedupeKey, status indexes), `PlatformDailyStat` daily analytics, `BookingInvoice` per booking
+29. `job_result` — add `Job.result` JSONB column so handler return values persist alongside job status
+30. `provider_phase` — provider phase/lifecycle tracking
+31. `search_trgm` — trigram indexes for ranked service search (§15.7)
+32. `backup_manifest` — `Backup` model: kind, status, filePath, createdAt, restoredAt + status/kind indexes (§24.2)
+33. `perf_indexes` — hot-path composite indexes: `Notification(userId,isRead)`, `Review(providerId,createdAt)`, `Review(reviewerId)`, `Provider(accountStatus)`, `ProviderService(providerId)`, `ProviderService(serviceId)`, `ProviderServiceRequest(status,createdAt)`, `WalletTransaction(userId,createdAt)` (§24.3)
 
 ---
 
@@ -658,9 +678,9 @@ The **effective Active state** used for lead eligibility is computed (`subscript
 4. Last payment successful — `paymentStatus === 'PAID'` and lifecycle status not `FAILED`/`CANCELLED`
 5. Not in cooldown — `performance.cooldownUntil` null or in the past
 
-Lead consumption happens **on booking COMPLETED** (`consumeLeadOnCompletion`): `remainingLeads` decrements by 1 and `completedJobsCurrentSubscription` increments; the subscription flips to `INACTIVE` the moment remaining leads reach 0 (`justExpired` is surfaced for notifications). Providers are told via `GET /api/subscriptions/remaining` (`remainingLeads`, `leadCount`, `level`, `status`, `paymentStatus`, computed `active`).
+Lead consumption happens **on booking COMPLETED** (`consumeLeadOnCompletion`): `remainingLeads` decrements by 1 and `completedJobsCurrentSubscription` increments; the subscription flips to `INACTIVE` the moment remaining leads reach 0 (`justExpired` is surfaced for notifications). Providers are told via `GET /api/v1/subscriptions/remaining` (`remainingLeads`, `leadCount`, `level`, `status`, `paymentStatus`, computed `active`).
 
-### 7.4 Admin configuration keys (16)
+### 7.4 Admin configuration keys (20)
 
 `AdminConfig` is a key/value JSON table; defaults live in `ADMIN_CONFIG_DEFAULTS` and are idempotently seeded/backfilled on boot (obsolete legacy keys are auto-removed).
 
@@ -685,6 +705,15 @@ Lead consumption happens **on booking COMPLETED** (`consumeLeadOnCompletion`): `
 
 `rankingWeights` default: `{ distanceKm: 0.25, rating: 0.2, providerLevel: 0.15, acceptanceRate: 0.1, cancellationRate: 0.08, responseRate: 0.08, experienceYears: 0.06, reviewCount: 0.05, serviceFee: 0.03 }`.
 
+Feature-flag keys (`featureFlags.*`) are registered programmatically by `featureFlagsService.js` (§24.1) rather than listed in `ADMIN_CONFIG_DEFAULTS`. Backup scheduling keys are read by `backupService.js` (§24.2):
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `backupRetentionCount` | number | 14 | max snapshots kept per backup kind before pruning |
+| `backupScheduleEnabled` | boolean | true | master switch for the daily/weekly cron |
+| `backupDailyTimeUtc` | string | `02:00` | UTC time for the daily full snapshot |
+| `backupWeeklyDay` | number | 0 | weekday (0=Sunday) for the weekly full snapshot |
+
 ---
 
 ## 8) Lead lifecycle & matching engine
@@ -705,7 +734,7 @@ NEW → VIEWED → ACCEPTED → COMPLETED
 
 ### 8.2 Creation (broadcast)
 - `createBookingWithLead` (in `leadService.js`) creates the booking + lead atomically inside a `Serializable` transaction: it finds eligible providers, ranks them, and **opens an offer to every eligible provider at once** via `LeadAssignmentHistory` (`isCurrent=true`); the booking/lead attach to the top-ranked provider (`Booking.providerId`) only as the default owner, not as an exclusive assignment. Stamps `expiryTime = now + leadTimeoutSeconds` and writes a `BookingEvent`.
-- `providerId` is **optional** on `POST /api/bookings` — a pure broadcast needs no preferred provider; when a `preferredProviderId` is given it is ranked first (must be eligible, else a descriptive error is thrown).
+- `providerId` is **optional** on `POST /api/v1/bookings` — a pure broadcast needs no preferred provider; when a `preferredProviderId` is given it is ranked first (must be eligible, else a descriptive error is thrown).
 - When no eligible provider exists the booking is rejected with `NO_ELIGIBLE_PROVIDERS`.
 - Each lead is a **paid marketplace interaction**: the provider's lead is consumed only when the linked booking reaches **COMPLETED** (rule 4, §7.3).
 
@@ -803,10 +832,10 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 - Frontend: `ProviderDashboard.jsx` tabs — Overview, Bookings, **Leads Inbox**, **Plans & Subscriptions**, **Level & Performance**, Services, Availability, Reviews, Earnings, Notifications, Settings.
 - `ProviderLeadsInbox.jsx`: live lead cards (price, source, distance, time-to-accept countdown), accept/reject actions, cooldown indicator, acceptance timers.
-- `ProviderPlans.jsx`: available plans per level with discount callouts, purchase/upgrade flow, invoice history; remaining-leads + effective-active state comes from `GET /api/subscriptions/remaining` (status badge shows `Status · Payment`).
+- `ProviderPlans.jsx`: available plans per level with discount callouts, purchase/upgrade flow, invoice history; remaining-leads + effective-active state comes from `GET /api/v1/subscriptions/remaining` (status badge shows `Status · Payment`).
 - `ProviderLevelPerformance.jsx`: current level, level progress bars, `ProviderPerformance` metrics (rating, completion rate, response time, monthly leads/earnings), promotion history.
 - Business loop: **register + complete profile → get verified → receive/accept leads → complete jobs (consume leads) → accumulate rating/bookings → level up permanently → bigger plan discount**.
-- Booking chat (`/api/bookings/:id/messages`) and notifications (lead assigned, accepted, subscription purchased, level changed, remaining leads low, cooldown) arrive over socket.io.
+- Booking chat (`/api/v1/bookings/:id/messages`) and notifications (lead assigned, accepted, subscription purchased, level changed, remaining leads low, cooldown) arrive over socket.io.
 
 ---
 
@@ -856,6 +885,56 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 | Cloudinary | `cloudinaryService.js` | upload/destroy via `upload.js` multer memory (5MB, images only) |
 | Email | `emailService.js` | nodemailer (password reset, notifications), `emailView.js` templates |
 | Audit | `auditLogService.js` | `writeAuditLog` writes `AuditLog` rows (admin ops) |
+| Queue | `queueService.js` / `jobHandlers.js` / `worker.js` | durable Postgres job queue (§15.5): booking side-effects (email, notification persistence, analytics, invoice, provider performance) run async, retried with backoff, dead-lettered for admin review |
+
+### 15.5 Durable job queue (Postgres-backed)
+
+Booking and subscription side-effects that used to run **inline in the request path** now run **asynchronously in a durable queue** stored in the same PostgreSQL the app already uses (no Redis/broker dependency).
+
+**Motivation:** email SMTP I/O, analytics aggregation, invoice generation and performance bookkeeping could block a request for seconds and were lost entirely if the process crashed mid-operation. The queue gives at-least-once delivery, retries with exponential backoff, dead-lettering and zero data loss on restart.
+
+**Queue mechanics** (`backend/services/queue/queueService.js`):
+- `enqueueJob({ type, payload, maxAttempts, delayMs, runAt, priority, dedupeKey })` inserts a `Job` row (dedupeKey skips an already-queued logical job).
+- `claimJobs(type)` claims due jobs **atomically** (`updateMany ... WHERE status='PENDING'`), so the API process and any number of worker processes can never process the same job twice.
+- `processClaimedJob` runs the handler; success → `SUCCEEDED` (result JSON persisted); failure → `PENDING` with exponential backoff (`2^(attempt-1)`s + jitter, capped 30s) or `DEAD` once `maxAttempts` is exhausted.
+- `recoverInterruptedJobs()` (called on boot) re-queues stale `PROCESSING` rows older than 5 min (crash/deploy/scale-in safety); `requeueDeadJobs()` resets `DEAD` jobs for a fresh attempt.
+- `startQueueWorkers` / `stopQueueWorkers` / `drainQueueWorkers` manage the in-process worker loops (poll every `QUEUE_POLL_INTERVAL_MS`, batch `QUEUE_CLAIM_BATCH_SIZE`).
+
+**Deployment modes:** workers start inside the API process by default (`QUEUE_WORKERS_ENABLED !== 'false'`); set `QUEUE_WORKERS_ENABLED=false` and run `npm run worker` (standalone `services/queue/worker.js`) for a dedicated worker instance. Both modes share the same table safely.
+
+**Handlers** (`backend/services/queue/jobHandlers.js`): `notification` (persists the already-socket-emitted notification row), `email` (`sendEmail`), `analytics` (atomic `PlatformDailyStat` day upsert/increment), `invoice` (idempotent `BookingInvoice` upsert per booking, `INV-BKG-YYYYMMDD-######`), `performance` (`recordJobStarted` / `recordLateArrival` / `recordLeadIgnored` / `recordLeadExpired` / `recordJobCompleted`).
+
+**Enqueued from request paths:** `notificationService.createNotification` (DB insert), `bookingController` (booking-request/completed emails, analytics counters, invoice on create/complete, `performance.jobStarted` on ONGOING), `cancelBookingPlain` (analytics cancellation counter).
+
+**Admin API:** `GET /api/v1/admin/queue/stats` (per-type/per-status counts + worker state) and `POST /api/v1/admin/queue/requeue` (all DEAD → PENDING), both admin-only.
+
+### 15.6 Maps & live location tracking
+
+**Maps service** (`backend/services/mapsService.js`) is Google-Maps-first with a transparent haversine fallback: every call is key-gated on `GOOGLE_MAPS_API_KEY`. Without the key (dev / no billing) all routing degrades to great-circle math; adding a billing-enabled key with the Geocoding, Directions and Distance Matrix APIs turns the same call sites into real road routing with zero code changes.
+- `haversineKm` / `decodePolyline` — pure math (no deps).
+- `getDrivingInfo(origin, destination)` — Distance Matrix → road `distanceKm` + `durationMin`; haversine + `durationMin: null` without a key.
+- `getRouteGeoJson(origin, destination)` — Directions overview polyline decoded to a GeoJSON `[lng, lat]` LineString; straight line without a key.
+- `reverseGeocode(point)` — Geocoding `formatted_address`; `null` without a key.
+- `sortByRoadDistance(origin, stops, { top })` — batched Distance Matrix ranking; haversine fallback.
+- `optimizeRoute(origin, stops)` — nearest-neighbour visit ordering over one batched Distance Matrix call (origins `[origin, ...stops]`); haversine matrix fallback. Powers the provider **route planner** (single-provider day optimization, not a multi-vehicle VRP).
+- All network calls fail closed (5s AbortController timeout, `fetch`) and never throw into the request path.
+
+**Live tracking** (`backend/services/trackingService.js`, DB-backed telemetry since migration `20260804000001_location_tracking`):
+- `Booking.startLocation` / `endLocation` (JSONB), `providerLatitude` / `providerLongitude` / `providerLocationUpdatedAt`, and a `BookingLocationUpdate` history table (bounded telemetry, retained `locationHistoryClearanceHours`).
+- `updateProviderLocation` — provider pushes a fix for a CONFIRMED/ONGOING booking (socket primary, REST fallback); server-side throttle (`locationUpdateMinIntervalSeconds`, default 3s); captures `startLocation` on the first fix; broadcasts `location:update` to `user:{customerId}` and `user:{providerUserId}` with live `distanceKm`, road `etaMinutes` (falls back to `computeEtaMinutes` at `etaBaseSpeedKph`), `routePolyline`, `providerPhase` and destination.
+- `getBookingTracking` / `getBookingLocationHistory` / `clearLocationHistory` — customer/provider/admin snapshots with ownership checks, staleness (`locationSharingActive`), bounded history (max 200 rows).
+- **Dispatch lifecycle** — `Booking.providerPhase` (null → `ON_THE_WAY` → `ARRIVED`), decoupled from the booking state machine so tracking UX stays independent of CONFIRMED/ONGOING/COMPLETED. `markProviderOnTheWay` / `markProviderArrived` (ownership + active-status guards) update the phase, emit `provider:onTheWay` / `provider:arrived`, and notify the customer (`notifyProviderOnTheWay` / `notifyProviderArrived` in `notificationService.js`). `resetProviderPhase` clears the phase on completion/cancellation.
+- **Routes:** `GET /bookings/:id/tracking`, `GET /bookings/:id/track-history`, `PATCH /bookings/:id/location`, `POST /bookings/:id/on-the-way`, `POST /bookings/:id/arrived` (provider-only); provider ops `PATCH /providers/me/location` (base GPS + `maxRadiusKm`), `PATCH /providers/me/availability-status` (`isOnline` / `acceptingBookings` — now actually written, powers Nearby-Provider matching), `GET /providers/me/route-plan` (`providerRouteService.getRoutePlan` orders upcoming CONFIRMED/ONGOING jobs).
+- **Frontend:** `LiveTrackingMap.jsx` renders MapLibre GL + OpenStreetMap tiles (markers, route line, phase banner); `AppContext` subscribes to `location:update`, `provider:onTheWay`, `provider:arrived` and exposes `shareProviderLocation` / `setProviderDispatchPhase` (socket first, REST fallback); `ProviderLeadsInbox` gets dispatch buttons + GPS share; `BookingCard` shows the Uber-style dispatch stepper; `ProviderProfileView` has base-location/radius/online toggles + route planner.
+
+### 15.7 Search & discovery (ranked Postgres)
+
+**Search service** (`backend/services/searchService.js`) replaces plain `ILIKE '%term%'` matches with **ranked, typo-tolerant** queries backed by `pg_trgm` (enabled + GIN-indexed in migration `20260808000003_search_trgm` on `Service.name` / `description` / `nameNormalized`, `User.name`, `Provider.category` / `bio`). Postgres-only by design — no external search cluster at this scale; if catalog volume and traffic ever outgrow the platform, reindex these same queries into MeiliSearch behind identical function signatures (a queue job hook already exists, §15.5).
+
+- **`rankedServiceMatches(query, { limit })`** (`GET /services?q=…`, `ServiceController.search`) — each catalog row scores as: exact `nameNormalized` (12) > name prefix (8) > name trigram/`word_similarity` (6) > description trigram/`word_similarity` (3); results ordered score desc, then active-specialist count desc (popularity tiebreak), then name. `word_similarity(query, text)` keeps 2–3 char queries usable, where the bare `%` trigram operator needs three characters.
+- **`resolveServiceForQuery(query)`** (`GET /providers/by-approved-service?serviceName=…`, `ProviderServiceDiscoveryController`) — resolves a customer's free-text need ("ac repair servic") to the single closest canonical `Service` (exact > prefix > name trigram), requiring a minimum score so garbage queries `404` instead of silently redirecting to a lookalike. Provider discovery then filters on the resolved `serviceId` (location filter + ACTIVE/verified guards intact) and returns the canonical name as `category`.
+- **Ranking principle:** service-name relevance first, then provider trust (rating / experience / verification); popularity surfaces in the catalog via active-specialist count.
+- **Tests:** `tests/search.test.js` — corpus seeding, empty-query handling, exact>prefix>fuzzy ordering, typo tolerance, description text search, canonical resolution, discovery end-to-end + 404 (DB-backed, auto-skip offline).
 
 ---
 
@@ -870,11 +949,12 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 6. `await schedulePendingBookingAutoCancel()` + `scheduleMonthlyBusinessCycle()`
 7. `warmLeadExpiryTimers()` (resume in-memory lead timers from DB)
 8. Listen on `PORT` (default 4000); log `POSTGRES connected` / `Server listening`
-9. Graceful shutdown on SIGINT/SIGTERM: `socketio.close()`, `server.close()`, `prisma.$disconnect()`
+9. `recoverInterruptedJobs()` (re-queue stale PROCESSING jobs) then `startQueueWorkers()` (in-process queue workers, §15.5)
+10. Graceful shutdown on SIGINT/SIGTERM: `stopQueueWorkers()` + `drainQueueWorkers()` (in-flight jobs finish), `socketio.close()`, `server.close()`, `prisma.$disconnect()`
 
 ### 16.2 Realtime
 - Client connects with `{ token }`; socket.io auth middleware verifies JWT and joins room `user:${userId}` (admins also join `room:admin`).
-- Server pushes to user rooms: `notification:new` / `notification`, `newLead`, `leadAccepted`, `leadRejected`, `leadReassigned`, `leadExpired`, `leadAssignmentFailed`, `bookingUpdated`, `bookingStatusChanged`, `booking:created`, `booking:statusChanged`, `booking:cancelled`, `booking:messageCreated`, `booking:message`, `bookingMessage`, `chatMessageReceived` (booking room), `promotion` / `provider:levelChanged`, `subscription:purchased`, `subscription:paymentSuccess`, `subscription:invoiceGenerated`, `subscription:expired`, `subscription:lowLeads`, `providerAssigned`, `providerChanged`, `providerOnTheWay`, `bookingCompleted`, `provider:cooldown`, `accountStatusChanged`, `providerService:approved`, `providerService:rejected`, `serviceApproved`, `category:activeCountChanged`.
+- Server pushes to user rooms: `notification:new` / `notification`, `newLead`, `leadAccepted`, `leadRejected`, `leadReassigned`, `leadExpired`, `leadAssignmentFailed`, `bookingUpdated`, `bookingStatusChanged`, `booking:created`, `booking:statusChanged`, `booking:cancelled`, `booking:messageCreated`, `booking:message`, `bookingMessage`, `chatMessageReceived` (booking room), `promotion` / `provider:levelChanged`, `subscription:purchased`, `subscription:paymentSuccess`, `subscription:invoiceGenerated`, `subscription:expired`, `subscription:lowLeads`, `providerAssigned`, `providerChanged`, `providerOnTheWay`, `bookingCompleted`, `provider:cooldown`, `accountStatusChanged`, `providerService:approved`, `providerService:rejected`, `serviceApproved`, `category:activeCountChanged`, `location:update` (live GPS fix + ETA + route polyline), `provider:onTheWay` / `provider:arrived` (dispatch lifecycle).
 - Admin room (`room:admin`) receives: `newApprovalRequest`, `adminAlert:newSupportTicket`, `admin:notification` (payment failed, provider suspended, high cancellation, subscription purchased, provider promoted).
 - Controllers reach the io instance via `req.app.get('socketio')`.
 
@@ -886,15 +966,15 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 ## 17) Testing
 
 - Framework: Node built-in `node --test` (no Jest).
-- Run: `node --test` inside `backend/tests/` — 7 suites, 43 tests, all passing.
-- Coverage: `tests/auth.test.js` (JWT + refresh + lockout), `tests/availability.test.js` (slot validation), `tests/integration.test.js` (register→login→book→message→complete happy path against live DB), `tests/response.test.js`, `tests/runtimeConfig.test.js`, `tests/socketAuth.test.js`, `tests/workflow.test.js` (status normalization + transition matrix).
-- Frontend verification: `npm run build` (Vite production build) passes — 1787 modules, ~702 kB bundle.
+- Run: `node --test --test-concurrency=1` inside `backend/tests/` — 15 suites, 103 tests, all passing. (Files must run serially: `backups.test.js` restore test wipes all tables mid-run.)
+- Coverage: `tests/auth.test.js` (JWT + refresh + lockout), `tests/availability.test.js` (slot validation), `tests/integration.test.js` (register→login→book→message→complete happy path against live DB), `tests/response.test.js`, `tests/runtimeConfig.test.js`, `tests/socketAuth.test.js`, `tests/workflow.test.js` (status normalization + transition matrix), `tests/queue.test.js` (backoff, unknown-type rejection, claim/process+result persistence, fail→backoff→DEAD, dedupeKey, requeueDeadJobs), `tests/maps.test.js` (haversine + polyline decoding + distance/route/optimizer keyless fallbacks), `tests/tracking.test.js` (dispatch lifecycle guards with mock client + DB-backed phase persistence and customer notification), `tests/search.test.js` (ranked trigram matching, typo tolerance, canonical service resolution, discovery end-to-end + 404), `tests/payment.test.js`, `tests/featureFlags.test.js` (register/list/get/update/delete + gating), `tests/backups.test.js` (create/list/prune/restore round-trip), `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, booking/notification cursor paging + invalid-cursor 400, encodeCursor round-trip).
+- Frontend verification: `npm run build` (Vite production build) passes — main chunk ~1,630 kB (421 kB gzip) with 16 admin tabs split into per-tab lazy chunks (§24.3).
 
 ---
 
 ## 18) Known implementation caveats
 
-- **ProviderAvailabilityController is not wired**: the `getAvailability`/`getAvailabilityForDate` actions exist in `backend/controllers/providerAvailabilityController.js` but no `GET /api/providers/:id/availability` route is registered in `api.js`; availability today is managed via the `PUT/PATCH /api/providers/.../availability` write routes.
+- **ProviderAvailabilityController is not wired**: the `getAvailability`/`getAvailabilityForDate` actions exist in `backend/controllers/providerAvailabilityController.js` but no `GET /api/v1/providers/:id/availability` route is registered in `api.js`; availability today is managed via the `PUT/PATCH /api/v1/providers/.../availability` write routes.
 - **Gateway payments are stubbed**: only `CASH` payments are accepted; UPI/card flow returns `501 NOT_IMPLEMENTED` until a gateway is configured. Subscription purchases likewise record `paymentStatus: 'PAID'` immediately (no real gateway integration yet).
 - **Referral payout is bookkeeping only**: ₹250 credit is recorded; no automatic wallet payout.
 - **In-memory rate-limit/lockout state**: resets on server restart (single-instance assumption).
@@ -902,6 +982,7 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 - **Penalty/cooldown state persists** in `ProviderPerformance` (`penaltyScore`, `cooldownUntil`, `cooldownCount`), so cooldowns survive restarts.
 - **Provider levels are permanent** (lifetime completed jobs) — there is no demotion; quality is instead policed by the cancellation penalty/cooldown model (§10.2).
 - **AdminConfig cache (30s) and level-rules cache (60s)** mean config/rule edits propagate within ~1 minute.
+- **Queue analytics are increment-based**: a retried `analytics` job increments `PlatformDailyStat` again, so counters are best-effort (derived analytics, not money-critical); `notification`/`invoice` handlers are idempotent (upsert by unique key).
 
 ---
 
@@ -910,12 +991,12 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 ### Backend
 - Entry: `backend/server.js`
 - Router: `backend/routes/api.js`
-- Controllers (22): `UserController, ProviderController, ProviderServiceDiscoveryController, ProviderAvailabilityController, ProviderAnalyticsController, BookingController, LeadController, SubscriptionController, ProviderBusinessController, ReviewController, PaymentController, ReferralsController, NotificationController, TicketController, ServiceController, SavedProController, ImageController, AdminDashboardController, AdminProviderServiceController, AdminProviderServiceItemsController, AdminProviderStatusController, AdminBusinessController` — in `backend/controllers/`
-- Services (12): `leadService, leadExpiryService, subscriptionService, providerLevelService, providerPerformanceService, providerReputationService, adminConfigService, autoCancelService, notificationService, cloudinaryService, emailService, auditLogService` — in `backend/services/`
-- Middleware: `backend/middleware/security.js` (rate limiters), `logging.js` (request logger), `upload.js` (multer→Cloudinary), `validation.js` (express-validator)
+- Controllers (23): `UserController, ProviderController, ProviderServiceDiscoveryController, ProviderAvailabilityController, ProviderAnalyticsController, BookingController, LeadController, SubscriptionController, ProviderBusinessController, ReviewController, PaymentController, ReferralsController, NotificationController, TicketController, ServiceController, SavedProController, ImageController, AdminDashboardController, AdminProviderServiceController, AdminProviderServiceItemsController, AdminProviderStatusController, AdminBusinessController, QueueController` — in `backend/controllers/`
+- Services (17): `leadService, leadExpiryService, subscriptionService, providerLevelService, providerPerformanceService, providerReputationService, adminConfigService, autoCancelService, notificationService, cloudinaryService, emailService, auditLogService, queueService, jobHandlers, mapsService, trackingService, providerRouteService, searchService` — in `backend/services/` (+ `backend/services/queue/worker.js` standalone worker)
+- Middleware: `backend/middleware/security.js` (rate limiters + CSP incl. OSM/Google connect-src for the live map), `logging.js` (request logger), `upload.js` (multer→Cloudinary), `validation.js` (express-validator)
 - Utils: `auth.js, response.js, workflow.js, permissions.js, availability.js, validation.js, runtimeConfig.js`
 - Seeds: `seeders/servicesSeed.js`, `seeders/businessModelSeed.js`; demo: `prisma/seed.js`
-- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (20)
+- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (31)
 - Scripts: `scripts/cleanup-db.js`, `scripts/migrate-photos-to-cloudinary.js`, `scripts/fix-html-entity-descriptions.js`, `scripts/check-experience.js`
 - Tests: `backend/tests/*.test.js`
 
@@ -934,11 +1015,12 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 | Integration | Tech | Used for | Config |
 |-------------|------|----------|--------|
-| **PostgreSQL** | `pg`/Prisma ORM | Primary datastore (30 models) | `DATABASE_URL` |
+| **PostgreSQL** | `pg`/Prisma ORM | Primary datastore (40 models) | `DATABASE_URL` |
 | **Cloudinary** | `cloudinary` SDK | Image upload/storage (multer memory → `cloudinaryService`), destroy on replace | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
 | **SMTP** | `nodemailer` | Password-reset + transactional email (`emailService`, HTML via `emailView.js`) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_EMAIL`, `SMTP_PASSWORD` |
 | **WebSocket** | `socket.io` | Realtime booking/lead/subscription/admin events (§16.2) | via `ALLOWED_ORIGINS` CORS |
 | **Payment gateway** | — | **Not yet wired** — cash-only; UPI/card and webhook return `501` (§18) | future `paymentGateway` field on `SubscriptionTransaction` |
+| **Maps & routing** | `maplibre-gl` (frontend) + optional Google Maps APIs (backend) | Live tracking map (OSM tiles), road ETA / Distance Matrix / route polyline / reverse geocoding / provider route planner — Google-upgradable via `mapsService.js` (§15.6) | `GOOGLE_MAPS_API_KEY` (optional; haversine fallback without it) |
 
 ## 21) Environment variables
 
@@ -955,16 +1037,24 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_EMAIL` / `SMTP_PASSWORD` | SMTP credentials for nodemailer | `emailService.js` |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary credentials | `cloudinaryService.js` |
 | `NODE_ENV` | `production` vs `development` (controls internal-error detail leakage) | app-wide |
+| `QUEUE_WORKERS_ENABLED` | Set `false` to disable in-process queue workers (run `npm run worker` instead) | `services/queue/queueService.js` |
+| `QUEUE_POLL_INTERVAL_MS` | Worker poll cadence in ms (default `1500`) | `services/queue/queueService.js` |
+| `QUEUE_CLAIM_BATCH_SIZE` | Jobs claimed per poll (default `10`) | `services/queue/queueService.js` |
 | `RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_MS` | General-rate-limiter tuning (defaults 100/15min) | `middleware/security.js` |
 | `AUTH_RATE_LIMIT_MAX` / `BOOKING_RATE_LIMIT_MAX` / `SUPPORT_TICKET_RATE_LIMIT_MAX` | Per-endpoint limiter tuning | `middleware/security.js` |
+| `GOOGLE_MAPS_API_KEY` | Optional — enables road ETA, route polyline, reverse geocoding and road-distance route planning (haversine fallback without it) | `services/mapsService.js` |
+| `locationTrackingEnabled` / `locationUpdateMinIntervalSeconds` / `etaBaseSpeedKph` / `locationHistoryClearanceHours` | Live-tracking toggles & tuning (admin-configurable, defaults true/3s/30/24) | `services/trackingService.js` |
 
 ## 22) Non-functional requirements
 
 **Performance**
-- Hot columns are indexed (`provider.status`, `booking.status/createdAt`, `lead.status/expiryTime`, `notification.userId`, etc. — see §6 tables).
+- Hot columns are indexed (`provider.status`, `booking.status/createdAt`, `lead.status/expiryTime`, `notification.userId`, etc. — see §6 tables); composite hot-path indexes added in migration 33 (§24.3).
 - Derived counts (`activeSpecialistCount`, reputation aggregates) are precomputed/stored rather than recomputed per request.
 - `AdminConfig` (30s) and level-rule (60s) caches avoid DB round-trips on hot paths.
 - Admin list endpoints are paginated (bookings, providers, leads, audit logs, performance).
+- All high-volume customer/admin list endpoints return `{ <entity>, pagination: { total, page, limit, pages } }` (offset, default 20/max 100); bookings and notifications additionally support an opt-in cursor mode (`?mode=cursor`, then `?cursor=<token>`) for stable deep paging (§24.3).
+- `providerServiceDiscoveryController` reads precomputed `reviewCount`/`rating` scalars instead of a nested `reviews` include (§24.3).
+- Admin panel tabs are code-split via `React.lazy` so only the active tab's chunk loads (§24.3).
 
 **Scalability**
 - Stateless JWT auth enables horizontal scaling of API replicas.
@@ -979,6 +1069,9 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 **Reliability**
 - Money/lead-sensitive writes run in `Serializable` transactions (booking creation, first-accept-wins, completion, redistribution, subscription purchase).
 - Immutable audit trails: `BookingEvent` + `statusHistory`, `LeadAssignmentHistory`/`LeadTransferHistory`, `ProviderLevelHistory`, `PromotionHistory`, `AuditLog`.
+- Durable Postgres-backed job queue (§15.5): at-least-once delivery, exponential-backoff retries, dead-lettering, interrupted-job recovery on boot, graceful drain on shutdown.
+- DB backup & restore (§24.2): daily/weekly Postgres snapshots with retention pruning and restore-from-backup for disaster recovery.
+- Feature-flag service (§24.1): runtime-gated behavior without redeploys, backed by the AdminConfig table.
 - Seeds/backfills are idempotent (re-run safe on every boot); obsolete config keys auto-pruned.
 
 **Security**
@@ -988,31 +1081,59 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 - Structured JSON request logs with `X-Request-ID`; health endpoint for uptime/DB checks. Future work: metrics export, alerting.
 
 **Future hardening (roadmap)**
-- Redis caching + job queue (notifications, lead redistribution), payment-gateway integration, Socket.io cluster adapter, DB read replicas, automated schema-backfill safety checks.
+- Redis caching, payment-gateway integration, Socket.io cluster adapter, DB read replicas, automated schema-backfill safety checks.
 
 ## 23) Project metrics
 
 | Metric | Value |
 |--------|-------|
-| Frontend | React 19 + Vite 6 + Tailwind v4 + Socket.io client |
+| Frontend | React 19 + Vite 6 + Tailwind v4 + Socket.io client + MapLibre GL |
 | Backend | Express (Node ESM) + Socket.io |
 | Database | PostgreSQL via Prisma ORM |
-| Prisma models | 30 |
-| Prisma enums | 16 |
-| Migrations | 20 |
-| Controllers | 22 |
-| Services | 12 |
+| Prisma models | 40 |
+| Prisma enums | 26 |
+| Migrations | 33 |
+| Controllers | 26 |
+| Services | 22 |
 | Middleware files | 4 (`security`, `logging`, `upload`, `validation`) |
 | Utils files | 7 (`auth`, `response`, `workflow`, `permissions`, `availability`, `validation`, `runtimeConfig`) |
-| REST API endpoints | 110 across 16 modules (§3.0) |
-| Socket events (server-pushed) | 38 (§16.2) |
-| Background services | lead timers + hourly auto-cancel cron across 12 service modules (§15) |
-| Test suites | 7 (`backend/tests/`) — 43 tests passing |
+| REST API endpoints | ~115 across 16 modules (§3.0) |
+| Socket events (server-pushed) | 41 (§16.2) |
+| Background services | lead timers + hourly auto-cancel cron + backup scheduler across 22 service modules (§15, §24.2) |
+| Test suites | 15 (`backend/tests/`) — 103 tests passing |
 | Service categories (seed) | 20 |
 | Subscription plans (seed) | 6 (1 free + 5 paid) |
 | Provider level rules (seed) | 5 (Bronze→Diamond) |
-| Admin config keys (seed) | 16 (§7.4) |
-| Frontend production build | 1787 modules, ~702 kB bundle |
+| Admin config keys (seed) | 20 (§7.4) |
+| Frontend production build | main chunk ~1,630 kB (~421 kB gzip) + 16 per-tab lazy chunks (2.5–11 kB) |
+
+---
+
+## 24) Sparse-Plus additions
+
+Feature work delivered on top of the base platform. All additions are covered by tests (§17).
+
+### 24.1 Feature flags (Feature 21)
+
+- `backend/services/featureFlagsService.js` — flags are stored as `featureFlags.<name>` keys in the `AdminConfig` table (JSONB), read through the 30s-cached `getConfig` path, and registered with typed defaults. `registerFeatureFlags()` idempotently seeds defaults on boot; unused flags can be deregistered.
+- `backend/controllers/featureFlagController.js` + routes — `GET/POST /admin/feature-flags`, `GET /admin/feature-flags/:key`, `PUT/PATCH/DELETE /admin/feature-flags/:key` (admin RBAC). Frontend: `AdminFeatureFlagsTab.jsx` (register/edit/enable/toggle, registered as a lazy admin chunk).
+- Usage: services gate behavior at runtime, e.g. `featureFlagsService.isFlagEnabled('featureFlags.<name>')`, so features can be toggled without redeploys. Tests: `tests/featureFlags.test.js` (register/list/get/update/delete + gating).
+
+### 24.2 Database backup & restore (Feature 22)
+
+- `backend/services/backupService.js` — Postgres-native snapshots via the `pg_dump` binary: `kind` ∈ `FULL`/`SCHEMA`/`DATA`. Writes the dump to the local backups directory and records a row in the `Backup` table (model added in migration 32). Retention pruning keeps the newest `backupRetentionCount` snapshots per kind.
+- `startBackupCron()` — daily full snapshot at `backupDailyTimeUtc` + weekly full snapshot on `backupWeeklyDay`; governed by `backupScheduleEnabled`. Restore (`restoreBackup`) drops + recreates the schema from a chosen snapshot and records `restoredAt`.
+- `backend/controllers/backupController.js` + routes — `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/:id/download`, `POST /admin/backups/:id/restore`, `DELETE /admin/backups/:id`, `POST /admin/backups/restore-upload` (admin RBAC). Frontend: `AdminBackupsTab.jsx` (trigger/restore/download, lazy chunk).
+- Scheduling keys are admin-configurable (§7.4). Tests: `tests/backups.test.js` (create/list/prune/restore round-trip). Note: the restore test wipes all tables, so the suite must run serially (`--test-concurrency=1`).
+
+### 24.3 Performance (Feature 25)
+
+- **Offset pagination** — high-volume list endpoints return `{ <entity>, pagination: { total, page, limit, pages } }` via shared `backend/utils/pagination.js` (`parsePagination` clamps limit to 1–100, default per-endpoint; `offsetMeta` computes total/page/limit/pages). Count and page queries run in parallel. Converted: `ticketController.getAll` (admin=all, user=own), `reviewController.getAll` + `getByProvider`, `savedProController.getMine`, `adminProviderServiceController.getPendingRequests`, `adminProviderServiceItemsController.getAll` (three status groups merged, counted, then sliced per page; default 50), `serviceController.getCategoryBySlug` (count via `providerService.count`, exposes `activeSpecialistCount`).
+- **Cursor mode (opt-in)** — `bookingController.getAll` and `notificationController.getAll` support `?mode=cursor&limit=N` for the first page then `?cursor=<base64(id|date)>` via `parseCursor`/`encodeCursor`/`sliceCursorPage` (keyset on `createdAt,id`, `maxLimit+1` take). Cursor responses return `pagination: { total, nextCursor, hasMore }`; invalid cursors return `400 INVALID_CURSOR`. Without cursor params both endpoints keep their legacy shapes (bookings offset pagination; notifications plain array).
+- **Payload/N+1 reduction** — `providerServiceDiscoveryController` drops the nested `reviews: true` include and serves precomputed `reviewCount`/`rating` scalars.
+- **Indexes (migration 33)** — composite hot-path indexes listed in §6.7, covering notification filtering, provider review/timeline queries, account-status scans, provider↔service joins, request-queue filtering and wallet-transaction listing.
+- **Frontend compatibility + code-splitting** — normalizers (`normalizeCustomerData.js`) and `AppContext.jsx` accept both wrapper and raw-array shapes; admin panels request `?limit=100` to keep full-ish lists. `AdminPanelTabsRouter.jsx` now `React.lazy`s each tab under a `Suspense` fallback, so the main bundle stays ~1,630 kB and each admin tab loads on demand.
+- Tests: `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, cursor paging with no overlap + final-page null cursor + invalid-cursor 400, plain-array backward compat, cursor token round-trip).
 
 ---
 

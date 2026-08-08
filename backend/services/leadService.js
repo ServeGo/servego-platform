@@ -146,10 +146,11 @@ export async function findEligibleProviders({
   customerLng = null,
   client = prisma
 }) {
-  const [premiumCategories, defaultRadiusKm, legacyRadiusKm] = await Promise.all([
+  const [premiumCategories, defaultRadiusKm, legacyRadiusKm, premiumCategoriesEnabled] = await Promise.all([
     getConfig('premiumCategories', [], client),
     getConfig('defaultProviderRadiusKm', null, client),
-    getConfig('providerRadiusKm', 50, client)
+    getConfig('providerRadiusKm', 50, client),
+    getConfig('premiumCategoriesEnabled', true, client)
   ]);
   const defaultKm = Number(defaultRadiusKm ?? legacyRadiusKm) || 50;
 
@@ -157,7 +158,9 @@ export async function findEligibleProviders({
     ? premiumCategories.map((c) => String(c).trim().toLowerCase())
     : [];
   const categoryKey = String(serviceCategory || '').trim().toLowerCase();
-  const isPremiumCategory = premiumList.includes(categoryKey);
+  // Feature flag: when premium categories are disabled the sector restriction
+  // is lifted and every eligible provider can serve every category.
+  const isPremiumCategory = premiumCategoriesEnabled !== false && premiumList.includes(categoryKey);
 
   const providers = await client.provider.findMany({
     where: {
@@ -229,12 +232,15 @@ export async function findEligibleProviders({
 
 /** Diagnose why a specific preferred provider is not in the eligible pool. */
 async function diagnoseProvider(providerId, { serviceId = null, serviceCategory = null }, client) {
-  const [premiumCategories] = await Promise.all([getConfig('premiumCategories', [], client)]);
+  const [premiumCategories, premiumCategoriesEnabled] = await Promise.all([
+    getConfig('premiumCategories', [], client),
+    getConfig('premiumCategoriesEnabled', true, client)
+  ]);
   const premiumList = Array.isArray(premiumCategories)
     ? premiumCategories.map((c) => String(c).trim().toLowerCase())
     : [];
   const categoryKey = String(serviceCategory || '').trim().toLowerCase();
-  const isPremiumCategory = premiumList.includes(categoryKey);
+  const isPremiumCategory = premiumCategoriesEnabled !== false && premiumList.includes(categoryKey);
 
   const provider = await client.provider.findUnique({
     where: { id: providerId },
@@ -521,7 +527,7 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
         statusHistory: { push: { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' } }
       },
       include: {
-        customer: { select: { id: true, name: true, phone: true, avatar: true } }
+        customer: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
       }
     });
 

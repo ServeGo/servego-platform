@@ -2,6 +2,7 @@ import prisma from '../prisma/client.js';
 import { refreshProviderReputation } from '../services/providerReputationService.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { writeAuditLog } from '../services/auditLogService.js';
+import { getRoutePlan } from '../services/providerRouteService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
 export const ProviderController = {
@@ -347,6 +348,67 @@ export const ProviderController = {
       return sendApiSuccess(res, 200, updated);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update calendar availability schedule', err.message);
+    }
+  },
+
+  // Provider base location + service radius (used as the origin for the
+  // route planner and for nearby-provider matching).
+  updateMyLocation: async (req, res) => {
+    try {
+      const { latitude, longitude, maxRadiusKm } = req.body;
+      if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Valid latitude and longitude are required.');
+      }
+      const radius = Number(maxRadiusKm);
+      if (!Number.isFinite(radius) || radius <= 0) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'maxRadiusKm must be a positive number.');
+      }
+
+      const provider = await prisma.provider.findUnique({ where: { userId: req.user.id }, select: { id: true } });
+      if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
+
+      const updated = await prisma.provider.update({
+        where: { id: provider.id },
+        data: { latitude: Number(latitude), longitude: Number(longitude), maxRadiusKm: radius }
+      });
+      return sendApiSuccess(res, 200, updated);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update provider location', err.message);
+    }
+  },
+
+  // Online / accepting-bookings toggle (powers the "Nearby Providers" matching).
+  updateMyAvailabilityStatus: async (req, res) => {
+    try {
+      const { isOnline, acceptingBookings } = req.body;
+      if (isOnline === undefined && acceptingBookings === undefined) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Provide at least one of isOnline or acceptingBookings.');
+      }
+
+      const provider = await prisma.provider.findUnique({ where: { userId: req.user.id }, select: { id: true } });
+      if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
+
+      const updated = await prisma.provider.update({
+        where: { id: provider.id },
+        data: {
+          ...(isOnline !== undefined ? { isOnline: Boolean(isOnline) } : {}),
+          ...(acceptingBookings !== undefined ? { acceptingBookings: Boolean(acceptingBookings) } : {})
+        }
+      });
+      return sendApiSuccess(res, 200, updated);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update provider availability', err.message);
+    }
+  },
+
+  // Route optimization: upcoming active bookings ordered into a visit sequence.
+  getMyRoutePlan: async (req, res) => {
+    try {
+      const route = await getRoutePlan({ providerUserId: req.user.id });
+      if (!route) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
+      return sendApiSuccess(res, 200, route);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to build route plan', err.message);
     }
   },
 

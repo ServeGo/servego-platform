@@ -1,23 +1,31 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
 
 export const SavedProController = {
   getMine: async (req, res) => {
     try {
       const customerId = req.user.id;
-      const saved = await prisma.savedPro.findMany({
-        where: { customerId },
-        include: {
-          provider: {
-            include: {
-              user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
-              badges: true
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
+      const where = { customerId };
+      const [saved, total] = await Promise.all([
+        prisma.savedPro.findMany({
+          where,
+          include: {
+            provider: {
+              include: {
+                user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
+                badges: true
+              }
             }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-      return sendApiSuccess(res, 200, saved);
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
+        }),
+        prisma.savedPro.count({ where })
+      ]);
+      return sendApiSuccess(res, 200, { savedPros: saved, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch saved pros', err.message);
     }

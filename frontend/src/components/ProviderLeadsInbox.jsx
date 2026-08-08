@@ -12,7 +12,9 @@ import {
   Timer,
   ArrowLeftRight,
   AlertTriangle,
-  LocateFixed
+  LocateFixed,
+  Navigation,
+  UserCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../utils/apiClient';
@@ -463,7 +465,10 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
 
       <div className="flex gap-2 justify-end flex-wrap items-center">
         {(bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING') && (
-          <ProviderLocationShare bookingId={booking.id} />
+          <>
+            <ProviderDispatchControls booking={booking} />
+            <ProviderLocationShare bookingId={booking.id} />
+          </>
         )}
         {actionable ? (
           <>
@@ -579,5 +584,62 @@ function ProviderLocationShare({ bookingId }) {
       <LocateFixed className={`w-3.5 h-3.5 ${sharing ? 'animate-pulse' : ''}`} />
       {statusText}
     </button>
+  );
+}
+
+/**
+ * Dispatch lifecycle controls for a confirmed/ongoing booking: the provider
+ * signals "On My Way" (→ ON_THE_WAY) then "Arrived" (→ ARRIVED). The customer
+ * sees the phase update live on their tracking screen.
+ */
+function ProviderDispatchControls({ booking }) {
+  const { getBookingLocation, setProviderDispatchPhase } = useApp();
+  const [busy, setBusy] = useState(false);
+
+  const live = getBookingLocation(booking.id);
+  const phase = live?.providerPhase || booking.providerPhase || null;
+  const arrived = phase === 'ARRIVED';
+
+  const fire = async (nextPhase) => {
+    setBusy(true);
+    try {
+      const res = await setProviderDispatchPhase(booking.id, nextPhase);
+      if (!res?.ok) console.warn('Dispatch update failed:', res?.error || res?.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 mr-auto">
+      {!arrived && phase !== 'ON_THE_WAY' && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fire('ON_THE_WAY')}
+          className="px-3 py-2 text-xs font-bold rounded-xl transition-all border bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <Navigation className="w-3.5 h-3.5" />
+          On My Way
+        </button>
+      )}
+      {!arrived && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fire('ARRIVED')}
+          className="px-3 py-2 text-xs font-bold rounded-xl transition-all border bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <UserCheck className="w-3.5 h-3.5" />
+          Arrived
+        </button>
+      )}
+      {arrived && (
+        <span className="px-3 py-2 text-xs font-bold rounded-xl border bg-emerald-600/10 text-emerald-700 border-emerald-200 flex items-center gap-1.5">
+          <UserCheck className="w-3.5 h-3.5" />
+          Arrived at customer
+        </span>
+      )}
+    </div>
   );
 }

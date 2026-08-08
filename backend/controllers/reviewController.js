@@ -2,18 +2,25 @@ import prisma from '../prisma/client.js';
 import { refreshProviderReputation } from '../services/providerReputationService.js';
 import { notifyReviewPublished } from '../services/notificationService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
 
 export const ReviewController = {
   getAll: async (req, res) => {
     try {
-      const reviews = await prisma.review.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-          provider: { select: { id: true, user: { select: { name: true } } } },
-          reviewer: { select: { name: true, email: true } }
-        }
-      });
-      return sendApiSuccess(res, 200, reviews);
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
+      const [reviews, total] = await Promise.all([
+        prisma.review.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take,
+          include: {
+            provider: { select: { id: true, user: { select: { name: true } } } },
+            reviewer: { select: { name: true, email: true } }
+          }
+        }),
+        prisma.review.count()
+      ]);
+      return sendApiSuccess(res, 200, { reviews, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch reviews', err.message);
     }
@@ -22,12 +29,19 @@ export const ReviewController = {
   getByProvider: async (req, res) => {
     try {
       const { id } = req.params;
-      const reviews = await prisma.review.findMany({
-        where: { providerId: id },
-        orderBy: { createdAt: 'desc' },
-        include: { reviewer: { select: { name: true, avatar: true } } }
-      });
-      return sendApiSuccess(res, 200, reviews);
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
+      const where = { providerId: id };
+      const [reviews, total] = await Promise.all([
+        prisma.review.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take,
+          include: { reviewer: { select: { name: true, avatar: true } } }
+        }),
+        prisma.review.count({ where })
+      ]);
+      return sendApiSuccess(res, 200, { reviews, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch provider reviews', err.message);
     }

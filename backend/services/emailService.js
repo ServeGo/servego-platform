@@ -17,6 +17,29 @@ function getTransporter() {
   return transporter;
 }
 
+/**
+ * Generic transactional email. Used by the queue's `email` worker so SMTP I/O
+ * never blocks the request path. When SMTP is not configured we fail soft —
+ * there is nothing to send and retrying would only add noise.
+ */
+export async function sendEmail({ to, subject, text = null, html = null }) {
+  if (!to || !subject) {
+    throw new Error('sendEmail requires both "to" and "subject".');
+  }
+  if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
+    console.warn('[EmailService] SMTP not configured — skipping email to', to, `(${subject})`);
+    return null;
+  }
+  const info = await getTransporter().sendMail({
+    from: `"ServeGo" <${process.env.SMTP_EMAIL}>`,
+    to,
+    subject,
+    text: text || undefined,
+    html: html || undefined
+  });
+  return info;
+}
+
 export async function sendPasswordResetEmail(toEmail, resetToken) {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
@@ -72,4 +95,63 @@ export async function sendPasswordResetEmail(toEmail, resetToken) {
   });
 
   return info;
+}
+
+function bookingEmailHtml({ heading, lines, footer }) {
+  const body = (lines || [])
+    .map((line) => `<p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 12px;">${line}</p>`)
+    .join('');
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+      <div style="max-width:480px;margin:40px auto;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+        <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 24px;text-align:center;">
+          <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px;">ServeGo</h1>
+          <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:8px 0 0;">${heading}</p>
+        </div>
+        <div style="padding:32px 24px;">${body}</div>
+        <div style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+          <p style="color:#94a3b8;font-size:11px;margin:0;">${footer || `&copy; ${new Date().getFullYear()} ServeGo. All rights reserved.`}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/** Booking request received — sent after the customer books a service. */
+export function bookingRequestEmail({ customerName, bookingId, serviceCategory, amount }) {
+  const name = customerName || 'there';
+  const lines = [
+    `Hi ${name},`,
+    `We received your <strong>${serviceCategory || 'service'}</strong> booking request <strong>${bookingId}</strong>.`,
+    ...(amount ? [`Amount: <strong>&#8377;${Number(amount).toLocaleString('en-IN')}</strong>`] : []),
+    `We're matching you with the best available provider right now. You'll be notified the moment one accepts your request.`
+  ];
+  return {
+    subject: `Booking request received — ${bookingId}`,
+    text: lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n'),
+    html: bookingEmailHtml({ heading: 'Booking Request Received', lines })
+  };
+}
+
+/** Booking completed — receipt-style email to the customer. */
+export function bookingCompletedEmail({ customerName, bookingId, serviceCategory, amount }) {
+  const name = customerName || 'there';
+  const lines = [
+    `Hi ${name},`,
+    `Your <strong>${serviceCategory || 'service'}</strong> booking <strong>${bookingId}</strong> has been completed. Thank you for using ServeGo!`,
+    ...(amount ? [`Amount: <strong>&#8377;${Number(amount).toLocaleString('en-IN')}</strong>`] : []),
+    `An invoice for this booking has been generated and is available in your account.`
+  ];
+  return {
+    subject: `Your booking ${bookingId} is completed`,
+    text: lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n'),
+    html: bookingEmailHtml({ heading: 'Booking Completed', lines })
+  };
 }
