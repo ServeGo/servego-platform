@@ -1,61 +1,81 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
+import { Loader2 } from 'lucide-react';
 
-import AdminDashboardTab from './Tabs/AdminDashboardTab';
-import AdminCustomersTab from './Tabs/AdminCustomersTab';
-import AdminProvidersTab from './Tabs/AdminProvidersTab';
-import AdminServiceRequestsTab from './Tabs/AdminServiceRequestsTab';
-import AdminServicesTab from './Tabs/AdminServicesTab';
-import AdminBookingsTab from './Tabs/AdminBookingsTab';
-import AdminTicketsTab from './Tabs/AdminTicketsTab';
-import AdminAnalyticsTab from './Tabs/AdminAnalyticsTab';
-import AdminSettingsTab from './Tabs/AdminSettingsTab';
-import AdminReviewsTab from './Tabs/AdminReviewsTab';
-import AdminReportsTab from './Tabs/AdminReportsTab';
-import AdminServeGoTab from './Tabs/AdminServeGoTab';
-import AdminPermanentServicesTab from './Tabs/AdminPermanentServicesTab';
-import AdminDisputesTab from './Tabs/AdminDisputesTab';
+// Route-level code splitting: each admin tab loads on demand instead of being
+// bundled into the single initial chunk (Feature 25 — lazy loading).
+const AdminDashboardTab = lazy(() => import('./Tabs/AdminDashboardTab'));
+const AdminCustomersTab = lazy(() => import('./Tabs/AdminCustomersTab'));
+const AdminProvidersTab = lazy(() => import('./Tabs/AdminProvidersTab'));
+const AdminServiceRequestsTab = lazy(() => import('./Tabs/AdminServiceRequestsTab'));
+const AdminServicesTab = lazy(() => import('./Tabs/AdminServicesTab'));
+const AdminBookingsTab = lazy(() => import('./Tabs/AdminBookingsTab'));
+const AdminTicketsTab = lazy(() => import('./Tabs/AdminTicketsTab'));
+const AdminAnalyticsTab = lazy(() => import('./Tabs/AdminAnalyticsTab'));
+const AdminSettingsTab = lazy(() => import('./Tabs/AdminSettingsTab'));
+const AdminReviewsTab = lazy(() => import('./Tabs/AdminReviewsTab'));
+const AdminReportsTab = lazy(() => import('./Tabs/AdminReportsTab'));
+const AdminServeGoTab = lazy(() => import('./Tabs/AdminServeGoTab'));
+const AdminPermanentServicesTab = lazy(() => import('./Tabs/AdminPermanentServicesTab'));
+const AdminDisputesTab = lazy(() => import('./Tabs/AdminDisputesTab'));
+const AdminFeatureFlagsTab = lazy(() => import('./Tabs/AdminFeatureFlagsTab'));
+const AdminBackupsTab = lazy(() => import('./Tabs/AdminBackupsTab'));
 
+function TabFallback() {
+  return (
+    <div className="flex items-center gap-2 text-slate-400 text-xs py-16 justify-center">
+      <Loader2 className="w-4 h-4 animate-spin" /> Loading...
+    </div>
+  );
+}
+
+function LazyTab({ children }) {
+  return <Suspense fallback={<TabFallback />}>{children}</Suspense>;
+}
 
 export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
   switch (activeTab) {
     case 'dashboard':
-      return <AdminDashboardTab {...tabProps} />;
+      return <LazyTab><AdminDashboardTab {...tabProps} /></LazyTab>;
     case 'customers':
-      return <AdminCustomersTab {...tabProps} />;
+      return <LazyTab><AdminCustomersTab {...tabProps} /></LazyTab>;
     case 'providers':
-      return <AdminProvidersTab {...tabProps} />;
+      return <LazyTab><AdminProvidersTab {...tabProps} /></LazyTab>;
     case 'providerServiceRequests':
-      return <AdminServiceRequestsTab />;
+      return <LazyTab><AdminServiceRequestsTab /></LazyTab>;
     case 'services':
-      return <AdminServicesTab {...tabProps} />;
+      return <LazyTab><AdminServicesTab {...tabProps} /></LazyTab>;
     case 'bookings':
-      return <AdminBookingsTab {...tabProps} />;
+      return <LazyTab><AdminBookingsTab {...tabProps} /></LazyTab>;
     case 'tickets':
-      return <AdminTicketsTab {...tabProps} />;
+      return <LazyTab><AdminTicketsTab {...tabProps} /></LazyTab>;
     case 'analytics':
-      return <AdminAnalyticsTab />;
+      return <LazyTab><AdminAnalyticsTab /></LazyTab>;
     case 'settings':
-      return <AdminSettingsTab {...tabProps} />;
+      return <LazyTab><AdminSettingsTab {...tabProps} /></LazyTab>;
     case 'servego':
-      return <AdminServeGoTab />;
+      return <LazyTab><AdminServeGoTab /></LazyTab>;
 
     case 'permanentServiceRequests':
-      return <AdminPermanentServicesTab {...tabProps} />;
+      return <LazyTab><AdminPermanentServicesTab {...tabProps} /></LazyTab>;
 
     case 'disputes':
-      return <AdminDisputesTab />;
+      return <LazyTab><AdminDisputesTab /></LazyTab>;
+
+    case 'featureFlags':
+      return <LazyTab><AdminFeatureFlagsTab /></LazyTab>;
+
+    case 'backups':
+      return <LazyTab><AdminBackupsTab /></LazyTab>;
 
     // Optional sidebar entries that currently have no dedicated implementation.
     // Keeping them mapped to existing tabs prevents the UI from appearing broken/blank.
     case 'reviews':
-      return <AdminReviewsTab {...tabProps} />;
+      return <LazyTab><AdminReviewsTab {...tabProps} /></LazyTab>;
     case 'reports':
-      return <AdminReportsTab {...tabProps} />;
+      return <LazyTab><AdminReportsTab {...tabProps} /></LazyTab>;
 
 
     default:
-      return <AdminDashboardTab {...tabProps} />;
+      return <LazyTab><AdminDashboardTab {...tabProps} /></LazyTab>;
   }
 }
-
-

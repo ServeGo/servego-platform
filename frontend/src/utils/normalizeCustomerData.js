@@ -87,8 +87,12 @@ export function normalizeTicket(ticket) {
   };
 }
 
-export const normalizeTickets = (list) =>
-  Array.isArray(list) ? list.map(normalizeTicket) : [];
+export const normalizeTickets = (payload) => {
+  // List endpoints now paginate -> { tickets, pagination }. Support raw arrays
+  // for older callers without dropping valid results.
+  const list = Array.isArray(payload) ? payload : payload?.tickets;
+  return Array.isArray(list) ? list.map(normalizeTicket) : [];
+};
 
 /**
  * Canonical notification shape. Backend uses isRead/createdAt; the UI expects
@@ -103,8 +107,10 @@ export function normalizeNotification(notification) {
   };
 }
 
-export const normalizeNotifications = (list) =>
-  Array.isArray(list) ? list.map(normalizeNotification) : [];
+export const normalizeNotifications = (payload) => {
+  const list = Array.isArray(payload) ? payload : payload?.notifications;
+  return Array.isArray(list) ? list.map(normalizeNotification) : [];
+};
 
 /**
  * Canonical dispute shape. Backend returns UPPERCASE statuses and nested

@@ -1,18 +1,40 @@
 import prisma from '../prisma/client.js';
+import { enqueueJob, isQueueEnabled } from './queue/queueService.js';
+
+function generateNotificationId() {
+  return `ntf_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
+}
 
 /**
- * Create a notification for a user
+ * Create a notification for a user.
+ *
+ * The notification object is built here (id and all) so real-time socket
+ * events that carry it stay synchronous, while the durable DB write is handed
+ * to the queue worker — the request path never blocks on the insert. When the
+ * queue is disabled (QUEUE_WORKERS_ENABLED=false) we fall back to a direct
+ * insert so behaviour is unchanged.
  */
 export async function createNotification(userId, title, message, type = 'SYSTEM') {
+  const notification = {
+    id: generateNotificationId(),
+    userId,
+    title,
+    message,
+    type,
+    isRead: false,
+    createdAt: new Date().toISOString()
+  };
   try {
-    const notification = await prisma.notification.create({
-      data: { userId, title, message, type, isRead: false }
-    });
-    return notification;
+    if (isQueueEnabled()) {
+      await enqueueJob({ type: 'notification', payload: notification, dedupeKey: notification.id, maxAttempts: 5 });
+    } else {
+      await prisma.notification.create({ data: notification });
+    }
   } catch (err) {
     console.error(`[NotificationService] Failed to create notification for user ${userId}:`, err.message);
     return null;
   }
+  return notification;
 }
 
 /**
@@ -322,6 +344,19 @@ export async function notifyProviderOnTheWay(io, customerId, payload) {
     'Your provider has started the job and is on the way.',
     'BOOKING',
     'providerOnTheWay',
+    payload
+  );
+}
+
+/** Provider arrived at the service location. */
+export async function notifyProviderArrived(io, customerId, payload) {
+  return pushNotification(
+    io,
+    customerId,
+    'Provider Arrived',
+    'Your provider has arrived at the service location.',
+    'BOOKING',
+    'providerArrived',
     payload
   );
 }

@@ -1,5 +1,7 @@
 import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
+import { getDrivingInfo, getRouteGeoJson } from './mapsService.js';
+import { notifyProviderOnTheWay, notifyProviderArrived } from './notificationService.js';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
@@ -88,6 +90,7 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
       providerId: true,
       endLocation: true,
       startLocation: true,
+      providerPhase: true,
       providerLocationUpdatedAt: true
     }
   });
@@ -127,19 +130,25 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
 
   const destination = await resolveBookingDestination(booking, client);
   let distanceKm = null;
+  let etaMinutes = null;
+  let routePolyline = null;
   if (destination) {
-    distanceKm = haversineKm(lat, lng, destination.latitude, destination.longitude);
+    const driving = await getDrivingInfo({ latitude: lat, longitude: lng }, destination);
+    distanceKm = driving.distanceKm;
+    etaMinutes = driving.durationMin ?? (await computeEtaMinutes(driving.distanceKm));
+    routePolyline = await getRouteGeoJson({ latitude: lat, longitude: lng }, destination);
   }
-  const etaMinutes = await computeEtaMinutes(distanceKm);
 
   const payload = {
     bookingId: booking.id,
     status: booking.status,
+    providerPhase: booking.providerPhase || null,
     latitude: lat,
     longitude: lng,
     timestamp: now.toISOString(),
-    distanceKm,
+    distanceKm: distanceKm != null ? Number(distanceKm.toFixed(2)) : null,
     etaMinutes,
+    routePolyline,
     destination: destination ? { latitude: destination.latitude, longitude: destination.longitude, address: destination.address } : null,
     provider: { name: provider.user?.name, avatar: provider.user?.avatar }
   };
@@ -185,14 +194,20 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
   const locationSharingActive = hasLiveFix && Date.now() - updatedAt <= staleMs;
 
   let distanceKm = null;
+  let etaMinutes = null;
+  let routePolyline = null;
   if (hasLiveFix && destination) {
-    distanceKm = haversineKm(Number(booking.providerLatitude), Number(booking.providerLongitude), destination.latitude, destination.longitude);
+    const origin = { latitude: Number(booking.providerLatitude), longitude: Number(booking.providerLongitude) };
+    const driving = await getDrivingInfo(origin, destination);
+    distanceKm = driving.distanceKm;
+    etaMinutes = driving.durationMin ?? (await computeEtaMinutes(driving.distanceKm));
+    routePolyline = await getRouteGeoJson(origin, destination);
   }
-  const etaMinutes = hasLiveFix ? await computeEtaMinutes(distanceKm) : null;
 
   return {
     bookingId: booking.id,
     status: booking.status,
+    providerPhase: booking.providerPhase || null,
     provider: {
       id: booking.provider.id,
       name: booking.provider.user?.name,
@@ -206,6 +221,7 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
     locationSharingActive,
     distanceKm: distanceKm != null ? Number(distanceKm.toFixed(2)) : null,
     etaMinutes,
+    routePolyline,
     historyRetainedHours: Number(await getConfig('locationHistoryClearanceHours', 24)) || 24
   };
 }
@@ -247,4 +263,91 @@ function trackingError(code, message) {
   const err = new Error(message);
   err.code = code;
   return err;
+}
+
+/**
+ * Shared guard for the dispatch lifecycle: the caller must be the assigned
+ * provider and the booking must be in an active (CONFIRMED/ONGOING) state.
+ */
+async function resolveProviderBooking({ bookingId, providerUserId, client }) {
+  if (!bookingId) throw trackingError('MISSING_BOOKING', 'Booking ID is required.');
+  const provider = await client.provider.findUnique({
+    where: { userId: providerUserId },
+    select: { id: true, userId: true, user: { select: { name: true, avatar: true } } }
+  });
+  if (!provider) throw trackingError('PROVIDER_NOT_FOUND', 'Provider profile not found.');
+
+  const booking = await client.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      id: true,
+      status: true,
+      customerId: true,
+      providerId: true,
+      providerPhase: true,
+      endLocation: true,
+      startLocation: true,
+      providerLatitude: true,
+      providerLongitude: true
+    }
+  });
+  if (!booking) throw trackingError('BOOKING_NOT_FOUND', 'Booking not found.');
+  if (booking.providerId !== provider.id) throw trackingError('NOT_ASSIGNED', 'You are not assigned to this booking.');
+  if (!['CONFIRMED', 'ONGOING'].includes(booking.status)) {
+    throw trackingError('BOOKING_NOT_TRACKABLE', 'This action is only valid while a booking is confirmed or in progress.');
+  }
+  return { provider, booking };
+}
+
+/**
+ * Provider taps "On My Way" — the dispatch phase moves to ON_THE_WAY and the
+ * customer is notified in real time (socket + in-app notification).
+ */
+export async function markProviderOnTheWay({ bookingId, providerUserId, io = null, client = prisma }) {
+  const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
+
+  const updated = await client.booking.update({
+    where: { id: booking.id },
+    data: { providerPhase: 'ON_THE_WAY' }
+  });
+
+  const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ON_THE_WAY', timestamp: new Date().toISOString() };
+  if (io) {
+    io.to(`user:${booking.customerId}`).emit('provider:onTheWay', payload);
+    if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:onTheWay', payload);
+  }
+  await notifyProviderOnTheWay(io, booking.customerId, payload);
+  return { ok: true, payload, booking: updated };
+}
+
+/**
+ * Provider taps "Arrived / Reached" — the dispatch phase moves to ARRIVED and
+ * the customer is notified in real time.
+ */
+export async function markProviderArrived({ bookingId, providerUserId, io = null, client = prisma }) {
+  const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
+
+  const updated = await client.booking.update({
+    where: { id: booking.id },
+    data: { providerPhase: 'ARRIVED' }
+  });
+
+  const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', timestamp: new Date().toISOString() };
+  if (io) {
+    io.to(`user:${booking.customerId}`).emit('provider:arrived', payload);
+    if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:arrived', payload);
+  }
+  await notifyProviderArrived(io, booking.customerId, payload);
+  return { ok: true, payload, booking: updated };
+}
+
+/**
+ * Reset the dispatch phase when a booking is (re)confirmed or completed, so a
+ * fresh trip starts clean. Called from the booking lifecycle.
+ */
+export async function resetProviderPhase(bookingId, client = prisma) {
+  await client.booking.updateMany({
+    where: { id: bookingId, providerPhase: { not: null } },
+    data: { providerPhase: null }
+  });
 }

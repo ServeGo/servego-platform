@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { AchievementList, VerificationLevelPill } from './ProviderReputation';
 
 export default function ProviderProfileView() {
-  const { currentUser, providers, logout, updateProviderAvailability, updateProviderProfile } = useApp();
+  const { currentUser, providers, logout, updateProviderAvailability, updateProviderProfile, updateProviderDispatchLocation, updateProviderAvailabilityStatus, fetchProviderRoutePlan } = useApp();
 
   // Resolve active provider from context — no separate API call needed
   const activeProvider = useMemo(() => {
@@ -35,6 +35,19 @@ export default function ProviderProfileView() {
   const [availableDaysText, setAvailableDaysText] = useState('');
   const [timeSlotsText, setTimeSlotsText] = useState('');
 
+  // Live tracking / route planner
+  const [online, setOnline] = useState(true);
+  const [accepting, setAccepting] = useState(true);
+  const [baseLat, setBaseLat] = useState('');
+  const [baseLng, setBaseLng] = useState('');
+  const [radiusKm, setRadiusKm] = useState('');
+  const [locating, setLocating] = useState(false);
+  const [savingDispatch, setSavingDispatch] = useState(false);
+  const [dispatchMsg, setDispatchMsg] = useState('');
+  const [dispatchErr, setDispatchErr] = useState('');
+  const [routePlan, setRoutePlan] = useState(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+
   // When provider loads/changes, populate form state
   useEffect(() => {
     if (!provider) return;
@@ -52,6 +65,12 @@ export default function ProviderProfileView() {
 
     setAvailableDaysText(Array.isArray(provider.availableDays) ? provider.availableDays.join(', ') : provider.availableDays || '');
     setTimeSlotsText(Array.isArray(provider.timeSlots) ? provider.timeSlots.join(', ') : provider.timeSlots || '');
+
+    setOnline(provider.isOnline !== undefined ? Boolean(provider.isOnline) : true);
+    setAccepting(provider.acceptingBookings !== undefined ? Boolean(provider.acceptingBookings) : true);
+    setBaseLat(provider.latitude != null ? String(provider.latitude) : '');
+    setBaseLng(provider.longitude != null ? String(provider.longitude) : '');
+    setRadiusKm(provider.maxRadiusKm != null ? String(provider.maxRadiusKm) : '');
   }, [provider]);
 
   const user = provider?.user || {};
@@ -133,6 +152,63 @@ export default function ProviderProfileView() {
       </div>
     );
   }
+
+  const useMyPosition = () => {
+    if (!navigator.geolocation) {
+      setDispatchErr('Geolocation is not supported by this browser.');
+      return;
+    }
+    setLocating(true);
+    setDispatchErr('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setBaseLat(pos.coords.latitude.toFixed(6));
+        setBaseLng(pos.coords.longitude.toFixed(6));
+        if (!radiusKm) setRadiusKm('10');
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setDispatchErr(err.code === 1 ? 'Location permission denied.' : 'Could not read your location.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const saveDispatchSettings = async () => {
+    setDispatchMsg('');
+    setDispatchErr('');
+    setSavingDispatch(true);
+    try {
+      if (baseLat || baseLng || radiusKm) {
+        const lat = Number(baseLat);
+        const lng = Number(baseLng);
+        const radius = Number(radiusKm);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('Valid latitude and longitude are required.');
+        if (!Number.isFinite(radius) || radius <= 0) throw new Error('Service radius must be a positive number (km).');
+        await updateProviderDispatchLocation({ latitude: lat, longitude: lng, maxRadiusKm: radius });
+      }
+      await updateProviderAvailabilityStatus({ isOnline: online, acceptingBookings: accepting });
+      setDispatchMsg('Dispatch settings saved.');
+    } catch (err) {
+      setDispatchErr(err?.message || 'Failed to save dispatch settings.');
+    } finally {
+      setSavingDispatch(false);
+    }
+  };
+
+  const loadRoutePlan = async () => {
+    setRoutePlan(null);
+    setLoadingRoute(true);
+    try {
+      const plan = await fetchProviderRoutePlan();
+      setRoutePlan(plan);
+    } catch (err) {
+      setDispatchErr(err?.message || 'Failed to load route plan.');
+    } finally {
+      setLoadingRoute(false);
+    }
+  };
 
   return (
     <div className="space-y-6 text-left">
@@ -285,6 +361,136 @@ export default function ProviderProfileView() {
             <Field label="Time Slots" value={Array.isArray(provider.timeSlots) ? provider.timeSlots.join(', ') : provider.timeSlots} />
           </div>
         )}
+      </Section>
+
+      <Section title="Live Tracking & Route Planner">
+        <div className="space-y-5">
+          {/* Online / accepting toggles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <div>
+                <div className="text-xs font-black text-slate-800">Online</div>
+                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">Receive new job leads</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOnline(v => !v)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${online ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                aria-label="Toggle online status"
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${online ? 'left-6' : 'left-0.5'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <div>
+                <div className="text-xs font-black text-slate-800">Accepting Bookings</div>
+                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">Stay open for new jobs</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAccepting(v => !v)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${accepting ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                aria-label="Toggle accepting bookings"
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${accepting ? 'left-6' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Base location + radius */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <div className="sm:col-span-2">
+              <span className="text-[10px] text-slate-400 uppercase font-black block mb-1">Base Location (GPS)</span>
+              <div className="flex gap-2">
+                <input
+                  value={baseLat}
+                  onChange={(e) => setBaseLat(e.target.value)}
+                  placeholder="Latitude"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-xs font-bold outline-none text-slate-800 font-mono"
+                />
+                <input
+                  value={baseLng}
+                  onChange={(e) => setBaseLng(e.target.value)}
+                  placeholder="Longitude"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-xs font-bold outline-none text-slate-800 font-mono"
+                />
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 uppercase font-black block mb-1">Service Radius (km)</span>
+              <input
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(e.target.value)}
+                placeholder="e.g. 10"
+                type="number"
+                min="1"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-xs font-bold outline-none text-slate-800"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <button
+              type="button"
+              onClick={useMyPosition}
+              disabled={locating}
+              className="bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-black px-4 py-2 rounded-xl transition-colors"
+            >
+              {locating ? 'Locating…' : 'Use my current position'}
+            </button>
+            <button
+              type="button"
+              onClick={saveDispatchSettings}
+              disabled={savingDispatch}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-black px-4 py-2 rounded-xl transition-colors"
+            >
+              {savingDispatch ? 'Saving…' : 'Save Dispatch Settings'}
+            </button>
+            <button
+              type="button"
+              onClick={loadRoutePlan}
+              disabled={loadingRoute}
+              className="bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-xs font-black px-4 py-2 rounded-xl transition-colors"
+            >
+              {loadingRoute ? 'Building…' : 'Build Today’s Route'}
+            </button>
+          </div>
+
+          {dispatchErr ? <div className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-2xl p-3">{dispatchErr}</div> : null}
+          {dispatchMsg ? <div className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">{dispatchMsg}</div> : null}
+
+          {/* Route plan result */}
+          {routePlan && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <div className="text-[10px] uppercase font-black text-slate-400 mb-3">Optimized Visit Order ({routePlan.totalStops ?? routePlan.stops?.length ?? 0} jobs)</div>
+              {Array.isArray(routePlan.stops) && routePlan.stops.length > 0 ? (
+                <ol className="space-y-2">
+                  {routePlan.stops.map((stop) => (
+                    <li key={stop.bookingId} className="flex items-center gap-3 text-xs">
+                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-black flex items-center justify-center text-[10px] shrink-0">
+                        {stop.visitOrder}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-slate-800 truncate">{stop.customerName || stop.address || stop.bookingId}</div>
+                        {stop.address && <div className="text-[10px] text-slate-500 font-semibold truncate">{stop.address}</div>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[10px] font-black text-slate-700 font-mono">
+                          {stop.distanceFromPreviousKm != null ? `${Number(stop.distanceFromPreviousKm).toFixed(1)} km` : '—'}
+                        </div>
+                        {stop.etaFromPreviousMin != null && (
+                          <div className="text-[9px] text-slate-400 font-semibold">{stop.etaFromPreviousMin} min</div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="text-xs text-slate-500 font-semibold">No upcoming jobs to route right now.</div>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section title="Account / Security">

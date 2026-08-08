@@ -1,5 +1,7 @@
 import prisma from '../prisma/client.js';
+import { rankedServiceMatches } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
 
@@ -13,12 +15,20 @@ export const ServiceController = {
       });
       if (!category) return sendApiError(res, 404, 'NOT_FOUND', 'Service category not found.');
       const location = String(req.query.zone || '').trim();
-      const providers = await prisma.providerService.findMany({
-        where: { serviceId: category.id, provider: { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' }, ...(location ? { serviceAreas: { array_contains: [location] } } : {}) } },
-        include: { provider: { include: { user: { select: { id: true, name: true, avatar: true } }, badges: true } } },
-        orderBy: { provider: String(req.query.sort) === 'experience' ? { experienceYears: 'desc' } : { rating: 'desc' } }
-      });
-      return sendApiSuccess(res, 200, { category, activeSpecialistCount: providers.length, providers: providers.map(({ provider, description }) => ({ ...provider, serviceDescription: description })) });
+      const where = { serviceId: category.id, provider: { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' }, ...(location ? { serviceAreas: { array_contains: [location] } } : {}) } };
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
+      const [providerLinks, activeSpecialistCount] = await Promise.all([
+        prisma.providerService.findMany({
+          where,
+          include: { provider: { include: { user: { select: { id: true, name: true, avatar: true } }, badges: true } } },
+          orderBy: { provider: String(req.query.sort) === 'experience' ? { experienceYears: 'desc' } : { rating: 'desc' } },
+          skip,
+          take
+        }),
+        prisma.providerService.count({ where })
+      ]);
+      const providers = providerLinks.map(({ provider, description }) => ({ ...provider, serviceDescription: description }));
+      return sendApiSuccess(res, 200, { category, activeSpecialistCount, providers, pagination: offsetMeta(activeSpecialistCount, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch service category', err.message);
     }
@@ -75,20 +85,28 @@ export const ServiceController = {
     try {
       const { query: q = '', location = '', category = '' } = req.query;
       const trimmed = String(q).trim();
+      const categoryId = String(category).trim();
+
+      // Ranked, typo-tolerant id order from pg_trgm (see services/searchService.js).
+      // Kept null when there is no query so the catalog falls back to popularity.
+      let order = [];
+      let serviceIds = null;
+      if (trimmed) {
+        const ranked = await rankedServiceMatches(trimmed, { limit: 100 });
+        order = ranked.map((r) => r.id);
+        serviceIds = order;
+      }
 
       const where = { isHidden: false };
-      if (trimmed) {
-        where.OR = [
-          { name: { contains: trimmed, mode: 'insensitive' } },
-          { description: { contains: trimmed, mode: 'insensitive' } }
-        ];
+      if (serviceIds !== null) {
+        where.id = { in: serviceIds };
       }
-      if (String(category).trim()) {
+      if (categoryId) {
         where.AND = [{
           OR: [
-            { id: String(category).trim() },
-            { name: { equals: String(category).trim(), mode: 'insensitive' } },
-            { nameNormalized: String(category).trim().toLowerCase() }
+            { id: categoryId },
+            { name: { equals: categoryId, mode: 'insensitive' } },
+            { nameNormalized: categoryId.toLowerCase() }
           ]
         }];
       }
@@ -109,7 +127,21 @@ export const ServiceController = {
       });
       const countMap = Object.fromEntries(counts.map(c => [c.serviceId, c._count.providerId]));
 
-      const result = services.map(s => ({ ...s, activeSpecialistCount: countMap[s.id] || 0 }));
+      // Lower score = higher search rank; popularity (active specialist count)
+      // breaks ties, then alphabetical.
+      const scoreMap = Object.fromEntries(order.map((id, i) => [id, order.length - i]));
+      const result = services
+        .map(s => ({ ...s, activeSpecialistCount: countMap[s.id] || 0 }))
+        .sort((a, b) => {
+          if (order.length) {
+            const diff = (scoreMap[b.id] || 0) - (scoreMap[a.id] || 0);
+            if (diff !== 0) return diff;
+          }
+          if (b.activeSpecialistCount !== a.activeSpecialistCount) {
+            return b.activeSpecialistCount - a.activeSpecialistCount;
+          }
+          return String(a.name).localeCompare(String(b.name));
+        });
       return sendApiSuccess(res, 200, result);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to search services', err.message);

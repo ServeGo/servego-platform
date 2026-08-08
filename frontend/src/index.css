@@ -17,3 +17,61 @@
     height: 0;
   }
 }
+
+/* Live tracking map markers */
+.live-map-provider-marker {
+  position: relative;
+  width: 34px;
+  height: 34px;
+}
+.live-map-marker-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.3);
+  animation: live-map-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.live-map-marker-truck {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  border: 2px solid #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.live-map-dest-marker {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.live-map-dest-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #4338ca;
+  border: 3px solid #818cf8;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25);
+}
+@keyframes live-map-ping {
+  75%, 100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* Force dark map chrome over the tile layer */
+.maplibregl-map {
+  background: #0f172a;
+}
+.maplibregl-ctrl-group,
+.maplibregl-ctrl-attrib {
+  background: rgba(15, 23, 42, 0.92) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(0.8);
+}

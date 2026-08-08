@@ -3,6 +3,7 @@ import { refreshAllProviderReputations, refreshProviderReputation } from '../ser
 import { notifyServiceApproved, notifyServiceDenied } from '../services/notificationService.js';
 import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta } from '../utils/pagination.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
 
@@ -13,18 +14,25 @@ export const AdminProviderServiceController = {
       if (!['PENDING', 'APPROVED', 'DENIED', 'REJECTED'].includes(requestedStatus)) {
         return sendApiError(res, 400, 'INVALID_STATUS', 'status must be PENDING, APPROVED, DENIED, or REJECTED.');
       }
-      const requests = await prisma.providerServiceRequest.findMany({
-        where: { status: requestedStatus },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          provider: {
-            include: {
-              user: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
+      const { skip, take, page, limit } = parsePagination(req.query, { limit: 20 });
+      const where = { status: requestedStatus };
+      const [requests, total] = await Promise.all([
+        prisma.providerServiceRequest.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take,
+          include: {
+            provider: {
+              include: {
+                user: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
+              }
             }
           }
-        }
-      });
-      return sendApiSuccess(res, 200, requests);
+        }),
+        prisma.providerServiceRequest.count({ where })
+      ]);
+      return sendApiSuccess(res, 200, { requests, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch provider service requests', err.message);
     }

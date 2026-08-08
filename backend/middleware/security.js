@@ -16,7 +16,17 @@ export const helmetConfig = helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
-      connectSrc: ["'self'"],
+      // Live maps: OSM raster/vector tile hosts + Google Maps JS/API endpoints
+      // when GOOGLE_MAPS_API_KEY is configured. Socket.io uses the same origin.
+      connectSrc: [
+        "'self'",
+        "https://*.tile.openstreetmap.org",
+        "https://tile.openstreetmap.org",
+        "https://*.maps.googleapis.com",
+        "https://maps.googleapis.com",
+        "https://*.googleapis.com",
+        "https://*.gstatic.com"
+      ],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: []

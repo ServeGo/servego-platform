@@ -15,16 +15,24 @@ export default function AdminReviewsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    api.get('/reviews')
+    setLoading(true);
+    setError('');
+    api.get(`/reviews?page=${page}&limit=20`)
       .then(response => {
         if (!response.ok) throw new Error(response.status);
-        setReviews(Array.isArray(response.data) ? response.data : []);
+        const payload = response.data || {};
+        setReviews(Array.isArray(payload) ? payload : Array.isArray(payload.reviews) ? payload.reviews : []);
+        setTotal(payload.pagination?.total ?? 0);
+        setTotalPages(payload.pagination?.pages ?? 0);
         setLoading(false);
       })
       .catch(() => { setError('Failed to load reviews.'); setLoading(false); });
-  }, []);
+  }, [page]);
 
   const filtered = reviews.filter(r => {
     const q = search.toLowerCase();
@@ -50,7 +58,7 @@ export default function AdminReviewsTab() {
         <div className="flex gap-4 text-center">
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-2">
             <span className="block text-[10px] font-bold text-slate-400 uppercase">Total</span>
-            <span className="block text-lg font-black text-slate-900">{reviews.length}</span>
+            <span className="block text-lg font-black text-slate-900">{total > 0 ? total : reviews.length}</span>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-2">
             <span className="block text-[10px] font-bold text-slate-400 uppercase">Avg Rating</span>
@@ -104,6 +112,26 @@ export default function AdminReviewsTab() {
           </div>
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <span className="text-xs font-bold text-slate-500">Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

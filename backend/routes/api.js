@@ -22,6 +22,9 @@ import { ProviderBusinessController } from '../controllers/providerBusinessContr
 import { AdminBusinessController } from '../controllers/adminBusinessController.js';
 import { WalletController } from '../controllers/walletController.js';
 import { DisputeController } from '../controllers/disputeController.js';
+import { QueueController } from '../controllers/queueController.js';
+import { FeatureFlagController } from '../controllers/featureFlagController.js';
+import { BackupController } from '../controllers/backupController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
@@ -46,6 +49,9 @@ apiRouter.get('/providers/:id', optionalAuth, ProviderController.getById);
 apiRouter.get('/providers/:id/services', optionalAuth, ProviderController.getProviderServices);
 
 apiRouter.put('/providers/me/availability', requireAuth, requireRole('provider'), validate(updateAvailabilityValidation), ProviderController.updateMyAvailability);
+apiRouter.patch('/providers/me/location', requireAuth, requireRole('provider'), ProviderController.updateMyLocation);
+apiRouter.patch('/providers/me/availability-status', requireAuth, requireRole('provider'), ProviderController.updateMyAvailabilityStatus);
+apiRouter.get('/providers/me/route-plan', requireAuth, requireRole('provider'), ProviderController.getMyRoutePlan);
 
 apiRouter.post('/providers/:id/services/register', requireAuth, validate(registerProviderServiceValidation), ProviderController.registerProviderService);
 apiRouter.patch('/providers/:id/profile', requireAuth, validate(updateProviderProfileValidation), ProviderController.updateProfile);
@@ -62,6 +68,8 @@ apiRouter.get('/bookings/:id/timeline', requireAuth, requireRole('admin'), Booki
 apiRouter.get('/bookings/:id/tracking', requireAuth, BookingController.getTracking);
 apiRouter.get('/bookings/:id/track-history', requireAuth, BookingController.getTrackHistory);
 apiRouter.patch('/bookings/:id/location', requireAuth, requireRole('provider'), validate(updateBookingLocationValidation), BookingController.updateLocation);
+apiRouter.post('/bookings/:id/on-the-way', requireAuth, requireRole('provider'), BookingController.onTheWay);
+apiRouter.post('/bookings/:id/arrived', requireAuth, requireRole('provider'), BookingController.arrived);
 apiRouter.get('/bookings/:id', requireAuth, BookingController.getById);
 apiRouter.post('/bookings', requireAuth, bookingRateLimiter, validate(createBookingValidation), BookingController.create);
 apiRouter.patch('/bookings/:id/status', requireAuth, BookingController.updateStatus);
@@ -217,5 +225,26 @@ apiRouter.patch('/disputes/:id/reject', requireAuth, requireRole('admin'), Dispu
 // Admin disputes
 apiRouter.get('/admin/disputes', requireAuth, requireRole('admin'), DisputeController.getAdminDisputes);
 apiRouter.get('/admin/disputes/stats', requireAuth, requireRole('admin'), DisputeController.getAdminStats);
+
+// --- Job queue (async side-effects) ---
+apiRouter.get('/admin/queue/stats', requireAuth, requireRole('admin'), QueueController.getStats);
+apiRouter.post('/admin/queue/requeue', requireAuth, requireRole('admin'), QueueController.requeueDead);
+
+// --- Feature flags ---
+// Public: maintenance banner + announcements for unauthenticated clients.
+apiRouter.get('/feature-flags', FeatureFlagController.getPublic);
+// Admin: full registry with current values + audit trail; toggles apply within
+// 30s (AdminConfig cache TTL) — no redeploy required.
+apiRouter.get('/admin/feature-flags', requireAuth, requireRole('admin'), FeatureFlagController.getAll);
+apiRouter.put('/admin/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
+apiRouter.patch('/admin/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
+
+// --- Database backups (logical snapshots + automatic schedule) ---
+apiRouter.get('/admin/backups', requireAuth, requireRole('admin'), BackupController.getBackups);
+apiRouter.post('/admin/backups', requireAuth, requireRole('admin'), BackupController.createBackup);
+apiRouter.get('/admin/backups/:id/download', requireAuth, requireRole('admin'), BackupController.downloadBackup);
+apiRouter.post('/admin/backups/:id/restore', requireAuth, requireRole('admin'), BackupController.restore);
+apiRouter.post('/admin/backups/restore-at', requireAuth, requireRole('admin'), BackupController.restoreAt);
+apiRouter.post('/admin/backups/tick', requireAuth, requireRole('admin'), BackupController.tick);
 
 export default apiRouter;

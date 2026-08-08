@@ -1,5 +1,5 @@
 import prisma from '../prisma/client.js';
-import { recordJobCancelled, recordJobStarted } from '../services/providerPerformanceService.js';
+import { recordJobCancelled } from '../services/providerPerformanceService.js';
 import {
   createBookingWithLead,
   acceptLeadForBooking,
@@ -22,14 +22,20 @@ import {
   notifySubscriptionExpired,
   notifyRemainingLeadsLow
 } from '../services/notificationService.js';
+import { enqueueJob } from '../services/queue/queueService.js';
+import { bookingRequestEmail, bookingCompletedEmail } from '../services/emailService.js';
 import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { parsePagination, offsetMeta, parseCursor, sliceCursorPage } from '../utils/pagination.js';
 import {
   updateProviderLocation,
   getBookingTracking,
   getBookingLocationHistory,
-  clearLocationHistory
+  clearLocationHistory,
+  markProviderOnTheWay,
+  markProviderArrived,
+  resetProviderPhase
 } from '../services/trackingService.js';
 
 const BOOKING_INCLUDE = {
@@ -42,11 +48,21 @@ const BOOKING_INCLUDE = {
   service: true,
 };
 
+/**
+ * Enqueue a side-effect job without blocking the request. Failures to enqueue
+ * are logged and swallowed — the core booking state is already committed.
+ */
+function fireAndForget(job) {
+  void enqueueJob(job).catch((err) => {
+    console.error('[BookingController] Queue enqueue failed:', err.message);
+  });
+}
+
 export const BookingController = {
   getAll: async (req, res) => {
     try {
       const { page = 1, limit = 50, status, providerId, customerId, adminSearch } = req.query;
-      const skip = (Math.max(1, parseInt(page)) - 1) * Math.min(100, Math.max(1, parseInt(limit)));
+      const maxLimit = Math.min(100, Math.max(1, parseInt(limit)));
 
       const where = {};
       if (status) where.status = status;
@@ -66,7 +82,7 @@ export const BookingController = {
         if (!provider) {
           return sendApiSuccess(res, 200, {
             bookings: [],
-            pagination: { page: parseInt(page), limit: Math.min(100, Math.max(1, parseInt(limit))), total: 0, pages: 0 }
+            pagination: { page: parseInt(page), limit: maxLimit, total: 0, pages: 0 }
           });
         }
         where.providerId = provider.id;
@@ -74,12 +90,45 @@ export const BookingController = {
         where.customerId = req.user.id;
       }
 
+      const cursorToken = String(req.query.cursor || '').trim();
+      const cursorMode = cursorToken || String(req.query.mode || '').toLowerCase() === 'cursor';
+
+      // Cursor (keyset) mode for high-volume feeds: stable ordering across
+      // inserts. Returns `nextCursor` when another page exists. The first page
+      // is fetched with `?mode=cursor&limit=N` (no cursor yet).
+      if (cursorMode) {
+        const cursor = cursorToken ? parseCursor(cursorToken) : null;
+        if (cursorToken && !cursor) {
+          return sendApiError(res, 400, 'INVALID_CURSOR', 'Invalid pagination cursor.');
+        }
+        const cursorWhere = cursor
+          ? (cursor.date
+              ? { OR: [{ createdAt: { lt: cursor.date } }, { createdAt: cursor.date, id: { lt: cursor.id } }] }
+              : { id: { lt: cursor.id } })
+          : {};
+
+        const [raw, total] = await Promise.all([
+          prisma.booking.findMany({
+            where: { ...where, ...cursorWhere },
+            include: BOOKING_INCLUDE,
+            take: maxLimit + 1,
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+          }),
+          prisma.booking.count({ where })
+        ]);
+
+        const { items, nextCursor, hasMore } = sliceCursorPage(raw, maxLimit);
+        return sendApiSuccess(res, 200, { bookings: items, pagination: { total, nextCursor, hasMore } });
+      }
+
+      const skip = (Math.max(1, parseInt(page)) - 1) * maxLimit;
+
       const [bookings, total] = await Promise.all([
         prisma.booking.findMany({
           where,
           include: BOOKING_INCLUDE,
           skip,
-          take: Math.min(100, Math.max(1, parseInt(limit))),
+          take: maxLimit,
           orderBy: { createdAt: 'desc' }
         }),
         prisma.booking.count({ where })
@@ -87,12 +136,7 @@ export const BookingController = {
 
       return sendApiSuccess(res, 200, {
         bookings,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / Math.min(100, Math.max(1, parseInt(limit))))
-        }
+        pagination: offsetMeta(total, parseInt(page), maxLimit)
       });
     } catch (err) {
       console.error('[BookingController.getAll] Error:', err);
@@ -157,7 +201,7 @@ export const BookingController = {
 
       const customer = await prisma.user.findUnique({
         where: { id: customerId },
-        select: { id: true, name: true, latitude: true, longitude: true }
+        select: { id: true, name: true, email: true, latitude: true, longitude: true }
       });
       if (!customer) return sendApiError(res, 404, 'NOT_FOUND', 'Customer not found.');
 
@@ -193,6 +237,22 @@ export const BookingController = {
         io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id, status: 'PENDING' });
       }
       scheduleLeadExpiry(result.lead, io);
+
+      // Decoupled side-effects — emails, analytics and invoices are drained by
+      // queue workers so the request returns before any slow work runs.
+      if (customer.email) {
+        fireAndForget({
+          type: 'email',
+          payload: bookingRequestEmail({
+            customerName: customer.name,
+            bookingId: result.booking.id,
+            serviceCategory: result.booking.serviceCategory,
+            amount: result.booking.amount
+          })
+        });
+      }
+      fireAndForget({ type: 'analytics', payload: { bookingsCreated: 1, leadsCreated: 1 } });
+      fireAndForget({ type: 'invoice', payload: { bookingId: result.booking.id } });
 
       return sendApiSuccess(res, 201, {
         booking: result.booking,
@@ -296,7 +356,7 @@ export const BookingController = {
       });
 
       if (updatedStatus === 'ONGOING') {
-        await recordJobStarted(booking.providerId);
+        fireAndForget({ type: 'performance', payload: { action: 'jobStarted', providerId: booking.providerId } });
       }
 
       await prisma.bookingEvent.create({
@@ -362,6 +422,36 @@ export const BookingController = {
       return sendApiSuccess(res, 200, tracking);
     } catch (err) {
       return sendApiError(res, err.code === 'BOOKING_NOT_FOUND' ? 404 : 403, err.code || 'INTERNAL_ERROR', err.message,
+        process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
+    }
+  },
+
+  // Dispatch lifecycle: provider signals they are heading to the customer.
+  onTheWay: async (req, res) => {
+    try {
+      const result = await markProviderOnTheWay({
+        bookingId: req.params.id,
+        providerUserId: req.user.id,
+        io: req.app.get('socketio')
+      });
+      return sendApiSuccess(res, 200, result.payload);
+    } catch (err) {
+      return sendApiError(res, 400, err.code || 'INTERNAL_ERROR', err.message,
+        process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
+    }
+  },
+
+  // Dispatch lifecycle: provider arrived at the service location.
+  arrived: async (req, res) => {
+    try {
+      const result = await markProviderArrived({
+        bookingId: req.params.id,
+        providerUserId: req.user.id,
+        io: req.app.get('socketio')
+      });
+      return sendApiSuccess(res, 200, result.payload);
+    } catch (err) {
+      return sendApiError(res, 400, err.code || 'INTERNAL_ERROR', err.message,
         process.env.NODE_ENV !== 'production' && !err.code ? err.message : undefined);
     }
   },
@@ -535,6 +625,9 @@ async function handleCompletion(req, res, { booking, provider, io }) {
     void clearLocationHistory({ bookingId: booking.id }).catch((err) => {
       console.error('[BookingController] Location history cleanup failed:', err.message);
     });
+    void resetProviderPhase(booking.id).catch((err) => {
+      console.error('[BookingController] Provider phase reset failed:', err.message);
+    });
 
     if (result.promotion && provider?.userId && io) {
       io.to(`user:${provider.userId}`).emit('promotion', { promotion: result.promotion });
@@ -554,6 +647,29 @@ async function handleCompletion(req, res, { booking, provider, io }) {
       if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'COMPLETED' });
     }
 
+    // Decoupled completion side-effects — analytics, final invoice snapshot and
+    // the receipt email all run in queue workers.
+    fireAndForget({
+      type: 'analytics',
+      payload: {
+        bookingsCompleted: 1,
+        revenue: Number(result.earnings) + Number(result.commission),
+        commission: Number(result.commission) || 0
+      }
+    });
+    fireAndForget({ type: 'invoice', payload: { bookingId: booking.id } });
+    if (result.booking?.customer?.email) {
+      fireAndForget({
+        type: 'email',
+        payload: bookingCompletedEmail({
+          customerName: result.booking.customer.name,
+          bookingId: booking.id,
+          serviceCategory: booking.serviceCategory,
+          amount: result.booking.amount
+        })
+      });
+    }
+
     return sendApiSuccess(res, 200, result.booking);
   } catch (err) {
     const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
@@ -568,6 +684,10 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
     const providerId = booking.providerId;
     const actorRole = role === 'provider' ? 'PROVIDER' : role === 'admin' ? 'ADMIN' : 'CUSTOMER';
     const lead = await prisma.lead.findUnique({ where: { bookingId: booking.id } });
+
+    void resetProviderPhase(booking.id).catch((err) => {
+      console.error('[BookingController] Provider phase reset failed:', err.message);
+    });
 
     // Provider declined a PENDING booking — withdraw their own offer. Other
     // providers offered the same request keep their open offers.
@@ -698,5 +818,6 @@ async function cancelBookingPlain(booking, requesterId, role, note) {
       note: note || null
     }
   });
+  fireAndForget({ type: 'analytics', payload: { bookingsCancelled: 1 } });
   return updated;
 }

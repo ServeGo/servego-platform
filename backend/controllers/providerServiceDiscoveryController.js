@@ -1,4 +1,5 @@
 import prisma from '../prisma/client.js';
+import { resolveServiceForQuery } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
 export const ProviderServiceDiscoveryController = {
@@ -31,6 +32,14 @@ export const ProviderServiceDiscoveryController = {
       const location = String(req.query?.location || '').trim();
       const sort = String(req.query?.sort || 'rating').trim();
 
+      // Resolve the customer's free-text need to the single closest canonical
+      // Service (exact > prefix > typo-tolerant trigram). Garbage queries that
+      // clear no threshold 404 instead of silently redirecting to a lookalike.
+      const resolved = await resolveServiceForQuery(serviceName);
+      if (!resolved) {
+        return sendApiError(res, 404, 'NOT_FOUND', 'Service category not found.');
+      }
+
       const orderBy = sort === 'experience'
         ? { experienceYears: 'desc' }
         : sort === 'priceAsc' || sort === 'priceDesc'
@@ -41,9 +50,7 @@ export const ProviderServiceDiscoveryController = {
 
       const providerServices = await prisma.providerService.findMany({
         where: {
-          service: {
-            name: { equals: serviceName, mode: 'insensitive' }
-          },
+          serviceId: resolved.id,
           provider: {
             accountStatus: 'ACTIVE',
             isVerified: true,
@@ -64,7 +71,6 @@ export const ProviderServiceDiscoveryController = {
                   avatar: true
                 }
               },
-              reviews: true,
               badges: true
             }
           },
@@ -84,7 +90,7 @@ export const ProviderServiceDiscoveryController = {
         userId: p.userId,
         name: p.user?.name || 'Unknown',
         avatar: p.photo || p.user?.avatar || null,
-        category: linkSafeCategory(p, serviceName),
+        category: linkSafeCategory(p, resolved.name),
         rating: p.rating,
         reviewCount: p.reviewCount,
         experienceYears: p.experienceYears,
@@ -94,8 +100,7 @@ export const ProviderServiceDiscoveryController = {
         serviceAreas: Array.isArray(p.serviceAreas) ? p.serviceAreas : [],
         isVerified: p.isVerified,
         verificationLevel: p.verificationLevel,
-        badges: p.badges || [],
-        reviews: p.reviews || []
+        badges: p.badges || []
       }));
 
       return sendApiSuccess(res, 200, formatted);
