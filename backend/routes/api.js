@@ -21,14 +21,13 @@ import { SubscriptionController } from '../controllers/subscriptionController.js
 import { ProviderBusinessController } from '../controllers/providerBusinessController.js';
 import { AdminBusinessController } from '../controllers/adminBusinessController.js';
 import { WalletController } from '../controllers/walletController.js';
-import { DisputeController } from '../controllers/disputeController.js';
 import { QueueController } from '../controllers/queueController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
 import { BackupController } from '../controllers/backupController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
-import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation, createDisputeValidation, addDisputeMessageValidation, resolveDisputeValidation } from '../middleware/validation.js';
+import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation } from '../middleware/validation.js';
 
 const apiRouter = Router();
 
@@ -213,18 +212,6 @@ apiRouter.get('/admin/wallet/ledger', requireAuth, requireRole('admin'), WalletC
 apiRouter.get('/admin/wallet/withdrawals', requireAuth, requireRole('admin'), WalletController.getAdminWithdrawals);
 apiRouter.patch('/admin/wallet/withdrawals/:id/process', requireAuth, requireRole('admin'), validate(processWithdrawalValidation), WalletController.processWithdrawal);
 apiRouter.post('/admin/wallet/credit', requireAuth, requireRole('admin'), validate(adminCreditWalletValidation), WalletController.adminCredit);
-
-// --- Disputes ---
-apiRouter.post('/disputes', requireAuth, validate(createDisputeValidation), DisputeController.create);
-apiRouter.get('/disputes/mine', requireAuth, DisputeController.getMine);
-apiRouter.get('/disputes/:id', requireAuth, DisputeController.getById);
-apiRouter.post('/disputes/:id/messages', requireAuth, validate(addDisputeMessageValidation), DisputeController.addMessage);
-apiRouter.patch('/disputes/:id/resolve', requireAuth, requireRole('admin'), validate(resolveDisputeValidation), DisputeController.resolve);
-apiRouter.patch('/disputes/:id/reject', requireAuth, requireRole('admin'), DisputeController.reject);
-
-// Admin disputes
-apiRouter.get('/admin/disputes', requireAuth, requireRole('admin'), DisputeController.getAdminDisputes);
-apiRouter.get('/admin/disputes/stats', requireAuth, requireRole('admin'), DisputeController.getAdminStats);
 
 // --- Job queue (async side-effects) ---
 apiRouter.get('/admin/queue/stats', requireAuth, requireRole('admin'), QueueController.getStats);

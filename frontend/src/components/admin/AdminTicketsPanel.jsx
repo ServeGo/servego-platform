@@ -7,7 +7,7 @@ export default function AdminTicketsPanel({ tickets, activeTicketId, ticketRespo
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Disputes Resolvers & Escalation Desk</h2>
+        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Support Tickets & Escalation Desk</h2>
         <p className="text-slate-500 text-xs">Respond to complaints, authorize refunds, edit credentials, and modify ticket properties.</p>
       </div>
 

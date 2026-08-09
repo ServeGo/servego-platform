@@ -112,33 +112,6 @@ export const normalizeNotifications = (payload) => {
   return Array.isArray(list) ? list.map(normalizeNotification) : [];
 };
 
-/**
- * Canonical dispute shape. Backend returns UPPERCASE statuses and nested
- * booking/customer/provider relations; the UI consumes lowercased status plus
- * flattened labels for the two parties.
- */
-export function normalizeDispute(dispute) {
-  if (!dispute) return dispute;
-  const providerUser = dispute.provider?.user || {};
-  return {
-    ...dispute,
-    status: lc(dispute.status),
-    raisedBy: (dispute.raisedBy || '').toString().toUpperCase(),
-    reason: dispute.reason || 'OTHER',
-    resolutionType: dispute.resolutionType || null,
-    evidence: Array.isArray(dispute.evidence) ? dispute.evidence : [],
-    messages: Array.isArray(dispute.messages) ? dispute.messages : [],
-    customerName: dispute.customer?.name || dispute.customerName || 'Customer',
-    providerName: providerUser.name || dispute.providerName || 'Specialist',
-    serviceCategory: dispute.booking?.serviceCategory || '',
-    bookingAmount: Number(dispute.booking?.amount) || Number(dispute.bookingAmount) || 0,
-    createdAtLabel: formatDate(dispute.createdAt),
-  };
-}
-
-export const normalizeDisputes = (list) =>
-  Array.isArray(list) ? list.map(normalizeDispute) : [];
-
 function formatDate(value) {
   if (!value) return '';
   const d = new Date(value);

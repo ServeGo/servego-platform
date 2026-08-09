@@ -31,7 +31,7 @@ export default function ServiceEngagementChoice({ serviceName, onTemporary, onPe
               <div>
                 <p className="text-sm font-extrabold text-slate-900">Temporary Service</p>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
-                  One-time or occasional service. Your job is offered to a vetted specialist in your area — booked directly with them.
+                  One-time or occasional service. Your job is offered to every eligible specialist in your area — the first to accept gets booked directly.
                 </p>
               </div>
             </div>

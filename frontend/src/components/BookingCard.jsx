@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck, Navigation, UserCheck } from 'lucide-react';
+import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck, Navigation, UserCheck, Hourglass } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
 import { useApp } from '../context/AppContext';
@@ -72,14 +72,27 @@ export default function BookingCard({
 
       {/* Meta and description column */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pb-6 mb-5 border-b border-slate-100/60">
-        <div className="md:col-span-4 flex items-start gap-3">
-          <img className="w-12 h-12 rounded-xl object-cover shrink-0 border border-slate-200" src={booking.providerAvatar} alt={booking.providerName || 'Provider avatar'} />
-          <div>
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">Assigned Expert</span>
-            <h4 className="font-bold text-slate-800 text-sm">{booking.providerName}</h4>
-            <span className="text-xs text-slate-500 font-medium">{booking.serviceCategory}</span>
+        {booking.status === 'pending' ? (
+          <div className="md:col-span-4 flex items-start gap-3">
+            <div className="w-12 h-12 rounded-xl shrink-0 border border-amber-200 bg-amber-50 flex items-center justify-center">
+              <Hourglass className="w-5 h-5 text-amber-500" />
+            </div>
+            <div>
+              <span className="text-[10px] text-amber-600 font-extrabold uppercase tracking-wide">Waiting for Specialist</span>
+              <h4 className="font-bold text-slate-800 text-sm">Your request has been sent to all eligible specialists</h4>
+              <span className="text-xs text-slate-500 font-medium">The first specialist to accept your job will be assigned. You can track their details here once confirmed.</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="md:col-span-4 flex items-start gap-3">
+            <img className="w-12 h-12 rounded-xl object-cover shrink-0 border border-slate-200" src={booking.providerAvatar} alt={booking.providerName || 'Provider avatar'} />
+            <div>
+              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">Assigned Expert</span>
+              <h4 className="font-bold text-slate-800 text-sm">{booking.providerName}</h4>
+              <span className="text-xs text-slate-500 font-medium">{booking.serviceCategory}</span>
+            </div>
+          </div>
+        )}
 
         <div className="md:col-span-5 space-y-2 text-xs font-semibold text-slate-500">
           <div className="flex gap-1.5 items-center">
@@ -168,7 +181,7 @@ export default function BookingCard({
 
       {/* Action buttons */}
       <div className="flex justify-end gap-2">
-        {['pending', 'confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && (
+        {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && (
           <button 
             type="button"
             onClick={onToggleChat}
@@ -230,7 +243,7 @@ function StatusBadge({ status }) {
     cancelled: 'bg-rose-100 text-rose-800 border-rose-200'
   };
   const labels = {
-    pending: 'Pending Confirmation',
+    pending: 'Waiting for Specialist',
     confirmed: 'Confirmed',
     en_route: 'Specialist En-Route',
     ongoing: 'Ongoing Job',

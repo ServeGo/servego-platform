@@ -4,12 +4,13 @@ import { Lock } from 'lucide-react';
 export default function AppPromo() {
   return (
     <section className="py-12 bg-slate-900 text-white border-y border-slate-800 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(129,140,248,0.16),_transparent_30%)]" />
       <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10">
         <div>
-          <span className="text-teal-400 text-xs font-bold uppercase tracking-widest block">On-the-go convenience</span>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-2 tracking-tight">Download the ServeGo App</h3>
+          <span className="text-teal-400 text-xs font-bold uppercase tracking-[0.25em] block">On-the-go convenience</span>
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-2 tracking-tight">Bring booking and job updates to your phone</h3>
           <p className="text-slate-300 text-xs sm:text-sm mt-2 max-w-md font-medium leading-relaxed">
-            Book certified specialists, see technician progress, download insurance certificates, and chat instantly with support. Available across all Android and iOS devices.
+            Stay connected to every step of the journey with real-time updates, fast support, and a smoother booking experience for customers, providers, and admins on Android and iOS.
           </p>
           
           <div className="mt-6 flex flex-wrap gap-4">
@@ -19,9 +20,9 @@ export default function AppPromo() {
         </div>
 
         <div className="flex justify-center items-center">
-          <div className="w-56 h-40 bg-slate-900 rounded-2xl border-4 border-slate-800 relative z-10 flex flex-col justify-between p-4 shadow-2xl shrink-0 overflow-hidden text-left text-white">
-            <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-2" />
-            <div className="bg-slate-800 p-2 rounded-xl border border-slate-850">
+          <div className="w-60 h-44 bg-gradient-to-br from-slate-900 to-slate-800 rounded-[28px] border border-slate-700 relative z-10 flex flex-col justify-between p-4 shadow-2xl shadow-black/30 shrink-0 overflow-hidden text-left text-white">
+            <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-2" />
+            <div className="bg-slate-800/90 p-2 rounded-xl border border-slate-700">
               <span className="text-[8px] bg-teal-500/30 text-teal-200 px-1 py-0.2 rounded font-extrabold uppercase">Arriving in 24 Mins</span>
               <span className="font-extrabold text-[10px] text-white block mt-1">Technician Dispatched</span>
               <span className="text-[8px] text-slate-400 block font-mono">Order #SVG-5847</span>

@@ -14,7 +14,8 @@ export const Services = ({ onNavigate }) => {
     setCategory,
     selectedArea,
     setArea,
-    searchServices
+    searchServices,
+    currentUser
   } = useApp();
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
@@ -60,7 +61,15 @@ export const Services = ({ onNavigate }) => {
 
   const handleSelectCategory = (catId) => {
     setCategory(catId);
-    onNavigate('service-details', catId);
+    // "Book Now" goes straight into the booking flow: the service page auto-opens
+    // the temporary/permanent choice and the request is broadcast to all eligible
+    // specialists — providers are never listed for selection.
+    sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId }));
+    if (currentUser?.role === 'customer') {
+      onNavigate('service-details', catId);
+    } else {
+      onNavigate('login');
+    }
   };
 
   const handleIssueClick = (issue) => {

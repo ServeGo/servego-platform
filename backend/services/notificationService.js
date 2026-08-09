@@ -450,6 +450,11 @@ export async function notifyAdminPermanentServiceRequest(io, payload) {
   return notifyAdmin(io, 'New Permanent Service Request', 'A customer submitted a permanent/contract service request for admin review.', { ...payload, type: 'PERMANENT_SERVICE_REQUEST' });
 }
 
+/** Admin — a booking request's response window elapsed with no provider accepting; booking kept pending for admin review. */
+export async function notifyAdminLeadUnanswered(io, payload) {
+  return notifyAdmin(io, 'Unanswered Booking Request', 'A booking request expired without any provider accepting it and is still pending admin review.', { ...payload, type: 'LEAD_TIMEOUT_NO_PROVIDER' });
+}
+
 /** Customer — permanent/contract request received by admin. */
 export async function notifyPermanentServiceRequestSubmitted(customerId) {
   return createNotification(

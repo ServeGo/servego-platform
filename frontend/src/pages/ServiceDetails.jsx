@@ -1,12 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SERVICE_CATEGORIES } from '../data';
 
 // Components
 import ServiceDetailHeader from '../components/ServiceDetailHeader';
-import FilterPanel from '../components/FilterPanel';
-import ProviderListItem from '../components/ProviderListItem';
 import BookingModal from '../components/BookingModal';
 import BookingSuccess from '../components/BookingSuccess';
 import ServiceEngagementChoice from '../components/ServiceEngagementChoice';
@@ -14,13 +12,8 @@ import PermanentServiceRequestModal from '../components/PermanentServiceRequestM
 
 export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) => {
   const {
-    providersByApprovedService,
-    fetchProvidersByApprovedServiceName,
     currentUser,
     createBooking,
-    toggleFavoriteProvider,
-    favoriteProviders,
-    selectedArea,
     bookings,
     getCustomerLoyaltyTier,
   } = useApp();
@@ -41,10 +34,7 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
   }, [catId]);
 
   // UI state
-  const [filterArea, setFilterArea] = useState(selectedArea || '');
-  const [sortBy, setSortBy] = useState('rating');
   const [bookingStep, setBookingStep] = useState(0); // 0: Browse, 1: Checkout, 2: Loading, 3: Success
-  const [selectedProvider, setSelectedProvider] = useState(null);
 
   // Engagement choice: Temporary (lead flow) vs Permanent/Contract (admin-managed)
   const [showEngagementChoice, setShowEngagementChoice] = useState(false);
@@ -57,20 +47,6 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
   const [errorText, setErrorText] = useState('');
   const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
 
-  // (auto-booking via hash is currently unused; keeper removed to avoid unused state warning)
-
-  useEffect(() => {
-    if (categoryMeta?.name) {
-      fetchProvidersByApprovedServiceName(categoryMeta.name, { location: filterArea, sort: sortBy });
-    }
-  }, [categoryMeta.name, filterArea, sortBy, fetchProvidersByApprovedServiceName]);
-
-  // Filtering and sorting are performed by the discovery API so results remain
-  // correct when a category has more providers than a single client payload.
-  const categoryProviders = useMemo(() => {
-    return Array.isArray(providersByApprovedService) ? providersByApprovedService : [];
-  }, [providersByApprovedService]);
-
   // Loyalty calculation
   const customerCompletedBookingsCount = useMemo(() => {
     if (!currentUser) return 0;
@@ -79,20 +55,40 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
 
   const loyaltyTier = useMemo(() => getCustomerLoyaltyTier(customerCompletedBookingsCount), [customerCompletedBookingsCount, getCustomerLoyaltyTier]);
 
-  const handleStartBooking = (prov) => {
-    if (!currentUser) {
+  // Start the booking flow. The request is broadcast to every eligible
+  // specialist — no provider is picked at this stage.
+  const handleBookNow = () => {
+    if (!currentUser || currentUser.role !== 'customer') {
       // Store booking intent so we can resume after login
       sessionStorage.setItem('servego_booking_intent', JSON.stringify({
-        providerId: prov.id,
-        categoryName: categoryMeta.name,
-        catId
+        catId,
+        categoryName: categoryMeta.name
       }));
       onNavigate('login');
       return;
     }
-    setSelectedProvider(prov);
     setShowEngagementChoice(true);
   };
+
+  // Resume booking intent (set when "Book Now" was tapped on the services page
+  // or before login) — skip straight to the engagement choice.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'customer') return;
+    const raw = sessionStorage.getItem('servego_booking_intent');
+    if (!raw) return;
+    try {
+      const intent = JSON.parse(raw);
+      if (intent.catId === catId) {
+        sessionStorage.removeItem('servego_booking_intent');
+        setAddress('');
+        setErrorText('');
+        setShowEngagementChoice(true);
+      }
+    } catch {
+      sessionStorage.removeItem('servego_booking_intent');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, catId]);
 
   const handleChooseTemporary = () => {
     setShowEngagementChoice(false);
@@ -111,29 +107,6 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
     setPermanentSuccess(request);
   };
 
-  // Resume booking intent after login
-  useEffect(() => {
-    if (!currentUser) return;
-    const raw = sessionStorage.getItem('servego_booking_intent');
-    if (!raw) return;
-    try {
-      const intent = JSON.parse(raw);
-      if (intent.catId === catId && intent.providerId) {
-        const prov = categoryProviders.find(p => p.id === intent.providerId);
-        if (prov) {
-          sessionStorage.removeItem('servego_booking_intent');
-          setAddress('');
-          setErrorText('');
-          setSelectedProvider(prov);
-          setShowEngagementChoice(true);
-        }
-      }
-    } catch {
-      sessionStorage.removeItem('servego_booking_intent');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser, categoryProviders]);
-
   const handleCompleteCheckout = async (e) => {
     e.preventDefault();
 
@@ -145,11 +118,9 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
     setBookingStep(2);
 
     try {
-      let created;
-      created = await createBooking({
-        providerId: selectedProvider.id,
-        providerName: selectedProvider.name,
-        providerAvatar: selectedProvider.avatar,
+      // No providerId — the backend broadcasts this request to every eligible
+      // specialist and the first one to accept gets the job.
+      const created = await createBooking({
         serviceCategory: categoryMeta.name,
         locationAddress: address,
         city: 'Hyderabad',
@@ -213,9 +184,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
           />
         )}
 
-        {bookingStep === 1 && selectedProvider && (
+        {bookingStep === 1 && (
             <BookingModal 
-              provider={selectedProvider}
               onClose={() => setBookingStep(0)}
               errorText={errorText}
               address={address} setAddress={setAddress}
@@ -230,7 +200,7 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
             <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-xl border border-slate-200 flex flex-col items-center">
               <div className="w-12 h-12 rounded-full border-t-4 border-indigo-600 animate-spin mb-6" />
               <h4 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">Processing Secure Booking</h4>
-              <p className="text-slate-500 text-xs mt-2 font-medium">Validating schedule and escrow credentials. Please wait...</p>
+              <p className="text-slate-500 text-xs mt-2 font-medium">Broadcasting your request to eligible specialists. Please wait...</p>
             </div>
           </div>
         )}
@@ -245,37 +215,54 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
 
         <ServiceDetailHeader categoryMeta={categoryMeta} />
 
-        <FilterPanel 
-          filterArea={filterArea} 
-          setFilterArea={setFilterArea} 
-          sortBy={sortBy} 
-          setSortBy={setSortBy} 
-        />
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-6 sm:p-8 text-left">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+            <div className="flex-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 block mb-2">
+                How it works
+              </span>
+              <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                Book {categoryMeta.name} in seconds
+              </h3>
+              <p className="text-slate-500 text-sm mt-2 leading-relaxed font-medium max-w-2xl">
+                Tell us your requirements and we'll send your request to every eligible specialist
+                in your area at once. The first specialist to accept gets the job — so you get the
+                fastest vetted help available.
+              </p>
 
-        {categoryProviders.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-xl mx-auto">
-            <h3 className="text-lg font-bold text-slate-900">No Vetted Experts Found</h3>
-            <p className="text-slate-500 text-xs mt-1 font-medium">There are no specialists registered in "{filterArea || 'this zone'}" yet.</p>
-            <button 
-              onClick={() => setFilterArea('')}
-              className="mt-6 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold px-4 py-2 rounded-lg text-xs transition-colors"
-            >
-              Show all Hyderabad experts
-            </button>
+              {categoryMeta.popularIssues?.length > 0 && (
+                <div className="mt-4">
+                  <span className="text-[11px] font-bold text-slate-600 block mb-2 uppercase tracking-wide">
+                    Most Popular Requests:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categoryMeta.popularIssues.map((issue, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-slate-50 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200/60"
+                      >
+                        {issue}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 lg:w-64 lg:border-l lg:border-slate-100 lg:pl-6 flex flex-col justify-center">
+              <button
+                onClick={handleBookNow}
+                className="cursor-pointer w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3.5 rounded-xl text-sm transition-all shadow-md focus:outline-none flex items-center justify-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Book Now
+              </button>
+              <p className="text-[11px] text-slate-400 font-medium text-center mt-2">
+                No prepayment. Final charges agreed with the specialist.
+              </p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {categoryProviders.map((prov) => (
-              <ProviderListItem 
-                key={prov.id}
-                provider={prov}
-                isFavorite={favoriteProviders.includes(prov.id)}
-                onToggleFavorite={toggleFavoriteProvider}
-                onBook={handleStartBooking}
-              />
-            ))}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

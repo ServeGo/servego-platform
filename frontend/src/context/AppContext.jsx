@@ -572,6 +572,10 @@ export const AppProvider = ({ children }) => {
       socket.on('newJobLead', () => fetchBookings());
       socket.on('bookingUpdated', () => fetchBookings());
       socket.on('bookingStatusChanged', () => fetchBookings());
+      // Provider accepted a broadcast lead — customer sees the booking move
+      // from pending (waiting) to confirmed with the accepting provider.
+      socket.on('booking:statusChanged', () => fetchBookings());
+      socket.on('leadAccepted', () => fetchBookings());
       // Live provider location for an active booking (customer side)
       socket.on('location:update', (payload) => {
         if (!payload?.bookingId) return;
@@ -792,8 +796,11 @@ export const AppProvider = ({ children }) => {
       if (!res.ok) {
         return { error: data.message || data.error || 'Booking failed.' };
       }
-      if (data.id) {
-        const normalized = normalizeBooking(data);
+      // Backend returns { booking, lead } under `data`; normalize the booking
+      // itself so the caller receives the flat booking object it expects.
+      const booking = data?.booking || data;
+      if (booking?.id) {
+        const normalized = normalizeBooking(booking);
         setBookings(prev => [normalized, ...prev]);
         return normalized;
       }

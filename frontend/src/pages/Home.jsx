@@ -45,7 +45,7 @@ export const Home = ({ onNavigate }) => {
   const displayCategories = Array.isArray(services) && services.length > 0 ? services : [];
 
   return (
-    <div id="home-page" className="bg-slate-50 min-h-screen">
+    <div id="home-page" className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.08),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#f1f5f9_100%)]">
       <Hero 
         onSearch={handleSearchSubmit}
         selectedArea={selectedArea}

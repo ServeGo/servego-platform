@@ -38,7 +38,7 @@ export default function ProviderSupport({
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         <div className="md:col-span-5 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-          <h4 className="font-extrabold text-slate-900 text-sm uppercase">Submit Dispute Ticket</h4>
+          <h4 className="font-extrabold text-slate-900 text-sm uppercase">Submit Support Ticket</h4>
           {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-bold">✔ Ticket raised successfully</div>}
           <form onSubmit={onSubmit} className="space-y-4 text-xs">
             <div>

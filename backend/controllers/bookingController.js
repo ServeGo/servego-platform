@@ -231,9 +231,13 @@ export const BookingController = {
       const io = req.app.get('socketio');
       if (io) {
         // Broadcast the request to every eligible subscribed provider at once.
-        for (const provider of result.providers || []) {
-          await notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider));
-        }
+        // Parallel: each notification is independent; serial round trips here
+        // made the request blow past the 30s timeout.
+        await Promise.all(
+          (result.providers || []).map((provider) =>
+            notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider))
+          )
+        );
         io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id, status: 'PENDING' });
       }
       scheduleLeadExpiry(result.lead, io);

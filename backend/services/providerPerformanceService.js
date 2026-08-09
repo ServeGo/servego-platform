@@ -29,12 +29,14 @@ function recomputeRates(row) {
 }
 
 export async function recordLeadOffered(providerId, client = prisma) {
-  const perf = await ensurePerformance(providerId, client);
-  const next = await client.providerPerformance.update({
-    where: { id: perf.id },
-    data: { totalLeads: { increment: 1 } }
+  // Single round trip instead of ensurePerformance (find/upsert) + update so a
+  // broadcast to many providers does not multiply round trips on high-latency
+  // connections.
+  return client.providerPerformance.upsert({
+    where: { providerId },
+    update: { totalLeads: { increment: 1 } },
+    create: { providerId, totalLeads: 1 }
   });
-  return next;
 }
 
 export async function recordLeadAccepted(providerId, responseTimeMs, client = prisma) {
@@ -73,23 +75,22 @@ export async function recordLeadRejected(providerId, client = prisma) {
 }
 
 export async function recordLeadIgnored(providerId, client = prisma) {
-  const perf = await ensurePerformance(providerId, client);
-  return client.providerPerformance.update({
-    where: { id: perf.id },
-    data: { ignoredLeads: { increment: 1 } }
+  // Single upsert: no rates depend on `ignoredLeads`, so there is no recompute
+  // step and no separate read-then-write pair.
+  return client.providerPerformance.upsert({
+    where: { providerId },
+    update: { ignoredLeads: { increment: 1 } },
+    create: { providerId, ignoredLeads: 1 }
   });
 }
 
 export async function recordLeadExpired(providerId, client = prisma) {
-  const perf = await ensurePerformance(providerId, client);
-  const updated = await client.providerPerformance.update({
-    where: { id: perf.id },
-    data: { expiredLeads: { increment: 1 } }
-  });
-  const rates = recomputeRates(updated);
-  return client.providerPerformance.update({
-    where: { id: perf.id },
-    data: rates
+  // Single upsert: recomputeRates never reads `expiredLeads`, so the old
+  // read + update + recompute triple collapses to one round trip.
+  return client.providerPerformance.upsert({
+    where: { providerId },
+    update: { expiredLeads: { increment: 1 } },
+    create: { providerId, expiredLeads: 1 }
   });
 }
 

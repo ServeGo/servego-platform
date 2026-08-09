@@ -1,0 +1,6 @@
+===================================================
+🚀 ServeGo Engine fully online on http://0.0.0.0:4000
+📊 Environment: development
+🔒 Security: Helmet + Rate Limiting enabled
+===================================================
+[Queue] Workers started for: notification, email, analytics, invoice, performance (poll 1500ms)
