@@ -5,7 +5,7 @@ import {
   notifyLeadExpired,
   notifyLeadTransferred,
   notifyLeadRejected,
-  notifyNoProviderFound
+  notifyAdminLeadUnanswered
 } from './notificationService.js';
 
 const timers = new Map();
@@ -67,16 +67,23 @@ async function handleLeadTimeout(leadId, io) {
     });
 
     const offeredProviderIds = [...new Set(openOffers.map((o) => o.providerId).filter(Boolean))];
-    for (const providerId of offeredProviderIds) {
-      await recordLeadExpired(providerId, tx);
-      await recordLeadIgnored(providerId, tx);
-    }
 
     return {
       offeredProviderIds,
-      ...(await redistributeLead({ leadId, reason: 'EXPIRED', client: tx }))
+      ...(await redistributeLead({ leadId, reason: 'EXPIRED', client: tx, cancelBookingOnSettle: false }))
     };
   }, { maxWait: 20000, timeout: 30000 });
+
+  // Performance counters are pure side effects — record them after the
+  // transaction commits. Serial writes here (one provider at a time) would
+  // stall the timer on high-latency connections; the writes are independent,
+  // so fire them together.
+  await Promise.all(
+    result.offeredProviderIds.flatMap((providerId) => [
+      recordLeadExpired(providerId),
+      recordLeadIgnored(providerId)
+    ])
+  );
 
   const fresh = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -88,19 +95,23 @@ async function handleLeadTimeout(leadId, io) {
   const payload = buildLeadPayload(fresh, fresh?.booking, fresh?.provider);
   const customerId = fresh?.booking?.customerId || fresh?.customerId;
 
-  for (const providerId of result.offeredProviderIds) {
-    const offered = await prisma.provider.findUnique({
-      where: { id: providerId },
-      select: { userId: true }
-    });
-    if (offered?.userId) await notifyLeadExpired(io, offered.userId, payload);
-  }
+  await Promise.all(
+    result.offeredProviderIds.map(async (providerId) => {
+      const offered = await prisma.provider.findUnique({
+        where: { id: providerId },
+        select: { userId: true }
+      });
+      if (offered?.userId) await notifyLeadExpired(io, offered.userId, payload);
+    })
+  );
 
   if (result.reassigned && result.nextProvider) {
     await notifyLeadTransferred(io, result.nextProvider.user?.id, payload);
     if (customerId) await notifyLeadRejected(io, customerId, payload);
-  } else {
-    if (customerId) await notifyNoProviderFound(io, customerId, payload);
+  } else if (result.settled) {
+    // 24-hour response window elapsed with no provider accepting. The booking
+    // stays PENDING (no auto-cancel) and the admin is notified to review it.
+    await notifyAdminLeadUnanswered(io, payload);
   }
 }
 

@@ -101,11 +101,15 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
     };
   }, [live, destination, hasLocation, hasDestination]);
 
-  // Create the map once, then keep markers + route in sync with live data.
+  // Create the map when its container exists (the container only renders once
+  // the provider has a GPS fix). Markers start on a valid default position so
+  // maplibre never has to position an undefined lngLat; the sync effect below
+  // immediately moves them to the real coordinates.
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    const container = mapContainerRef.current;
+    if (!container || mapRef.current) return;
     const map = new MapLibreMap({
-      container: mapContainerRef.current,
+      container,
       style: OSM_STYLE,
       attributionControl: true,
       center: [72.8777, 19.076],
@@ -121,8 +125,13 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
     destEl.className = 'live-map-dest-marker';
     destEl.innerHTML = '<div class="live-map-dest-dot"></div>';
 
-    markersRef.current.provider = new Marker({ element: providerEl, anchor: 'center' }).addTo(map);
-    markersRef.current.destination = new Marker({ element: destEl, anchor: 'center' }).addTo(map);
+    const defaultLngLat = [72.8777, 19.076];
+    markersRef.current.provider = new Marker({ element: providerEl, anchor: 'center' })
+      .setLngLat(defaultLngLat)
+      .addTo(map);
+    markersRef.current.destination = new Marker({ element: destEl, anchor: 'center' })
+      .setLngLat(defaultLngLat)
+      .addTo(map);
 
     map.on('load', () => setMapReady(true));
 
@@ -133,7 +142,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
       markersRef.current = { provider: null, destination: null };
       setMapReady(false);
     };
-  }, []);
+  }, [hasLocation, hasDestination]);
 
   useEffect(() => {
     const map = mapRef.current;

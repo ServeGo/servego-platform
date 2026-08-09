@@ -252,52 +252,6 @@ export const adminCreditWalletValidation = [
     .escape()
 ];
 
-// ==================== Dispute Validations ====================
-
-export const createDisputeValidation = [
-  body('bookingId')
-    .trim()
-    .notEmpty().withMessage('Booking ID is required'),
-  body('reason')
-    .trim()
-    .notEmpty().withMessage('Reason is required')
-    .isIn(['QUALITY_ISSUE', 'SERVICE_NOT_PROVIDED', 'PRICING_ISSUE', 'DAMAGE', 'BEHAVIOR', 'NO_SHOW', 'OTHER']).withMessage('Invalid dispute reason'),
-  body('description')
-    .trim()
-    .notEmpty().withMessage('Description is required')
-    .isLength({ min: 10, max: 4000 }).withMessage('Description must be between 10 and 4000 characters')
-    .escape(),
-  body('raisedBy')
-    .optional()
-    .isIn(['CUSTOMER', 'PROVIDER']).withMessage('raisedBy must be CUSTOMER or PROVIDER'),
-  body('evidence')
-    .optional()
-    .isArray().withMessage('Evidence must be an array')
-];
-
-export const addDisputeMessageValidation = [
-  body('message')
-    .trim()
-    .notEmpty().withMessage('Message is required')
-    .isLength({ max: 4000 }).withMessage('Message too long')
-    .escape()
-];
-
-export const resolveDisputeValidation = [
-  body('resolutionType')
-    .notEmpty().withMessage('Resolution type is required')
-    .isIn(['FULL_REFUND', 'PARTIAL_REFUND', 'NO_REFUND']).withMessage('Resolution must be FULL_REFUND, PARTIAL_REFUND or NO_REFUND'),
-  body('refundAmount')
-    .optional({ values: 'falsy' })
-    .toFloat()
-    .isFloat({ min: 0 }).withMessage('Refund amount must be a non-negative number'),
-  body('adminNote')
-    .optional()
-    .trim()
-    .isLength({ max: 2000 }).withMessage('Admin note too long')
-    .escape()
-];
-
 // ==================== Review Validations ====================
 
 export const createReviewValidation = [

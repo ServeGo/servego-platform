@@ -55,7 +55,6 @@ model User {
   wallet                  Wallet?
   walletTransactions      WalletTransaction[]
   walletWithdrawalRequests WalletWithdrawalRequest[]
-  disputesAsCustomer      Dispute[]       @relation("CustomerDisputes")
 }
 
 model Customer {
@@ -191,7 +190,6 @@ model Provider {
   locationUpdates         BookingLocationUpdate[]
   permanentServiceAssignments PermanentServiceRequest[] @relation("PermanentServiceAssignments")
   walletWithdrawalRequests WalletWithdrawalRequest[]
-  disputes               Dispute[]
 }
 
 model ProviderBadge {
@@ -333,7 +331,6 @@ model Booking {
   locationUpdates BookingLocationUpdate[]
   lead            Lead?
   cancellationReasons CancellationReason[]
-  disputes        Dispute[]
 }
 
 // Bounded history of provider location pings for a booking. Kept for
@@ -367,52 +364,6 @@ model BookingEvent {
   booking    Booking  @relation(fields: [bookingId], references: [id])
 
   @@index([bookingId])
-  @@index([createdAt])
-}
-
-// Customer/provider dispute raised against a booking. Admin reviews, exchanges
-// messages with both parties, and resolves with an optional wallet refund.
-model Dispute {
-  id             String            @id @default(cuid())
-  bookingId      String
-  customerId     String
-  providerId     String
-  raisedBy       DisputeActor
-  reason         DisputeReason
-  description    String
-  status         DisputeStatus     @default(OPEN)
-  resolutionType DisputeResolution?
-  refundAmount   Float?
-  evidence       Json              @default("[]")
-  adminNote      String?
-  resolvedBy     String?
-  resolvedAt     DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-
-  booking   Booking         @relation(fields: [bookingId], references: [id])
-  customer  User            @relation("CustomerDisputes", fields: [customerId], references: [id])
-  provider  Provider        @relation(fields: [providerId], references: [id])
-  messages  DisputeMessage[]
-
-  @@index([bookingId])
-  @@index([customerId])
-  @@index([providerId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model DisputeMessage {
-  id         String   @id @default(cuid())
-  disputeId  String
-  senderId   String
-  senderRole String
-  message    String
-  createdAt  DateTime @default(now())
-
-  dispute Dispute @relation(fields: [disputeId], references: [id])
-
-  @@index([disputeId])
   @@index([createdAt])
 }
 
@@ -1014,34 +965,6 @@ enum WithdrawalRequestStatus {
   APPROVED
   REJECTED
   PAID
-}
-
-enum DisputeActor {
-  CUSTOMER
-  PROVIDER
-}
-
-enum DisputeStatus {
-  OPEN
-  IN_REVIEW
-  RESOLVED
-  REJECTED
-}
-
-enum DisputeReason {
-  QUALITY_ISSUE
-  SERVICE_NOT_PROVIDED
-  PRICING_ISSUE
-  DAMAGE
-  BEHAVIOR
-  NO_SHOW
-  OTHER
-}
-
-enum DisputeResolution {
-  FULL_REFUND
-  PARTIAL_REFUND
-  NO_REFUND
 }
 
 // ============================================================

@@ -117,14 +117,6 @@ export default function Navbar({
             >
               Support Tickets
             </button>
-            <button
-              onClick={() => setAdminHashAndTab('disputes')}
-              className={`hover:text-white cursor-pointer ${
-                adminActiveTab === 'disputes' ? 'text-teal-400 border-b-2 border-teal-400' : ''
-              }`}
-            >
-              Disputes
-            </button>
           </nav>
 
           {/* mobile: only hamburger on right */}
@@ -195,17 +187,6 @@ export default function Navbar({
                 }`}
               >
                 Support Tickets
-              </button>
-              <button
-                onClick={() => {
-                  setAdminHashAndTab('disputes');
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full py-3 px-1.5 text-center rounded ${
-                  adminActiveTab === 'disputes' ? 'text-teal-400' : 'hover:text-white'
-                }`}
-              >
-                Disputes
               </button>
 
               <button

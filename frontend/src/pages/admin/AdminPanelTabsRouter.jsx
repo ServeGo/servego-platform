@@ -16,7 +16,6 @@ const AdminReviewsTab = lazy(() => import('./Tabs/AdminReviewsTab'));
 const AdminReportsTab = lazy(() => import('./Tabs/AdminReportsTab'));
 const AdminServeGoTab = lazy(() => import('./Tabs/AdminServeGoTab'));
 const AdminPermanentServicesTab = lazy(() => import('./Tabs/AdminPermanentServicesTab'));
-const AdminDisputesTab = lazy(() => import('./Tabs/AdminDisputesTab'));
 const AdminFeatureFlagsTab = lazy(() => import('./Tabs/AdminFeatureFlagsTab'));
 const AdminBackupsTab = lazy(() => import('./Tabs/AdminBackupsTab'));
 
@@ -57,9 +56,6 @@ export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
 
     case 'permanentServiceRequests':
       return <LazyTab><AdminPermanentServicesTab {...tabProps} /></LazyTab>;
-
-    case 'disputes':
-      return <LazyTab><AdminDisputesTab /></LazyTab>;
 
     case 'featureFlags':
       return <LazyTab><AdminFeatureFlagsTab /></LazyTab>;

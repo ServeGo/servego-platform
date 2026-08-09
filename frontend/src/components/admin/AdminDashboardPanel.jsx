@@ -63,7 +63,7 @@ export default function AdminDashboardPanel({
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-2xs">
           <div>
-            <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-1">Dispute Tickets</span>
+            <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-1">Open Help Tickets</span>
             <span className="text-lg sm:text-2xl font-black text-rose-600 block">{activeTicketsCount} open</span>
             <span className="text-[10px] text-slate-400 block mt-1">Customer & Partner complaints</span>
           </div>

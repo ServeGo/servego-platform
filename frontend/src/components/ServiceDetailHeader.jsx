@@ -10,7 +10,7 @@ export default function ServiceDetailHeader({ categoryMeta }) {
           Licensed {categoryMeta.name}s
         </h2>
         <p className="text-slate-400 text-xs sm:text-sm mt-2 leading-relaxed font-medium">
-          {categoryMeta.description} Compare real profiles, read historical client reviews, and book direct with confidence.
+          {categoryMeta.description} Send your request to every eligible specialist in your area and get the fastest vetted response.
         </p>
       </div>
 

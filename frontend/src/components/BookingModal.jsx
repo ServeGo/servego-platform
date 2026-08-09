@@ -11,6 +11,7 @@ export default function BookingModal({
   loyaltyTier,
   onSubmit
 }) {
+  const specialistLabel = provider?.name || 'To be assigned (first to accept)';
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-2xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
@@ -18,7 +19,7 @@ export default function BookingModal({
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
           <div>
             <h3 className="text-xl font-bold text-slate-900">Temporary Service Booking</h3>
-            <p className="text-slate-500 text-xs font-medium">Secure booking with {provider.name}</p>
+            <p className="text-slate-500 text-xs font-medium">Your request goes to every eligible specialist in your area</p>
           </div>
           <button 
             onClick={onClose}
@@ -69,7 +70,7 @@ export default function BookingModal({
           <div className="md:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 self-start shadow-xs">
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 block mb-3">Booking Summary</span>
             <div className="space-y-2 pb-3 border-b border-slate-100 text-xs font-bold">
-              <BillRow label="Specialist" value={provider.name} />
+              <BillRow label="Specialist" value={specialistLabel} />
               <BillRow label="Type" value="Temporary Service" />
             </div>
 
@@ -81,7 +82,8 @@ export default function BookingModal({
             )}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 font-medium leading-relaxed my-3">
-              Your request is sent to the specialist, who has a limited time to accept. Final charges are agreed directly with your specialist.
+              Your request is sent to every eligible specialist in your area at once. The first
+              specialist to accept gets your job. Final charges are agreed directly with your specialist.
             </div>
 
             <button

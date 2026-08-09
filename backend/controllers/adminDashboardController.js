@@ -134,7 +134,7 @@ export const AdminDashboardController = {
       // only money flows are provider subscriptions (Razorpay) and the
       // admin-configured platform charge applied to every booking with separate
       // customer/provider rates.
-      const [chargeAgg, subscriptionAgg, disputedTickets] = await Promise.all([
+      const [chargeAgg, subscriptionAgg] = await Promise.all([
         prisma.booking.aggregate({
           _sum: {
             totalAmount: true,
@@ -147,9 +147,6 @@ export const AdminDashboardController = {
         prisma.subscriptionTransaction.aggregate({
           _sum: { finalAmount: true },
           where: { paymentStatus: 'PAID' }
-        }),
-        prisma.ticket.count({
-          where: { status: 'OPEN', subject: { contains: 'dispute', mode: 'insensitive' } }
         })
       ]);
 
@@ -161,8 +158,7 @@ export const AdminDashboardController = {
         platformEarnings: Number(customerCharges) + Number(providerCharges),
         providerPayouts: Number(chargeAgg?._sum?.providerPayout ?? 0),
         subscriptionRevenue: Number(subscriptionAgg?._sum?.finalAmount ?? 0),
-        vettingBacklogCount: pendingApprovals,
-        disputeTicketsCount: disputedTickets
+        vettingBacklogCount: pendingApprovals
       };
 
       sendApiSuccess(res, 200, summary);

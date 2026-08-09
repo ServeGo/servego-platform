@@ -12,8 +12,6 @@ async function main() {
   console.log('🗑  Deleting all data except admin user …');
 
   // FK-safe deletion order (children first)
-  await prisma.disputeMessage.deleteMany();
-  await prisma.dispute.deleteMany();
   await prisma.cancellationReason.deleteMany();
   await prisma.bookingLocationUpdate.deleteMany();
   await prisma.bookingEvent.deleteMany();

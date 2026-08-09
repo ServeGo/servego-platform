@@ -15,7 +15,6 @@ import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
 import PermanentRequestsView from '../components/PermanentRequestsView';
 import WalletView from '../components/WalletView';
-import DisputesView from '../components/DisputesView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
   const { 
@@ -70,13 +69,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     if (res.ok && Array.isArray(res.data)) setPermanentCount(res.data.length);
   }, []);
   useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);
-
-  const [disputesCount, setDisputesCount] = useState(0);
-  const fetchDisputesCount = useCallback(async () => {
-    const res = await api.get('/disputes/mine');
-    if (res.ok && Array.isArray(res.data)) setDisputesCount(res.data.length);
-  }, []);
-  useEffect(() => { fetchDisputesCount(); }, [fetchDisputesCount]);
 
   // Loyalty progression based on completed bookings.
   const completedCount = useMemo(
@@ -191,8 +183,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             favorites: userFavorites.length,
             tickets: userTickets.length,
             notifications: userNotifications.length,
-            requests: permanentCount,
-            disputes: disputesCount
+            requests: permanentCount
           }}
         />
 
@@ -229,8 +220,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             submitting={ticketSubmitting}
           />
         )}
-
-        {activeTab === 'disputes' && <DisputesView userBookings={userBookings} />}
 
         {activeTab === 'notifications' && (
           <NotificationsView 

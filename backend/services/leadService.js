@@ -401,7 +401,7 @@ export async function createBookingWithLead({
       }
     });
 
-    const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 60, tx)) || 60;
+    const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 86400, tx)) || 86400;
     const expiryTime = new Date(Date.now() + leadTimeoutSeconds * 1000);
 
     const assignedLead = await tx.lead.update({
@@ -421,6 +421,9 @@ export async function createBookingWithLead({
       }))
     });
 
+    // Prisma runs interactive-transaction queries serially on one connection,
+    // so Promise.all here would not parallelize. recordLeadOffered is now a
+    // single upsert per provider, keeping this loop's round trips minimal.
     for (const p of ranked) {
       await recordLeadOffered(p.id, tx);
     }
@@ -647,7 +650,7 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
   }
 
   const nextProvider = candidates[0];
-  const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 60, client)) || 60;
+  const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 86400, client)) || 86400;
   const expiryTime = new Date(Date.now() + leadTimeoutSeconds * 1000);
 
   await client.leadAssignmentHistory.updateMany({
@@ -708,16 +711,18 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
 /**
  * Terminal settlement for a lead that could not be reassigned: mark the lead
  * EXPIRED and, when the booking is still open, cancel it so the customer can
- * re-book. Runs inside `client`'s transaction.
+ * re-book. Pass `cancelBookingOnSettle: false` to keep the booking PENDING
+ * instead (e.g. after the 24-hour response window elapses) so an admin can
+ * review and manually handle it. Runs inside `client`'s transaction.
  */
-async function settleLeadInTx({ leadId, booking, reason = 'NO_PROVIDER', client }) {
+async function settleLeadInTx({ leadId, booking, reason = 'NO_PROVIDER', client, cancelBookingOnSettle = true }) {
   const lead = await client.lead.update({
     where: { id: leadId },
     data: { status: 'EXPIRED', lastRejectReason: reason }
   });
 
   let updatedBooking = booking;
-  if (booking && ['PENDING', 'CONFIRMED'].includes(booking.status)) {
+  if (cancelBookingOnSettle && booking && ['PENDING', 'CONFIRMED'].includes(booking.status)) {
     updatedBooking = await client.booking.update({
       where: { id: booking.id },
       data: {
@@ -750,12 +755,12 @@ async function settleLeadInTx({ leadId, booking, reason = 'NO_PROVIDER', client 
  * Public redistribute — wraps `redistributeInTx` in its own transaction when
  * the caller is not already inside one and resolves final notifications.
  */
-export async function redistributeLead({ leadId, reason = 'REJECTED', details = null, client = prisma }) {
+export async function redistributeLead({ leadId, reason = 'REJECTED', details = null, client = prisma, cancelBookingOnSettle = true }) {
   return withClientTransaction(client, async (tx) => {
     const result = await redistributeInTx({ leadId, reason, details, client: tx });
 
     if (result.exhausted || !result.nextProvider) {
-      return settleLeadInTx({ leadId, booking: result.booking, reason, client: tx });
+      return settleLeadInTx({ leadId, booking: result.booking, reason, client: tx, cancelBookingOnSettle });
     }
 
     return { ...result, reassigned: true };

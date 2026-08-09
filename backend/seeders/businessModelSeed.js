@@ -19,7 +19,7 @@ export const SUBSCRIPTION_PLAN_DEFAULTS = [
 
 export const ADMIN_CONFIG_DEFAULTS = [
   // Lead distribution
-  { key: 'leadTimeoutSeconds', value: 120, description: 'Seconds a provider has to accept/reject a lead before it expires.' },
+  { key: 'leadTimeoutSeconds', value: 86400, description: 'Seconds a provider has to accept/reject a lead before it expires (86400 = 24 hours).' },
   { key: 'maxRedistributionAttempts', value: 10, description: 'Maximum Lead Retry Count — how many ranked providers a lead is offered to before the customer is notified.' },
   { key: 'leadExpiryEnabled', value: true, description: 'Master switch for the provider response timer.' },
 

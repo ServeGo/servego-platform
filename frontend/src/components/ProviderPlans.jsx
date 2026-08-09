@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard,
   Zap,
-  ShieldCheck,
   CheckCircle2,
   IndianRupee,
   Sparkles,
@@ -161,6 +160,10 @@ export default function ProviderPlans({ providerId }) {
   const hasActivePlan = Boolean(remainingState?.active ?? (Number(subscription?.remainingLeads) > 0 && subscription?.paymentStatus === 'PAID'));
   const levelDiscount = plans.find((p) => p.level === activePlanLevel)?.discountPercent ?? 0;
 
+  // Only ever show the provider's current level plan and the next level up.
+  const nextPlanLevel = activePlanLevel + 1;
+  const visiblePlans = plans.filter((p) => p.level === activePlanLevel || p.level === nextPlanLevel);
+
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-3xl p-5">
@@ -250,13 +253,13 @@ export default function ProviderPlans({ providerId }) {
         <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
           Loading plans...
         </div>
-      ) : plans.length === 0 ? (
+      ) : visiblePlans.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
           No plans are available right now. Check back soon.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {plans.map((plan) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {visiblePlans.map((plan) => {
             const isCurrent = plan.level === activePlanLevel;
             const price = Number(plan.finalPrice ?? plan.price ?? 0);
             const discount = Number(plan.discountPercent ?? 0);
@@ -334,28 +337,6 @@ export default function ProviderPlans({ providerId }) {
           })}
         </div>
       )}
-
-      <div className="bg-white border border-slate-200 rounded-3xl p-5">
-        <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-3">Payment Method</p>
-        <div className="flex flex-wrap gap-2">
-          {['ONLINE', 'CASH'].map((m) => (
-            <button
-              key={m}
-              onClick={() => setPaymentMethod(m)}
-              className={`px-4 py-2 text-xs font-black rounded-xl border transition-all ${
-                paymentMethod === m
-                  ? 'bg-teal-600 text-white border-teal-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-slate-400 font-semibold mt-3">
-          <ShieldCheck className="w-3.5 h-3.5 inline-block mr-1" /> Online payments are processed securely through Razorpay (UPI, cards, net-banking). Cash is recorded as an offline payment for admin reconciliation.
-        </p>
-      </div>
 
       {showHistory && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
