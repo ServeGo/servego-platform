@@ -1,8 +1,36 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
+import { exportAllPages } from '../../../utils/exportExcel';
 
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const BOOKING_EXPORT_COLUMNS = [
+  { header: 'Booking ID', key: 'id' },
+  { header: 'Customer', key: 'customerName' },
+  { header: 'Provider', key: 'providerName' },
+  { header: 'Service Category', key: 'serviceCategory' },
+  { header: 'Status', key: 'status' },
+  { header: 'Created At', key: 'createdAtLabel' }
+];
+
+const PROVIDER_EXPORT_COLUMNS = [
+  { header: 'Name', key: 'name' },
+  { header: 'Category', key: 'category' },
+  { header: 'Rating', key: 'rating' },
+  { header: 'Jobs Completed', key: 'jobsCompleted' },
+  { header: 'Verified', key: 'verifiedLabel' },
+  { header: 'Joined', key: 'joinedLabel' }
+];
+
+const AUDIT_EXPORT_COLUMNS = [
+  { header: 'Actor Role', key: 'actorRole' },
+  { header: 'Action', key: 'action' },
+  { header: 'Target', key: 'targetName' },
+  { header: 'Old Value', key: 'oldValue' },
+  { header: 'New Value', key: 'newValue' },
+  { header: 'Date', key: 'dateLabel' }
+];
 
 const fmtValue = (v) => {
   if (!v || typeof v !== 'object') return v || '—';
@@ -48,6 +76,66 @@ export default function AdminReportsTab() {
   const [auditPage, setAuditPage] = useState(1);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditTotalPages, setAuditTotalPages] = useState(0);
+  const [exporting, setExporting] = useState('');
+
+  const fetchAllBookings = useCallback(async (page, limit) => {
+    const res = await apiClient.get(`/admin/bookings?page=${page}&limit=${limit}`);
+    if (!res.ok) return { rows: [], total: 0 };
+    const rows = (res.data?.bookings || []).map((b) => ({
+      id: b.id,
+      customerName: b.customerName || b.customer?.name || '',
+      providerName: b.providerName || b.provider?.user?.name || '',
+      serviceCategory: b.serviceCategory || '',
+      status: b.status || '',
+      createdAtLabel: fmt(b.createdAt || b.bookingDate)
+    }));
+    return { rows, total: res.data?.pagination?.total || 0 };
+  }, []);
+
+  const fetchAllProviders = useCallback(async (page, limit) => {
+    const res = await apiClient.get(`/admin/providers?page=${page}&limit=${limit}`);
+    if (!res.ok) return { rows: [], total: 0 };
+    const rows = (res.data?.providers || []).map((p) => ({
+      name: p.user?.name || '',
+      category: p.category || '',
+      rating: p.rating || 0,
+      jobsCompleted: p.jobsCompleted || 0,
+      verifiedLabel: p.isVerified ? 'Verified' : 'Pending',
+      joinedLabel: fmt(p.createdAt)
+    }));
+    return { rows, total: res.data?.pagination?.total || 0 };
+  }, []);
+
+  const fetchAllAuditLogs = useCallback(async (page, limit) => {
+    const res = await apiClient.get(`/admin/audit-logs?page=${page}&limit=${limit}`);
+    if (!res.ok) return { rows: [], total: 0 };
+    const rows = (res.data?.logs || []).map((log) => ({
+      actorRole: log.actorRole || '',
+      action: ACTION_LABELS[log.action] || log.action || '',
+      targetName: log.targetName || '',
+      oldValue: fmtValue(log.oldValue),
+      newValue: fmtValue(log.newValue),
+      dateLabel: fmt(log.createdAt)
+    }));
+    return { rows, total: res.data?.pagination?.total || 0 };
+  }, []);
+
+  const handleExport = async (kind) => {
+    setExporting(kind);
+    try {
+      if (kind === 'bookings') {
+        await exportAllPages({ fetchPage: fetchAllBookings, fileName: 'bookings-report', sheetName: 'Bookings', columns: BOOKING_EXPORT_COLUMNS });
+      } else if (kind === 'providers') {
+        await exportAllPages({ fetchPage: fetchAllProviders, fileName: 'providers-report', sheetName: 'Providers', columns: PROVIDER_EXPORT_COLUMNS });
+      } else {
+        await exportAllPages({ fetchPage: fetchAllAuditLogs, fileName: 'audit-log', sheetName: 'Audit Log', columns: AUDIT_EXPORT_COLUMNS });
+      }
+    } catch (err) {
+      console.error('Excel export failed:', err);
+    } finally {
+      setExporting('');
+    }
+  };
 
   const fetchBookings = useCallback(async (page) => {
     setBookingsLoading(true);
@@ -136,9 +224,19 @@ export default function AdminReportsTab() {
 
       {tab === 'bookings' && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">All Bookings ({bookingsTotal})</span>
-            {bookingsLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
+            <div className="flex items-center gap-2">
+              {bookingsLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
+              <button
+                onClick={() => handleExport('bookings')}
+                disabled={exporting === 'bookings' || bookingsTotal === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting === 'bookings' ? 'Exporting...' : 'Export Excel'}
+              </button>
+            </div>
           </div>
           {bookingsLoading ? (
             <p className="text-slate-400 text-xs italic p-6">Loading bookings...</p>
@@ -207,9 +305,19 @@ export default function AdminReportsTab() {
 
       {tab === 'providers' && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">All Providers ({providersTotal})</span>
-            {providersLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
+            <div className="flex items-center gap-2">
+              {providersLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
+              <button
+                onClick={() => handleExport('providers')}
+                disabled={exporting === 'providers' || providersTotal === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting === 'providers' ? 'Exporting...' : 'Export Excel'}
+              </button>
+            </div>
           </div>
           {providersLoading ? (
             <p className="text-slate-400 text-xs italic p-6">Loading providers...</p>
@@ -275,9 +383,19 @@ export default function AdminReportsTab() {
 
       {tab === 'audit' && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">Audit Log</span>
-            <span className="text-[10px] text-slate-400 font-semibold">{auditTotal} total entries</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-semibold">{auditTotal} total entries</span>
+              <button
+                onClick={() => handleExport('audit')}
+                disabled={exporting === 'audit' || auditTotal === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting === 'audit' ? 'Exporting...' : 'Export Excel'}
+              </button>
+            </div>
           </div>
           {auditLoading ? (
             <p className="text-slate-400 text-xs italic p-6">Loading audit logs...</p>

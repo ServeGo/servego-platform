@@ -64,8 +64,8 @@
 - Socket.io server: websocket + polling transports, pingTimeout 60s, pingInterval 25s, per-message-deflate
 - Routing: `backend/routes/api.js` (single Express router mounted at `/api`)
 - Design style:
-  - Every functional area is handled by a dedicated controller in `backend/controllers/*` (22 controllers)
-  - Business logic lives in `backend/services/*` (12 services); controllers stay thin (auth → call service → respond)
+  - Every functional area is handled by a dedicated controller in `backend/controllers/*` (26 controllers)
+  - Business logic lives in `backend/services/*` (22 services); controllers stay thin (auth → call service → respond)
   - Auth via JWT Bearer tokens (`requireAuth`, `requireRole`, `optionalAuth` in `backend/utils/auth.js`)
   - Unified response envelope: `sendApiSuccess` / `sendApiError` in `backend/utils/response.js`
   - Express-validator middleware in `backend/middleware/validation.js`
@@ -76,9 +76,9 @@
 
 ### 1.3 Database (Prisma + PostgreSQL)
 - Location: `backend/prisma/`
-- Prisma schema: `backend/prisma/schema.prisma` (40 models + 26 enums)
+- Prisma schema: `backend/prisma/schema.prisma` (37 models + 22 enums)
 - Client singleton: `backend/prisma/client.js`
-- Migrations: `backend/prisma/migrations/*` — 33 migrations from the initial schema through the durable job queue, ranked search (§6.7, §15.7), DB backups and performance indexes (§6.7, §24)
+- Migrations: `backend/prisma/migrations/*` — migrations from the initial schema through the durable job queue, ranked search, and performance indexes (§6.7, §15.7, §24)
 
 ### 1.4 Service catalog & business-model seeding
 - `backend/seeders/servicesSeed.js` — 20 curated service categories (Electrician, Plumber, AC Repair, Home Cleaning, Deep Cleaning, Painting, Appliance Repair, Carpentry, Home Maintenance, Pest Control, Salon at Home, Sofa Cleaning, Water Tank Cleaning, Appliance Installation, Modular Kitchen, Interior Design, Packers & Movers, CCTV Installation, Geyser & Water Heater, Tile & Grouting)
@@ -103,16 +103,16 @@
 └───────────────────────┬───────────────────────┘
                         │  requireAuth / requireRole / optionalAuth + validation
 ┌───────────────────────▼───────────────────────┐
-│            Controllers  (22, thin)             │
+│            Controllers  (26, thin)             │
 │  user · provider · booking · lead · subscription│
 │  admin* · service · review · payment · ticket… │
 └───────────────────────┬───────────────────────┘
                         │
 ┌───────────────────────▼───────────────────────┐
-│      Business Services  (12) + Utils + timers  │
+│      Business Services  (22) + Utils + timers  │
 │  leadService · subscriptionService · levelService│
 │  performanceService · notificationService · …  │
-│  Cron (autoCancel) · lead-expiry timers        │
+│  Cron (autoCancel) · lead timers · fee billing │
 └───────────────────────┬───────────────────────┘
                         │  Prisma ORM (prisma/client.js)
 ┌───────────────────────▼───────────────────────┐
@@ -125,7 +125,7 @@
 | Pattern | Where used |
 |---------|-----------|
 | **Layered architecture** | Presentation (React) → API (Express router + middleware) → Service layer → Data (Prisma/PostgreSQL). Each layer depends only on the layer below it. |
-| **Service-oriented backend** | 12 focused services (`leadService`, `subscriptionService`, `providerLevelService`, `providerPerformanceService`, `notificationService`, …) encapsulate business rules; reused by multiple controllers. |
+| **Service-oriented backend** | 22 focused services (`leadService`, `subscriptionService`, `providerLevelService`, `providerPerformanceService`, `notificationService`, `platformFeeService`, …) encapsulate business rules; reused by multiple controllers. |
 | **Thin controllers** | Controllers validate input (via middleware), delegate to a service, and shape the HTTP response (`sendApiSuccess`/`sendApiError`). No business logic lives in controllers. |
 | **Shared utility layer** | Cross-cutting helpers in `backend/utils/*` (auth, response envelope, workflow normalization, permissions, availability, validation, runtimeConfig) reused across controllers/services. |
 | **Repository-style data access** | Prisma Client singleton (`backend/prisma/client.js`) is the single data-access path; transactional units run with `isolationLevel: 'Serializable'` (booking creation, lead accept, complete, redistribute, subscription purchase). |
@@ -192,9 +192,9 @@ NEW → VIEWED → ACCEPTED → COMPLETED
        └→ other offers remain open; lead/booking re-pointed to a remaining provider
        └→ when the last open offer is withdrawn → settle (lead EXPIRED,
             open booking auto-CANCELLED so the customer can re-book)
-  \        └→ (leadTimeoutSeconds) → all open offers EXPIRED
-       └→ reassign to a genuinely new eligible provider, else settle (lead EXPIRED,
-            open booking auto-CANCELLED so the customer can re-book)
+  \        └→ (fixed 24h response window) → all open offers EXPIRED
+       └→ lead EXPIRED (no auto-cancel) + the admin is alerted to follow up
+            manually; the lead is never silently reassigned after timeout
 ```
 
 ### 1.8 Enterprise readiness
@@ -206,7 +206,7 @@ The platform implements production concerns across the stack:
 - **WebSocket realtime** for notifications, booking/lead events, admin alerts (§16.2)
 - **Event-driven notifications** (per-user rooms + admin room) with DB-persisted `Notification` rows
 - **Background processing** (lead timers + hourly auto-cancel cron) re-warmed from DB on boot (§15)
-- **Configurable business rules** (16 admin-config keys, editable in Admin → ServeGo Business) (§7.4)
+- **Configurable business rules** (20 admin-config keys, editable in Admin → ServeGo Business) (§7.4)
 - **Audit logging** of admin/verify/approve/status-change operations (`AuditLog`, `writeAuditLog`) 
 - **RBAC** via middleware chain (`requireAuth` + `requireRole('admin'|'provider'|'customer')`)
 - **Transactional workflows** with `Serializable` isolation for money/lead-sensitive writes
@@ -222,14 +222,14 @@ servego-platform/
 ├── backend/
 │   ├── server.js                   # bootstrap: express, socket.io, middleware, routes, cron, seeds
 │   ├── routes/api.js               # single API router (all endpoints)
-│   ├── controllers/                # 22 controllers (one per functional area)
-│   ├── services/                   # 12 services (business logic, timers, integrations)
+│   ├── controllers/                # 26 controllers (one per functional area)
+│   ├── services/                   # 22 services (business logic, timers, integrations)
 │   ├── middleware/                 # security.js, logging.js, upload.js, validation.js
 │   ├── utils/                      # auth.js, response.js, workflow.js, permissions.js, availability.js, validation.js, runtimeConfig.js
 │   ├── seeders/                    # servicesSeed.js, businessModelSeed.js
 │   ├── prisma/                     # schema.prisma, client.js, seed.js, migrations/
 │   ├── scripts/                    # cleanup-db.js, migrate-photos-to-cloudinary.js, fix-html-entity-descriptions.js, check-experience.js
-│   └── tests/                      # node --test suite (auth, availability, integration, response, runtimeConfig, socketAuth, workflow, queue, maps, tracking, search, payment, featureFlags, backups, pagination)
+│   └── tests/                      # node --test suite (auth, availability, integration, response, runtimeConfig, socketAuth, workflow, queue, maps, tracking, search, payment, featureFlags, pagination)
 └── frontend/
     ├── src/
     │   ├── App.jsx                 # routing + role layouts + admin sidebar
@@ -272,7 +272,8 @@ Router file: `backend/routes/api.js`
 | Admin: dashboard & ops | 3.14 | 5 |
 | Admin: ServeGo business model | 3.15 | 14 |
 | Saved pros & images | 3.16 | 4 |
-| **Total** | | **110** |
+| Platform fee (monthly) | 3.17 | 6 |
+| **Total** | | **116** |
 
 Each module below is documented as **Purpose / Endpoints / Permissions / Business rules**.
 
@@ -490,6 +491,18 @@ Each module below is documented as **Purpose / Endpoints / Permissions / Busines
 **Permissions:** customer role for saved pros; optionalAuth for image upload.
 **Business rules:** favorites only for verified ACTIVE providers; uploads capped at 5MB images.
 
+### 3.17 Platform fee (monthly ServeGo subscription)
+**Purpose:** Recurring monthly platform fee that replaces per-booking commission. Providers must keep it paid to keep receiving leads; customers are reminded but never blocked.
+**Endpoints:**
+- `GET /api/v1/platform-fee/status` → `PlatformFeeController.status` (any auth; own account: enabled, amount, billing dueAt, overdue, unpaidBalance)
+- `GET /api/v1/platform-fee/history` → `PlatformFeeController.history` (any auth; own `PlatformFeePayment` rows, newest first)
+- `POST /api/v1/platform-fee/order` → `PlatformFeeController.order` (any auth; Razorpay order for the amount due — default fee amount, or the accrued balance when overdue)
+- `POST /api/v1/platform-fee/verify` → `PlatformFeeController.verify` (any auth; verifies the Razorpay signature, records the payment, advances the billing window, emits `platformFee:paid` + notification)
+- `POST /api/v1/platform-fee/webhook` → `PlatformFeeController.webhook` (public; Razorpay payment-authorization webhook — reconciles paid orders that were never verified client-side)
+- `GET /api/v1/admin/platform-fees` → `PlatformFeeController.adminList` (admin; paginated list of `PlatformFeeAccount` rows + `PENDING`/`OVERDUE`/`PAID` filters + summary counts)
+**Permissions:** status/history/order/verify require any authenticated role; admin list is admin-only; webhook is public.
+**Business rules:** a `PlatformFeeAccount` row is auto-created for every user on first status check; billing is monthly, first due = `accountCreatedAt + platformFeeGraceDays` (default 30); payments verified via Razorpay signature or the webhook; an overdue provider (`dueAt` passed, `overdue`) is **excluded from lead matching** (`findEligibleProviders`/`diagnoseProvider` gate on `platformFeeEnabled`); a daily cron (`advanceFeeBilling`) marks accounts overdue, and an initial sweep on boot creates accounts for all users (§15.8).
+
 ---
 
 ## 4) Security, validation & middleware stack
@@ -582,6 +595,8 @@ Schema: `backend/prisma/schema.prisma` — 40 models, 26 enums, 33 migrations.
 | `RankingMetrics` | Precomputed rank snapshot (rankScore + breakdown fields, lastComputedAt) |
 | `CancellationReason` | Structured cancellation records (bookingId/leadId, `actor` CancellationActor, actorId, reason, detail) |
 | `AdminConfig` | Key/value runtime config (`key` unique, `value` JSON, description, updatedBy) |
+| `PlatformFeeAccount` | One row per user's monthly platform fee: `enabled`, `amount`, `billingWindowStart`/`end`, `dueAt`, `status` `CURRENT`/`OVERDUE`/`PAUSED`, `overdue` flag, `lastPaymentAt` |
+| `PlatformFeePayment` | Monthly fee payment ledger (`accountId`, amount, paymentStatus `PAID`/`FAILED`/`PENDING`, paymentMethod/gateway, `transactionId`, `razorpayOrderId`, `razorpayPaymentId`, `razorpaySignature`, `paidAt`) |
 
 ### 6.5 Notifications & support
 | Model | Purpose |
@@ -625,8 +640,11 @@ Schema: `backend/prisma/schema.prisma` — 40 models, 26 enums, 33 migrations.
 29. `job_result` — add `Job.result` JSONB column so handler return values persist alongside job status
 30. `provider_phase` — provider phase/lifecycle tracking
 31. `search_trgm` — trigram indexes for ranked service search (§15.7)
-32. `backup_manifest` — `Backup` model: kind, status, filePath, createdAt, restoredAt + status/kind indexes (§24.2)
+32. `backup_manifest` — `Backup` model + manifest (added in feature-plan work; the feature was later removed entirely and the table dropped in migration 35)
 33. `perf_indexes` — hot-path composite indexes: `Notification(userId,isRead)`, `Review(providerId,createdAt)`, `Review(reviewerId)`, `Provider(accountStatus)`, `ProviderService(providerId)`, `ProviderService(serviceId)`, `ProviderServiceRequest(status,createdAt)`, `WalletTransaction(userId,createdAt)` (§24.3)
+34. `remove_disputes` — dispute feature dropped: dispute tables removed
+35. `remove_backup_manifest` — `Backup` table dropped (feature 22 removed, §24.2)
+36. `platform_fee` — `PlatformFeeAccount` + `PlatformFeePayment` models; monthly platform fee replaces per-booking commission (§3.17, §15.8)
 
 ---
 
@@ -686,33 +704,32 @@ Lead consumption happens **on booking COMPLETED** (`consumeLeadOnCompletion`): `
 
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
-| `leadTimeoutSeconds` | number | 120 | seconds a lead stays open before auto-expiry |
-| `maxRedistributionAttempts` | number | 10 | how many ranked providers a lead is offered to before the customer is notified |
-| `leadExpiryEnabled` | boolean | true | master switch for the provider response timer |
-| `defaultProviderRadiusKm` | number | 50 | radius used when a provider has not set `maxRadiusKm` |
-| `commissionPercent` | number | 10 | platform commission on completed booking amounts |
-| `freeLeadCount` | number | 1 | free leads granted to a newly approved provider (once) |
-| `leadCountPerSubscription` | number | 3 | leads granted per purchased subscription level |
-| `cancellationPenaltyScore` | number | 30 | penalty score added per provider-initiated cancellation |
-| `cancellationPenaltyThreshold` | number | 60 | accumulated penalty that triggers a cooldown pause |
-| `cancellationWindowDays` | number | 30 | rolling window used to count repeated cancellations |
-| `cooldownDurationHours` | number | 24 | hours a provider is paused after crossing the penalty threshold |
-| `cooldownPenalty` | string | `TEMP_DISABLE` | penalty applied on repeated cancellations |
-| `lateArrivalGraceMinutes` | number | 15 | grace period before a provider is marked late |
-| `premiumCategories` | array | `[]` | categories reserved for Premium-sector providers |
-| `generalCategories` | array | `[]` | categories open to General providers (default = all not in premium) |
-| `rankingWeights` | object | see below | tie-breaker rank weights (live matching keeps fixed priority order, §8.4) |
+| `platformFeeEnabled` | boolean | true | master switch for the monthly provider platform fee |
+| `platformFeeAmount` | number | 99 | monthly platform fee (₹) charged to providers; overdue providers stop receiving leads |
+| `platformFeeGraceDays` | number | 30 | days a provider gets after joining before the first platform fee payment is due |
+| `customerPlatformFeeEnabled` | boolean | true | master switch for the customer platform fee (reminders only, never blocks access) |
+| `customerPlatformFeeAmount` | number | 49 | monthly platform fee (₹) charged to customers (reminders only) |
+| `cancellationPenaltyScore` | number | 30 | penalty score added per provider-initiated cancellation (accept-then-cancel only) |
+| `locationTrackingEnabled` | boolean | true | master switch for live provider location sharing on active bookings |
+| `etaBaseSpeedKph` | number | 30 | average provider travel speed used for ETA from straight-line distance |
+| `locationUpdateMinIntervalSeconds` | number | 3 | minimum interval between persisted location pings per booking |
+| `locationHistoryClearanceHours` | number | 24 | location ping history retention window (older pings pruned after a booking closes) |
+| `walletEnabled` | boolean | true | master switch for the credits wallet (provider earnings, referral bonuses, refunds) |
+| `walletMinimumWithdrawal` | number | 100 | minimum amount (₹) a provider can request in a single payout |
+| `walletMaximumWithdrawal` | number | 0 | maximum amount (₹) per payout request; 0 = unlimited |
+| `walletWithdrawalNote` | string | … | info note shown on the provider withdrawal form |
+| `referralBonusAmount` | number | 250 | referral bonus (₹) credited to a new user when a referral code is applied |
+| `maintenanceMode` | boolean | false | when on, the public API returns 503 (admin routes, login and feature-flag reads stay up) |
+| `newFeatureEnabled` | boolean | false | show the "what's new" announcement banner to the selected audience |
+| `newFeatureAudience` | string | `customer` | who sees the announcement: customer or provider |
+| `newFeatureText` | string | `` | the announcement banner message |
+| `newFeatureValidUntil` | string | `` | announcement expiry (ISO); managed by the feature-flag service (24h window) |
 
 `rankingWeights` default: `{ distanceKm: 0.25, rating: 0.2, providerLevel: 0.15, acceptanceRate: 0.1, cancellationRate: 0.08, responseRate: 0.08, experienceYears: 0.06, reviewCount: 0.05, serviceFee: 0.03 }`.
 
-Feature-flag keys (`featureFlags.*`) are registered programmatically by `featureFlagsService.js` (§24.1) rather than listed in `ADMIN_CONFIG_DEFAULTS`. Backup scheduling keys are read by `backupService.js` (§24.2):
+Feature-flag keys are registered programmatically by `featureFlagsService.js` (§24.1) rather than listed in `ADMIN_CONFIG_DEFAULTS`.
 
-| Key | Type | Default | Meaning |
-|-----|------|---------|---------|
-| `backupRetentionCount` | number | 14 | max snapshots kept per backup kind before pruning |
-| `backupScheduleEnabled` | boolean | true | master switch for the daily/weekly cron |
-| `backupDailyTimeUtc` | string | `02:00` | UTC time for the daily full snapshot |
-| `backupWeeklyDay` | number | 0 | weekday (0=Sunday) for the weekly full snapshot |
+> Note: per-booking commission (`commissionPercent`, `platformCharge*`) was replaced by the monthly platform fee (§3.17). The following previously-admin-configurable keys were removed (values are fixed in code — lead timeout 24h, default radius 50 km, penalty threshold 60, cancellation window 30 days, cooldown 24h — and premium/general category lists + ranking weights are no longer configured): `leadTimeoutSeconds`, `defaultProviderRadiusKm`, `cancellationPenaltyThreshold`, `cancellationWindowDays`, `cooldownDurationHours`, `premiumCategories`, `generalCategories`, `rankingWeights` (+ other legacy keys). All are auto-pruned on boot.
 
 ---
 
@@ -727,16 +744,18 @@ NEW → VIEWED → ACCEPTED → COMPLETED
   → other offers stay open (lead/booking re-pointed to a remaining provider)
   → last open offer withdrawn → settle: lead EXPIRED,
        open booking auto-CANCELLED so the customer can re-book
- NEW/VIEWED → (timeout) → EXPIRED
+ NEW/VIEWED → (fixed 24h response window) → all open offers EXPIRED
+       → lead EXPIRED (booking left PENDING) + admin alerted for follow-up
  (no eligible provider) → settle: lead EXPIRED,
       open booking auto-CANCELLED so the customer can re-book
 ```
 
 ### 8.2 Creation (broadcast)
-- `createBookingWithLead` (in `leadService.js`) creates the booking + lead atomically inside a `Serializable` transaction: it finds eligible providers, ranks them, and **opens an offer to every eligible provider at once** via `LeadAssignmentHistory` (`isCurrent=true`); the booking/lead attach to the top-ranked provider (`Booking.providerId`) only as the default owner, not as an exclusive assignment. Stamps `expiryTime = now + leadTimeoutSeconds` and writes a `BookingEvent`.
+- `createBookingWithLead` (in `leadService.js`) creates the booking + lead atomically inside a `Serializable` transaction: it finds eligible providers, ranks them, and **opens an offer to every eligible provider at once** via `LeadAssignmentHistory` (`isCurrent=true`); the booking/lead attach to the top-ranked provider (`Booking.providerId`) only as the default owner, not as an exclusive assignment. Stamps `expiryTime = now + 24h` (fixed response window, 86400s) and writes a `BookingEvent`.
 - `providerId` is **optional** on `POST /api/v1/bookings` — a pure broadcast needs no preferred provider; when a `preferredProviderId` is given it is ranked first (must be eligible, else a descriptive error is thrown).
 - When no eligible provider exists the booking is rejected with `NO_ELIGIBLE_PROVIDERS`.
 - Each lead is a **paid marketplace interaction**: the provider's lead is consumed only when the linked booking reaches **COMPLETED** (rule 4, §7.3).
+- Eligibility additionally requires the monthly **platform fee** to be current — an overdue provider (`PlatformFeeAccount.overdue`, `platformFeeEnabled`) is excluded at `findEligibleProviders`/`diagnoseProvider` (rule 11, §3.17).
 
 ### 8.3 View / accept / reject
 - `view` — NEW→VIEWED (only by a provider holding the open offer), records `viewedAt`, **no lead consumed**.
@@ -749,9 +768,9 @@ An eligible provider must satisfy **all** of (rule 11):
 1. **Approved** — `isVerified` true, `accountStatus` ACTIVE, user ACTIVE
 2. **Available** — `isOnline` true and `acceptingBookings` true
 3. **Effective subscription ACTIVE** — `subscriptionIsActive` passes (5 criteria, §7.3) with `remainingLeads > 0`
-4. **Service match** — approved `ProviderService` for the service, or category match
-5. **Radius** — when customer coordinates are known, distance (haversine) ≤ `maxRadiusKm ?? defaultProviderRadiusKm`; providers without usable coordinates are **not** eligible for coordinate-based leads
-6. **Sector** — Premium categories require `sector === 'PREMIUM'` (Premium providers serve General + Premium; General providers serve General only)
+4. **Platform fee current** — no overdue `PlatformFeeAccount` when `platformFeeEnabled` (§3.17)
+5. **Service match** — approved `ProviderService` for the service, or category match
+6. **Radius** — when customer coordinates are known, distance (haversine) ≤ `maxRadiusKm ?? 50 km` fallback; providers without usable coordinates are **not** eligible for coordinate-based leads
 7. **Not in cooldown** — `performance.cooldownUntil` null or in the past
 8. **Not busy** — no active booking in PENDING/CONFIRMED/ONGOING
 
@@ -759,14 +778,14 @@ Eligible providers are ranked (rule 7) by the fixed priority order:
 
 ```
 Distance → Rating → Provider Level → Acceptance Rate → Cancellation Rate →
-Response Rate → Experience → Reviews → Service Fee → Premium-before-General → createdAt
+Response Rate → Experience → Reviews → Service Fee → createdAt
 ```
 
-(`rankingWeights` in `AdminConfig` is exposed for admins as a tie-breaker model; the live matcher keeps the deterministic order above.)
+(The ordering is hard-coded; the `rankingWeights` config key and premium-category sector gating were removed.)
 
 ### 8.5 Booking acceptance flow
 - The first provider to accept a broadcast offer marks the linked booking `CONFIRMED`; every other open offer is auto-cancelled (§8.3). A provider declining the booking withdraws only their own offer; the request stays open for the remaining offered providers.
-- `completeBooking` marks the booking `COMPLETED` (`completedAt`), consumes one lead, credits earnings net of `commissionPercent`, refreshes reputation, checks promotion, and returns everything needed to notify both parties.
+- `completeBooking` marks the booking `COMPLETED` (`completedAt`), consumes one lead, credits the full booking amount to the provider's wallet (per-booking commission was replaced by the monthly platform fee, §3.17), refreshes reputation, checks promotion, and returns everything needed to notify both parties.
 
 ---
 
@@ -792,7 +811,7 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 ### 9.3 Double-booking & money guards
 - Creation runs inside a `Serializable` transaction that locks provider slots, validates `AvailabilitySlot`, and rejects overlapping bookings (same provider, overlapping time).
 - Payment modes: cash-after-job (allowed) or gateway (rejected until configured — `gateway: 'CASH'` only).
-- Provider earnings are computed on completion (booking price minus `commissionPercent`), and the lead is consumed at the same moment (§8.5).
+- Provider earnings are computed on completion (full booking price credited to the wallet; per-booking commission removed in favour of the monthly platform fee), and the lead is consumed at the same moment (§8.5).
 
 ---
 
@@ -808,22 +827,24 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 ### 10.2 Cancellation penalty & cooldown
 - A provider-initiated cancellation calls `recordJobCancelled` (in `providerPerformanceService.js`): it persists a `CancellationReason` (actor `PROVIDER`), increments `cancelledJobs`, recomputes `cancellationRate`, and adds the admin-configured `cancellationPenaltyScore` (default 30) to `penaltyScore`.
-- When the accumulated `penaltyScore` reaches `cancellationPenaltyThreshold` (default 60) the provider enters a **cooldown**: `cooldownUntil = now + cooldownDurationHours` (24h), `cooldownCount` increments, and `provider:cooldown` is emitted. While in cooldown the provider is excluded from lead matching (§8.4) and `subscriptionIsActive` returns false.
-- `cancellationWindowDays` (30) counts repeated cancellations for analytics; `lateArrivalCount`/`lateArrivalRate` track late starts past `lateArrivalGraceMinutes` (15).
+- When the accumulated `penaltyScore` reaches the fixed threshold (60) the provider enters a **cooldown**: `cooldownUntil = now + 24h` (fixed), `cooldownCount` increments, and `provider:cooldown` is emitted. While in cooldown the provider is excluded from lead matching (§8.4) and `subscriptionIsActive` returns false.
+- A fixed 30-day window counts cancellations for the analytics view; `lateArrivalCount`/`lateArrivalRate` track late provider starts. (Penalty threshold, cancellation window, cooldown duration and late-arrival grace were removed from admin config — §7.4.)
 
 ---
 
 ## 11) Admin architecture & workflows
 
 - Frontend: `AdminPanel.jsx` + `AdminPanelTabsRouter.jsx` with 13 tabs (Dashboard, Bookings, Providers, Services, Reviews, Payments, Tickets, Notifications, Audit Logs, Analytics, Saved Pros, Users, **ServeGo Business**).
-- `frontend/src/pages/admin/Tabs/AdminServeGoTab.jsx` renders 6 sub-tabs:
-   1. **Config** — edit all 16 `AdminConfig` keys (number/string/boolean/JSON value types)
-  2. **Subscription Plans** — create/update plans per level
-  3. **Level Rules** — edit thresholds + discount rates
-  4. **Leads** — full lead ledger with assignment/transfer history
-  5. **Provider Performance** — searchable table of provider metrics
-  6. **Analytics** — cancellations (by actor/reason), subscriptions (revenue by plan), promotions (by level)
-- Backend: `AdminBusinessController` (§3.15) + `AdminDashboardController` (§3.14).
+- `frontend/src/pages/admin/Tabs/AdminServeGoTab.jsx` renders 7 sub-tabs:
+   1. **Config** — edit the business `AdminConfig` keys (platform fee for providers/customers, cancellation penalty score, location-tracking, wallet, referral, maintenance + announcement flags) with number/string/boolean value types
+   2. **Subscription Plans** — create/update plans per level
+   3. **Level Rules** — edit thresholds + discount rates
+   4. **Leads** — full lead ledger with assignment/transfer history
+   5. **Provider Performance** — searchable table of provider metrics
+   6. **Analytics** — cancellations (by actor/reason), subscriptions (revenue by plan), promotions (by level)
+   7. **Platform Fees** — monthly fee accounts with status filter + summary counts + Excel export
+- Excel export: every admin report sub-tab (Leads, Performance, Cancellations, Subscriptions, Promotions, Platform Fees) has an **Export to Excel** button via `frontend/src/utils/exportExcel.js` (xlsx); admin list endpoints accept `?page=1&limit=100` to page through the full dataset before export.
+- Backend: `AdminBusinessController` (§3.15) + `AdminDashboardController` (§3.14) + `PlatformFeeController.adminList` (§3.17).
 - Provider moderation: approve/deny `ProviderService` requests, verify providers, set user/provider status (`AdminProviderStatusController.setStatus`) with notification + socket event + audit log.
 
 ---
@@ -832,7 +853,7 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 - Frontend: `ProviderDashboard.jsx` tabs — Overview, Bookings, **Leads Inbox**, **Plans & Subscriptions**, **Level & Performance**, Services, Availability, Reviews, Earnings, Notifications, Settings.
 - `ProviderLeadsInbox.jsx`: live lead cards (price, source, distance, time-to-accept countdown), accept/reject actions, cooldown indicator, acceptance timers.
-- `ProviderPlans.jsx`: available plans per level with discount callouts, purchase/upgrade flow, invoice history; remaining-leads + effective-active state comes from `GET /api/v1/subscriptions/remaining` (status badge shows `Status · Payment`).
+- `ProviderPlans.jsx`: available plans per level with discount callouts, purchase/upgrade flow, invoice history, and a **Monthly Platform Fee** card (amount, next due date, overdue badge, recent payments, Razorpay pay button); remaining-leads + effective-active state comes from `GET /api/v1/subscriptions/remaining` (status badge shows `Status · Payment`).
 - `ProviderLevelPerformance.jsx`: current level, level progress bars, `ProviderPerformance` metrics (rating, completion rate, response time, monthly leads/earnings), promotion history.
 - Business loop: **register + complete profile → get verified → receive/accept leads → complete jobs (consume leads) → accumulate rating/bookings → level up permanently → bigger plan discount**.
 - Booking chat (`/api/v1/bookings/:id/messages`) and notifications (lead assigned, accepted, subscription purchased, level changed, remaining leads low, cooldown) arrive over socket.io.
@@ -844,6 +865,7 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 - `CustomerDashboard.jsx`: browse approved providers, save favorites (`SavedPro`), book services (creates lead), chat, review after completion.
 - Booking creation is lead-aware — every customer booking for an eligible provider spawns a `Lead`; the provider accepts the lead (not just the booking).
 - Referral program: customer share code; ₹250 credit on successful referral.
+- `WalletView.jsx` shows the customer wallet and a **Monthly Platform Fee** card (reminder + Razorpay pay button; overdue customers are never blocked from booking).
 
 ---
 
@@ -873,7 +895,8 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 | Service | File | Role |
 |---------|------|------|
-| Lead timers | `leadExpiryService.js` | per-lead expiry timers (re-warmed from DB on boot via `scheduleAllLeadTimers`); on timeout all open offers expire together, every offered provider gets an expired/ignored performance record + notification, and the lead is reassigned to a genuinely new eligible provider or settled (booking auto-cancelled, customer notified) |
+| Lead timers | `leadExpiryService.js` | per-lead expiry timers (re-warmed from DB on boot via `scheduleAllLeadTimers`); on timeout all open offers expire together, every offered provider gets an expired/ignored performance record + notification, and the lead is **flagged for admin follow-up** (booking is left PENDING, no silent reassignment, no auto-cancel) |
+| Platform fee | `platformFeeService.js` | monthly platform-fee accounts, billing-window advancement, overdue detection, payment recording/verification (§15.8) |
 | PENDING timeout | `autoCancelService.js` | hourly cron: auto-cancel stale PENDING bookings, mark lead EXPIRED, notify both parties |
 | Level rules | `providerLevelService.js` | permanent level lookup by lifetime jobs, level discount, promotion recording (`applyPromotion`); rules cached 60s, `invalidateLevelCache` |
 | Admin config | `adminConfigService.js` | `getConfig`/`setConfig`/`getAllConfigs` (JSON values, 30s cache, `invalidateConfig`) |
@@ -936,6 +959,16 @@ Booking and subscription side-effects that used to run **inline in the request p
 - **Ranking principle:** service-name relevance first, then provider trust (rating / experience / verification); popularity surfaces in the catalog via active-specialist count.
 - **Tests:** `tests/search.test.js` — corpus seeding, empty-query handling, exact>prefix>fuzzy ordering, typo tolerance, description text search, canonical resolution, discovery end-to-end + 404 (DB-backed, auto-skip offline).
 
+### 15.8 Platform fee billing (monthly)
+
+`backend/services/platformFeeService.js` implements the recurring monthly fee that replaced per-booking commission (§3.17):
+
+- **Accounts** — `ensurePlatformFeeAccount(userId, client)` lazily creates a `PlatformFeeAccount` on first status check; the initial billing window starts at account creation with `dueAt = createdAt + platformFeeGraceDays` (default 30). An initial sweep on boot (`sweepCreateMissingAccounts`) creates accounts for every existing user.
+- **Billing window** — each successful payment advances the window by one month (`billingWindowStart`/`end`, `dueAt = end`). `advanceFeeBilling()` (daily cron) flips accounts whose `dueAt` has passed to `OVERDUE` (`overdue = true`) and emits `platformFee:overdue` notifications to overdue providers.
+- **Payments** — `createPlatformFeeOrder(userId)` returns a Razorpay order (amount = configured `platformFeeAmount`, or the accrued unpaid balance when overdue); `recordPlatformFeePayment` is called from the client `verify` route (signature check) and from the public Razorpay webhook (reconciles unverified paid orders). Payment records a `PlatformFeePayment` row, advances the window, clears `overdue`, and emits `platformFee:paid`.
+- **Gating** — provider lead eligibility (§8.4) requires no overdue account when `platformFeeEnabled`; customers receive reminders (`platformFee:reminder`/`platformFee:overdue`) but are never blocked.
+- **Routes:** §3.17. **Notifications:** `platformFee:due`, `platformFee:reminder`, `platformFee:overdue`, `platformFee:paid` (+ `notifyAdminPlatformFeeOverdue` to the admin room).
+
 ---
 
 ## 16) Runtime behavior (server boot & realtime)
@@ -946,16 +979,16 @@ Booking and subscription side-effects that used to run **inline in the request p
 3. Register `/api` router + health + 404 + error handler
 4. `await prisma.$connect()` (hard fail → `process.exit(1)` with red log)
 5. `seedServicesIfEmpty()` → `seedBusinessModelIfEmpty()` (idempotent)
-6. `await schedulePendingBookingAutoCancel()` + `scheduleMonthlyBusinessCycle()`
-7. `warmLeadExpiryTimers()` (resume in-memory lead timers from DB)
+6. `await schedulePendingBookingAutoCancel()` + `scheduleMonthlyBusinessCycle()` + `scheduleDailyPlatformFeeBilling()` (hourly auto-cancel cron, monthly business cycle, daily platform-fee overdue sweep)
+7. `warmLeadExpiryTimers()` (resume in-memory lead timers from DB) + `sweepCreateMissingAccounts()` (create missing platform-fee accounts)
 8. Listen on `PORT` (default 4000); log `POSTGRES connected` / `Server listening`
 9. `recoverInterruptedJobs()` (re-queue stale PROCESSING jobs) then `startQueueWorkers()` (in-process queue workers, §15.5)
 10. Graceful shutdown on SIGINT/SIGTERM: `stopQueueWorkers()` + `drainQueueWorkers()` (in-flight jobs finish), `socketio.close()`, `server.close()`, `prisma.$disconnect()`
 
 ### 16.2 Realtime
 - Client connects with `{ token }`; socket.io auth middleware verifies JWT and joins room `user:${userId}` (admins also join `room:admin`).
-- Server pushes to user rooms: `notification:new` / `notification`, `newLead`, `leadAccepted`, `leadRejected`, `leadReassigned`, `leadExpired`, `leadAssignmentFailed`, `bookingUpdated`, `bookingStatusChanged`, `booking:created`, `booking:statusChanged`, `booking:cancelled`, `booking:messageCreated`, `booking:message`, `bookingMessage`, `chatMessageReceived` (booking room), `promotion` / `provider:levelChanged`, `subscription:purchased`, `subscription:paymentSuccess`, `subscription:invoiceGenerated`, `subscription:expired`, `subscription:lowLeads`, `providerAssigned`, `providerChanged`, `providerOnTheWay`, `bookingCompleted`, `provider:cooldown`, `accountStatusChanged`, `providerService:approved`, `providerService:rejected`, `serviceApproved`, `category:activeCountChanged`, `location:update` (live GPS fix + ETA + route polyline), `provider:onTheWay` / `provider:arrived` (dispatch lifecycle).
-- Admin room (`room:admin`) receives: `newApprovalRequest`, `adminAlert:newSupportTicket`, `admin:notification` (payment failed, provider suspended, high cancellation, subscription purchased, provider promoted).
+- Server pushes to user rooms: `notification:new` / `notification`, `newLead`, `leadAccepted`, `leadRejected`, `leadReassigned`, `leadExpired`, `leadAssignmentFailed`, `bookingUpdated`, `bookingStatusChanged`, `booking:created`, `booking:statusChanged`, `booking:cancelled`, `booking:messageCreated`, `booking:message`, `bookingMessage`, `chatMessageReceived` (booking room), `promotion` / `provider:levelChanged`, `subscription:purchased`, `subscription:paymentSuccess`, `subscription:invoiceGenerated`, `subscription:expired`, `subscription:lowLeads`, `providerAssigned`, `providerChanged`, `providerOnTheWay`, `bookingCompleted`, `provider:cooldown`, `accountStatusChanged`, `providerService:approved`, `providerService:rejected`, `serviceApproved`, `category:activeCountChanged`, `location:update` (live GPS fix + ETA + route polyline), `provider:onTheWay` / `provider:arrived` (dispatch lifecycle), `platformFee:due` / `platformFee:reminder` / `platformFee:overdue` / `platformFee:paid`.
+- Admin room (`room:admin`) receives: `newApprovalRequest`, `adminAlert:newSupportTicket`, `admin:notification` (payment failed, provider suspended, high cancellation, subscription purchased, provider promoted), `adminAlert:platformFeeOverdue`.
 - Controllers reach the io instance via `req.app.get('socketio')`.
 
 ### 16.3 Health endpoint
@@ -966,8 +999,8 @@ Booking and subscription side-effects that used to run **inline in the request p
 ## 17) Testing
 
 - Framework: Node built-in `node --test` (no Jest).
-- Run: `node --test --test-concurrency=1` inside `backend/tests/` — 15 suites, 103 tests, all passing. (Files must run serially: `backups.test.js` restore test wipes all tables mid-run.)
-- Coverage: `tests/auth.test.js` (JWT + refresh + lockout), `tests/availability.test.js` (slot validation), `tests/integration.test.js` (register→login→book→message→complete happy path against live DB), `tests/response.test.js`, `tests/runtimeConfig.test.js`, `tests/socketAuth.test.js`, `tests/workflow.test.js` (status normalization + transition matrix), `tests/queue.test.js` (backoff, unknown-type rejection, claim/process+result persistence, fail→backoff→DEAD, dedupeKey, requeueDeadJobs), `tests/maps.test.js` (haversine + polyline decoding + distance/route/optimizer keyless fallbacks), `tests/tracking.test.js` (dispatch lifecycle guards with mock client + DB-backed phase persistence and customer notification), `tests/search.test.js` (ranked trigram matching, typo tolerance, canonical service resolution, discovery end-to-end + 404), `tests/payment.test.js`, `tests/featureFlags.test.js` (register/list/get/update/delete + gating), `tests/backups.test.js` (create/list/prune/restore round-trip), `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, booking/notification cursor paging + invalid-cursor 400, encodeCursor round-trip).
+- Run: `node --test --test-concurrency=1` inside `backend/tests/` — 14 suites, all passing.
+- Coverage: `tests/auth.test.js` (JWT + refresh + lockout), `tests/availability.test.js` (slot validation), `tests/integration.test.js` (register→login→book→message→complete happy path against live DB), `tests/response.test.js`, `tests/runtimeConfig.test.js`, `tests/socketAuth.test.js`, `tests/workflow.test.js` (status normalization + transition matrix), `tests/queue.test.js` (backoff, unknown-type rejection, claim/process+result persistence, fail→backoff→DEAD, dedupeKey, requeueDeadJobs), `tests/maps.test.js` (haversine + polyline decoding + distance/route/optimizer keyless fallbacks), `tests/tracking.test.js` (dispatch lifecycle guards with mock client + DB-backed phase persistence and customer notification), `tests/search.test.js` (ranked trigram matching, typo tolerance, canonical service resolution, discovery end-to-end + 404), `tests/payment.test.js` (subscription invoice snapshot; platform-fee order/verify/record flows updated after per-booking platform charges were removed), `tests/featureFlags.test.js` (register/list/get/update/delete + gating), `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, booking/notification cursor paging + invalid-cursor 400, encodeCursor round-trip).
 - Frontend verification: `npm run build` (Vite production build) passes — main chunk ~1,630 kB (421 kB gzip) with 16 admin tabs split into per-tab lazy chunks (§24.3).
 
 ---
@@ -978,7 +1011,7 @@ Booking and subscription side-effects that used to run **inline in the request p
 - **Gateway payments are stubbed**: only `CASH` payments are accepted; UPI/card flow returns `501 NOT_IMPLEMENTED` until a gateway is configured. Subscription purchases likewise record `paymentStatus: 'PAID'` immediately (no real gateway integration yet).
 - **Referral payout is bookkeeping only**: ₹250 credit is recorded; no automatic wallet payout.
 - **In-memory rate-limit/lockout state**: resets on server restart (single-instance assumption).
-- **Lead-timer state**: lead timers are re-warmed from DB on boot (`scheduleAllLeadTimers`) but in-flight elapsed time may drift across restarts.
+- **Lead-timer state**: lead timers are re-warmed from DB on boot (`scheduleAllLeadTimers`) but in-flight elapsed time may drift across restarts; on timeout the lead expires to `EXPIRED` and the admin is alerted for manual follow-up (no automatic reassignment).
 - **Penalty/cooldown state persists** in `ProviderPerformance` (`penaltyScore`, `cooldownUntil`, `cooldownCount`), so cooldowns survive restarts.
 - **Provider levels are permanent** (lifetime completed jobs) — there is no demotion; quality is instead policed by the cancellation penalty/cooldown model (§10.2).
 - **AdminConfig cache (30s) and level-rules cache (60s)** mean config/rule edits propagate within ~1 minute.
@@ -991,12 +1024,12 @@ Booking and subscription side-effects that used to run **inline in the request p
 ### Backend
 - Entry: `backend/server.js`
 - Router: `backend/routes/api.js`
-- Controllers (23): `UserController, ProviderController, ProviderServiceDiscoveryController, ProviderAvailabilityController, ProviderAnalyticsController, BookingController, LeadController, SubscriptionController, ProviderBusinessController, ReviewController, PaymentController, ReferralsController, NotificationController, TicketController, ServiceController, SavedProController, ImageController, AdminDashboardController, AdminProviderServiceController, AdminProviderServiceItemsController, AdminProviderStatusController, AdminBusinessController, QueueController` — in `backend/controllers/`
-- Services (17): `leadService, leadExpiryService, subscriptionService, providerLevelService, providerPerformanceService, providerReputationService, adminConfigService, autoCancelService, notificationService, cloudinaryService, emailService, auditLogService, queueService, jobHandlers, mapsService, trackingService, providerRouteService, searchService` — in `backend/services/` (+ `backend/services/queue/worker.js` standalone worker)
+- Controllers (24): `UserController, ProviderController, ProviderServiceDiscoveryController, ProviderAvailabilityController, ProviderAnalyticsController, BookingController, LeadController, SubscriptionController, ProviderBusinessController, ReviewController, PaymentController, ReferralsController, NotificationController, TicketController, ServiceController, SavedProController, ImageController, AdminDashboardController, AdminProviderServiceController, AdminProviderServiceItemsController, AdminProviderStatusController, AdminBusinessController, QueueController, PlatformFeeController` — in `backend/controllers/`
+- Services (19): `leadService, leadExpiryService, subscriptionService, providerLevelService, providerPerformanceService, providerReputationService, adminConfigService, autoCancelService, notificationService, cloudinaryService, emailService, auditLogService, queueService, jobHandlers, mapsService, trackingService, providerRouteService, searchService, platformFeeService` — in `backend/services/` (+ `backend/services/queue/worker.js` standalone worker)
 - Middleware: `backend/middleware/security.js` (rate limiters + CSP incl. OSM/Google connect-src for the live map), `logging.js` (request logger), `upload.js` (multer→Cloudinary), `validation.js` (express-validator)
 - Utils: `auth.js, response.js, workflow.js, permissions.js, availability.js, validation.js, runtimeConfig.js`
 - Seeds: `seeders/servicesSeed.js`, `seeders/businessModelSeed.js`; demo: `prisma/seed.js`
-- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (31)
+- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (36)
 - Scripts: `scripts/cleanup-db.js`, `scripts/migrate-photos-to-cloudinary.js`, `scripts/fix-html-entity-descriptions.js`, `scripts/check-experience.js`
 - Tests: `backend/tests/*.test.js`
 
@@ -1070,7 +1103,6 @@ Booking and subscription side-effects that used to run **inline in the request p
 - Money/lead-sensitive writes run in `Serializable` transactions (booking creation, first-accept-wins, completion, redistribution, subscription purchase).
 - Immutable audit trails: `BookingEvent` + `statusHistory`, `LeadAssignmentHistory`/`LeadTransferHistory`, `ProviderLevelHistory`, `PromotionHistory`, `AuditLog`.
 - Durable Postgres-backed job queue (§15.5): at-least-once delivery, exponential-backoff retries, dead-lettering, interrupted-job recovery on boot, graceful drain on shutdown.
-- DB backup & restore (§24.2): daily/weekly Postgres snapshots with retention pruning and restore-from-backup for disaster recovery.
 - Feature-flag service (§24.1): runtime-gated behavior without redeploys, backed by the AdminConfig table.
 - Seeds/backfills are idempotent (re-run safe on every boot); obsolete config keys auto-pruned.
 
@@ -1090,17 +1122,17 @@ Booking and subscription side-effects that used to run **inline in the request p
 | Frontend | React 19 + Vite 6 + Tailwind v4 + Socket.io client + MapLibre GL |
 | Backend | Express (Node ESM) + Socket.io |
 | Database | PostgreSQL via Prisma ORM |
-| Prisma models | 40 |
-| Prisma enums | 26 |
-| Migrations | 33 |
+| Prisma models | 37 |
+| Prisma enums | 22 |
+| Migrations | 36 |
 | Controllers | 26 |
 | Services | 22 |
 | Middleware files | 4 (`security`, `logging`, `upload`, `validation`) |
 | Utils files | 7 (`auth`, `response`, `workflow`, `permissions`, `availability`, `validation`, `runtimeConfig`) |
-| REST API endpoints | ~115 across 16 modules (§3.0) |
-| Socket events (server-pushed) | 41 (§16.2) |
-| Background services | lead timers + hourly auto-cancel cron + backup scheduler across 22 service modules (§15, §24.2) |
-| Test suites | 15 (`backend/tests/`) — 103 tests passing |
+| REST API endpoints | ~116 across 17 modules (§3.0) |
+| Socket events (server-pushed) | 45 (§16.2) |
+| Background services | lead timers + hourly auto-cancel cron + daily platform-fee sweep across 22 service modules (§15) |
+| Test suites | 14 (`backend/tests/`) — all passing |
 | Service categories (seed) | 20 |
 | Subscription plans (seed) | 6 (1 free + 5 paid) |
 | Provider level rules (seed) | 5 (Bronze→Diamond) |
@@ -1119,12 +1151,9 @@ Feature work delivered on top of the base platform. All additions are covered by
 - `backend/controllers/featureFlagController.js` + routes — `GET/POST /admin/feature-flags`, `GET /admin/feature-flags/:key`, `PUT/PATCH/DELETE /admin/feature-flags/:key` (admin RBAC). Frontend: `AdminFeatureFlagsTab.jsx` (register/edit/enable/toggle, registered as a lazy admin chunk).
 - Usage: services gate behavior at runtime, e.g. `featureFlagsService.isFlagEnabled('featureFlags.<name>')`, so features can be toggled without redeploys. Tests: `tests/featureFlags.test.js` (register/list/get/update/delete + gating).
 
-### 24.2 Database backup & restore (Feature 22)
+### 24.2 Database backup & restore (Feature 22) — REMOVED
 
-- `backend/services/backupService.js` — Postgres-native snapshots via the `pg_dump` binary: `kind` ∈ `FULL`/`SCHEMA`/`DATA`. Writes the dump to the local backups directory and records a row in the `Backup` table (model added in migration 32). Retention pruning keeps the newest `backupRetentionCount` snapshots per kind.
-- `startBackupCron()` — daily full snapshot at `backupDailyTimeUtc` + weekly full snapshot on `backupWeeklyDay`; governed by `backupScheduleEnabled`. Restore (`restoreBackup`) drops + recreates the schema from a chosen snapshot and records `restoredAt`.
-- `backend/controllers/backupController.js` + routes — `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/:id/download`, `POST /admin/backups/:id/restore`, `DELETE /admin/backups/:id`, `POST /admin/backups/restore-upload` (admin RBAC). Frontend: `AdminBackupsTab.jsx` (trigger/restore/download, lazy chunk).
-- Scheduling keys are admin-configurable (§7.4). Tests: `tests/backups.test.js` (create/list/prune/restore round-trip). Note: the restore test wipes all tables, so the suite must run serially (`--test-concurrency=1`).
+Feature 22 was implemented (feature-flag work) and later removed entirely: `backend/services/backupService.js`, `backend/controllers/backupController.js`, the backup routes, the `Backup` model (added in migration 32) and its admin config keys were deleted. The `Backup` table was dropped in migration 35 (`20260810000001_remove_backup_manifest`), and `AdminBackupsTab.jsx` was removed from the admin router. No code references backups anymore.
 
 ### 24.3 Performance (Feature 25)
 
@@ -1134,6 +1163,16 @@ Feature work delivered on top of the base platform. All additions are covered by
 - **Indexes (migration 33)** — composite hot-path indexes listed in §6.7, covering notification filtering, provider review/timeline queries, account-status scans, provider↔service joins, request-queue filtering and wallet-transaction listing.
 - **Frontend compatibility + code-splitting** — normalizers (`normalizeCustomerData.js`) and `AppContext.jsx` accept both wrapper and raw-array shapes; admin panels request `?limit=100` to keep full-ish lists. `AdminPanelTabsRouter.jsx` now `React.lazy`s each tab under a `Suspense` fallback, so the main bundle stays ~1,630 kB and each admin tab loads on demand.
 - Tests: `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, cursor paging with no overlap + final-page null cursor + invalid-cursor 400, plain-array backward compat, cursor token round-trip).
+
+### 24.4 Monthly platform fee (replaces per-booking commission)
+
+- **Models** (migration `20260810000002_platform_fee`): `PlatformFeeAccount` (per-user billing window + `overdue` flag) and `PlatformFeePayment` (Razorpay payment ledger).
+- **Service** `backend/services/platformFeeService.js`: `ensurePlatformFeeAccount` (lazy create + boot sweep `sweepCreateMissingAccounts`), `advanceFeeBilling` (daily cron marks accounts overdue, notifies), `createPlatformFeeOrder` (Razorpay order for amount due / accrued balance), `recordPlatformFeePayment` (client verify + webhook reconciliation), `getAccountStatus`, `getUserPaymentHistory`, `listAdminAccounts` (paginated, status-filtered).
+- **Controller** `backend/controllers/platformFeeController.js` + routes §3.17 (`/platform-fee/{status,history,order,verify,webhook}`, `/admin/platform-fees`); notifications via `notificationService` (`platformFee:due/reminder/overdue/paid` + admin alert).
+- **Gating** — providers with an overdue fee are excluded from lead matching (`leadService.findEligibleProviders`/`diagnoseProvider` gate on `platformFeeEnabled`), so unpaid providers stop receiving leads.
+- **Frontend** — `ProviderPlans.jsx` and `WalletView.jsx` show a fee card with Razorpay checkout (`POST /platform-fee/order` → verify); `AdminServeGoTab.jsx` gains a **Platform Fees** sub-tab (accounts table, status filter, summary counts, Excel export).
+- **Cleanup** — per-booking `platformChargeService.js` deleted; `commissionPercent`/`platformCharge*`/`leadExpiryEnabled`/`maxRedistributionAttempts`/`freeLeadCount`/`leadCountPerSubscription` and the config-only knobs (`leadTimeoutSeconds`, `defaultProviderRadiusKm`, `cancellationPenaltyThreshold`, `cancellationWindowDays`, `cooldownDurationHours`, `premiumCategories`, `generalCategories`, `rankingWeights`) removed and auto-pruned from the seed (values fixed in code); `payment.test.js` updated; all 14 backend test suites pass.
+- **Admin export** — `frontend/src/utils/exportExcel.js` (xlsx) powers Export buttons on every ServeGo report sub-tab; endpoints page with `?page=1&limit=100` so exports capture the full dataset, not just the first page.
 
 ---
 

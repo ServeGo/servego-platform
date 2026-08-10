@@ -55,6 +55,8 @@ model User {
   wallet                  Wallet?
   walletTransactions      WalletTransaction[]
   walletWithdrawalRequests WalletWithdrawalRequest[]
+  platformFeeAccount      PlatformFeeAccount?
+  platformFeePayments     PlatformFeePayment[]
 }
 
 model Customer {
@@ -275,6 +277,12 @@ model Booking {
   locationAddress String
   city            String
   instructions    String?
+
+  // Customer's exact service location picked on the map at booking time.
+  // Authoritative for provider radius matching and tracking (endLocation is a
+  // JSON mirror kept for dispatch payloads).
+  serviceLatitude  Float?
+  serviceLongitude Float?
 
   startedAt       DateTime?     // when the provider started work (CONFIRMED → ONGOING)
   completedAt     DateTime?     // when the job was completed (→ COMPLETED)
@@ -597,6 +605,67 @@ model SubscriptionTransaction {
   @@index([gatewayOrderId])
 }
 
+// Monthly platform fee — one billing account per user (provider or customer).
+// Providers MUST keep this fee paid to receive new leads; customers are only
+// reminded and are never blocked from the platform.
+model PlatformFeeAccount {
+  id             String             @id @default(cuid())
+  userId         String             @unique
+  role           PlatformFeeRole    @default(PROVIDER)
+
+  // Billing window. Providers get `platformFeeGraceDays` from join before the
+  // first payment is due; every successful payment advances `periodEnd` by one
+  // month. When `now > periodEnd` the account is OVERDUE.
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  graceEndsAt    DateTime?
+  status         PlatformFeeStatus  @default(ACTIVE)
+  amount         Float              @default(0)
+  lastPaymentAt  DateTime?
+  lastReminderAt DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user     User                @relation(fields: [userId], references: [id])
+  payments PlatformFeePayment[]
+
+  @@index([role])
+  @@index([status])
+  @@index([periodEnd])
+  @@index([userId])
+}
+
+// Payment history for the monthly platform fee (PENDING → PAID/FAILED, and
+// REFUNDED via the gateway webhook).
+model PlatformFeePayment {
+  id               String                 @id @default(cuid())
+  accountId        String?
+  userId           String
+  role             PlatformFeeRole        @default(PROVIDER)
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  amount           Float                  @default(0)
+  paymentStatus    PlatformFeePaymentStatus @default(PENDING)
+  paymentMethod    String?
+  paymentGateway   String?
+  transactionId    String?
+  gatewayOrderId   String?
+  gatewayPaymentId String?
+  invoiceNumber    String?
+  errorDetail      String?
+  paidAt           DateTime?
+  createdAt        DateTime               @default(now())
+
+  account PlatformFeeAccount? @relation(fields: [accountId], references: [id])
+  user    User                @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([gatewayOrderId])
+  @@index([paymentStatus])
+  @@index([createdAt])
+}
+
 // A booking's lead lifecycle — created when the customer books.
 model Lead {
   id               String     @id @default(cuid())
@@ -617,6 +686,13 @@ model Lead {
   lastRejectReason String?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
+
+  // Leads no longer auto-expire on a timer. `expiryTime` is the moment the
+  // lead has waited the fixed 24-hour response window without being accepted;
+  // when it elapses the admin is alerted and `adminAlertedAt` is set
+  // (guards against duplicate alerts). The lead stays open until accepted,
+  // rejected by all eligible providers, or otherwise settled.
+  adminAlertedAt    DateTime?
 
   booking            Booking?                @relation(fields: [bookingId], references: [id])
   customer           User                    @relation(fields: [customerId], references: [id])
@@ -713,6 +789,12 @@ model PermanentServiceRequest {
   status                 PermanentRequestStatus      @default(PENDING)
   assignedProviderId     String?
   adminNote              String?
+
+  // Service location picked on the map by the customer (mandatory at submit).
+  locationAddress   String?
+  serviceLatitude   Float?
+  serviceLongitude  Float?
+
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
 
@@ -932,6 +1014,25 @@ enum SubscriptionPaymentStatus {
   REFUNDED
 }
 
+enum PlatformFeeRole {
+  PROVIDER
+  CUSTOMER
+}
+
+enum PlatformFeeStatus {
+  ACTIVE
+  GRACE
+  OVERDUE
+  DISABLED
+}
+
+enum PlatformFeePaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
 enum CancellationActor {
   CUSTOMER
   PROVIDER
@@ -1035,24 +1136,3 @@ model BookingInvoice {
   @@index([bookingId])
   @@index([issuedAt])
 }
-
-// Database backup manifest — one row per logical snapshot written by
-// services/backupService.js (daily/weekly cron + manual admin runs). The
-// snapshot file itself lives on disk (BACKUP_DIR); this row tracks its
-// schedule kind, status, size, per-table row counts and restore history.
-model Backup {
-  id         String   @id @default(cuid())
-  kind       String // DAILY | WEEKLY | MANUAL
-  status     String   @default("RUNNING") // RUNNING | SUCCESS | FAILED
-  filePath   String
-  sizeBytes  Int?
-  rowCounts  Json     @default("{}")
-  error      String?
-  createdAt  DateTime @default(now())
-  restoredAt DateTime?
-
-  @@index([kind, createdAt])
-  @@index([status])
-  @@index([createdAt])
-}
-

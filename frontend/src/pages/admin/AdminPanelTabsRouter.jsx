@@ -17,7 +17,6 @@ const AdminReportsTab = lazy(() => import('./Tabs/AdminReportsTab'));
 const AdminServeGoTab = lazy(() => import('./Tabs/AdminServeGoTab'));
 const AdminPermanentServicesTab = lazy(() => import('./Tabs/AdminPermanentServicesTab'));
 const AdminFeatureFlagsTab = lazy(() => import('./Tabs/AdminFeatureFlagsTab'));
-const AdminBackupsTab = lazy(() => import('./Tabs/AdminBackupsTab'));
 
 function TabFallback() {
   return (
@@ -51,17 +50,13 @@ export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
       return <LazyTab><AdminAnalyticsTab /></LazyTab>;
     case 'settings':
       return <LazyTab><AdminSettingsTab {...tabProps} /></LazyTab>;
+    case 'featureFlags':
+      return <LazyTab><AdminFeatureFlagsTab /></LazyTab>;
     case 'servego':
       return <LazyTab><AdminServeGoTab /></LazyTab>;
 
     case 'permanentServiceRequests':
       return <LazyTab><AdminPermanentServicesTab {...tabProps} /></LazyTab>;
-
-    case 'featureFlags':
-      return <LazyTab><AdminFeatureFlagsTab /></LazyTab>;
-
-    case 'backups':
-      return <LazyTab><AdminBackupsTab /></LazyTab>;
 
     // Optional sidebar entries that currently have no dedicated implementation.
     // Keeping them mapped to existing tabs prevents the UI from appearing broken/blank.

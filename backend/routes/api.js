@@ -18,12 +18,12 @@ import { ImageController } from '../controllers/imageController.js';
 import { LeadController } from '../controllers/leadController.js';
 import { PermanentServiceRequestController } from '../controllers/permanentServiceRequestController.js';
 import { SubscriptionController } from '../controllers/subscriptionController.js';
+import { PlatformFeeController } from '../controllers/platformFeeController.js';
 import { ProviderBusinessController } from '../controllers/providerBusinessController.js';
 import { AdminBusinessController } from '../controllers/adminBusinessController.js';
 import { WalletController } from '../controllers/walletController.js';
 import { QueueController } from '../controllers/queueController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
-import { BackupController } from '../controllers/backupController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
@@ -173,6 +173,17 @@ apiRouter.post('/subscriptions/payment/verify', requireAuth, requireRole('provid
 // Public webhook (raw body registered in server.js before the JSON parser).
 apiRouter.post('/subscriptions/payment/webhook', SubscriptionController.webhook);
 
+// --- Platform fee (monthly, providers pay / customers reminded) ---
+apiRouter.get('/platform-fee/status', requireAuth, PlatformFeeController.status);
+apiRouter.get('/platform-fee/history', requireAuth, PlatformFeeController.history);
+apiRouter.post('/platform-fee/order', requireAuth, PlatformFeeController.order);
+apiRouter.post('/platform-fee/verify', requireAuth, PlatformFeeController.verify);
+// Public webhook (raw body registered in server.js before the JSON parser).
+apiRouter.post('/platform-fee/webhook', PlatformFeeController.webhook);
+
+// --- Admin: platform fees ---
+apiRouter.get('/admin/platform-fees', requireAuth, requireRole('admin'), PlatformFeeController.adminList);
+
 // --- Provider levels / performance ---
 apiRouter.get('/provider-performance/me', requireAuth, requireRole('provider'), ProviderBusinessController.getMyPerformance);
 apiRouter.get('/level-rules', requireAuth, requireRole('provider'), ProviderBusinessController.getLevelRules);
@@ -217,21 +228,9 @@ apiRouter.post('/admin/wallet/credit', requireAuth, requireRole('admin'), valida
 apiRouter.get('/admin/queue/stats', requireAuth, requireRole('admin'), QueueController.getStats);
 apiRouter.post('/admin/queue/requeue', requireAuth, requireRole('admin'), QueueController.requeueDead);
 
-// --- Feature flags ---
-// Public: maintenance banner + announcements for unauthenticated clients.
-apiRouter.get('/feature-flags', FeatureFlagController.getPublic);
-// Admin: full registry with current values + audit trail; toggles apply within
-// 30s (AdminConfig cache TTL) — no redeploy required.
-apiRouter.get('/admin/feature-flags', requireAuth, requireRole('admin'), FeatureFlagController.getAll);
-apiRouter.put('/admin/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
-apiRouter.patch('/admin/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
-
-// --- Database backups (logical snapshots + automatic schedule) ---
-apiRouter.get('/admin/backups', requireAuth, requireRole('admin'), BackupController.getBackups);
-apiRouter.post('/admin/backups', requireAuth, requireRole('admin'), BackupController.createBackup);
-apiRouter.get('/admin/backups/:id/download', requireAuth, requireRole('admin'), BackupController.downloadBackup);
-apiRouter.post('/admin/backups/:id/restore', requireAuth, requireRole('admin'), BackupController.restore);
-apiRouter.post('/admin/backups/restore-at', requireAuth, requireRole('admin'), BackupController.restoreAt);
-apiRouter.post('/admin/backups/tick', requireAuth, requireRole('admin'), BackupController.tick);
+// --- Feature flags (runtime toggles + announcement banner) ---
+apiRouter.get('/feature-flags/public', FeatureFlagController.getPublic);
+apiRouter.get('/feature-flags', requireAuth, requireRole('admin'), FeatureFlagController.getAll);
+apiRouter.put('/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
 
 export default apiRouter;

@@ -40,9 +40,8 @@ import {
   Menu,
   Sparkles,
   ClipboardList,
-  ToggleLeft,
-  Database,
   Wrench,
+  Flag,
 } from 'lucide-react';
 
 
@@ -55,8 +54,6 @@ const getAdminTabFromRoute = (routeValue) => {
   if (tab === 'providers') return 'providers';
   if (tab === 'service-requests' || tab === 'providerServiceRequests') return 'providerServiceRequests';
   if (tab === 'permanent-service-requests' || tab === 'permanentServiceRequests') return 'permanentServiceRequests';
-  if (tab === 'feature-flags' || tab === 'featureFlags') return 'featureFlags';
-  if (tab === 'backups') return 'backups';
   if (tab === 'services') return 'services';
   if (tab === 'bookings') return 'bookings';
   if (tab === 'reviews') return 'reviews';
@@ -124,20 +121,29 @@ export function MainLayout() {
   const [providerActiveTabExternal, setProviderActiveTabExternal] = useState('leads');
   const [adminActiveTabExternal, setAdminActiveTabExternal] = useState('dashboard');
 
-  // Public feature flags: maintenance banner + new-feature announcement.
-  const [siteFlags, setSiteFlags] = useState({ maintenance: false, newFeature: false });
-  const [dismissedNewFeature, setDismissedNewFeature] = useState(false);
+  // Public feature flags: maintenance mode + the single "what's new" announcement
+  // (targeted to one audience — customers OR providers — at a time).
+  const [siteFlags, setSiteFlags] = useState({
+    maintenance: false,
+    newFeature: { enabled: false, audience: 'customer', text: '' }
+  });
+  const [dismissedAnnouncement, setDismissedAnnouncement] = useState(false);
 
   useEffect(() => {
     let active = true;
     apiClient
-      .get('/feature-flags')
+      .get('/feature-flags/public')
       .then((res) => {
         if (!active) return;
-        const flags = res.data?.flags || {};
+        const data = res.data?.data || {};
+        const flags = data.flags || {};
         setSiteFlags({
-          maintenance: flags.maintenanceMode === true,
-          newFeature: flags.newFeatureEnabled === true
+          maintenance: data.maintenanceMode === true,
+          newFeature: {
+            enabled: flags.newFeatureEnabled === true,
+            audience: flags.newFeatureAudience || 'customer',
+            text: flags.newFeatureText || ''
+          }
         });
       })
       .catch(() => { /* fail open — no flags means normal operation */ });
@@ -546,36 +552,6 @@ export function MainLayout() {
 
               <button
                 onClick={() => {
-                  setAdminActiveTabExternal('featureFlags');
-                  updateBrowserRoute('admin', null, 'feature-flags');
-                }}
-                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
-                  adminActiveTabExternal === 'featureFlags'
-                    ? 'bg-teal-700 text-white shadow-xs'
-                    : 'hover:bg-white/5 text-slate-305'
-                }`}
-              >
-                <ToggleLeft className="w-4 h-4 shrink-0" />
-                <span>Feature Flags</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setAdminActiveTabExternal('backups');
-                  updateBrowserRoute('admin', null, 'backups');
-                }}
-                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
-                  adminActiveTabExternal === 'backups'
-                    ? 'bg-teal-700 text-white shadow-xs'
-                    : 'hover:bg-white/5 text-slate-305'
-                }`}
-              >
-                <Database className="w-4 h-4 shrink-0" />
-                <span>Backups</span>
-              </button>
-
-              <button
-                onClick={() => {
                   setAdminActiveTabExternal('reports');
                   updateBrowserRoute('admin', null, 'reports');
                 }}
@@ -604,6 +580,21 @@ export function MainLayout() {
 
                 <Settings className="w-4 h-4 shrink-0" />
                 <span>Settings</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setAdminActiveTabExternal('featureFlags');
+                  updateBrowserRoute('admin', null, 'featureFlags');
+                }}
+                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
+                  adminActiveTabExternal === 'featureFlags'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'hover:bg-white/5 text-slate-305'
+                }`}
+              >
+                <Flag className="w-4 h-4 shrink-0" />
+                <span>Feature Flags</span>
               </button>
             </div>
 
@@ -668,11 +659,10 @@ export function MainLayout() {
                 { key: 'permanentServiceRequests', label: 'Permanent Hires', icon: ClipboardList },
                 { key: 'tickets', label: 'Tickets', icon: MessageSquare },
                 { key: 'servego', label: 'ServeGo', icon: Sparkles },
-                { key: 'featureFlags', label: 'Flags', icon: ToggleLeft },
-                { key: 'backups', label: 'Backups', icon: Database },
                 { key: 'analytics', label: 'Analytics', icon: BarChart3 },
                 { key: 'reports', label: 'Reports', icon: FileText },
                 { key: 'settings', label: 'Settings', icon: Settings },
+                { key: 'featureFlags', label: 'Feature Flags', icon: Flag },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -725,19 +715,23 @@ export function MainLayout() {
     <div className="flex flex-col min-h-screen">
       <ActionSpinnerOverlay isOpen={!!actionSpinner?.isOpen} message={actionSpinner?.message} />
 
-      {siteFlags.newFeature && !dismissedNewFeature && currentUser && currentUser.role !== 'admin' && (
-        <div className="bg-teal-600 text-white text-center text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 shrink-0" />
-          <span>New: live provider tracking and route planning are here.</span>
-          <button
-            onClick={() => setDismissedNewFeature(true)}
-            className="ml-2 font-black hover:underline"
-            aria-label="Dismiss announcement"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
+      {currentUser &&
+        siteFlags.newFeature.enabled &&
+        siteFlags.newFeature.text &&
+        currentUser.role === siteFlags.newFeature.audience &&
+        !dismissedAnnouncement && (
+          <div className={`text-white text-center text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 ${siteFlags.newFeature.audience === 'provider' ? 'bg-indigo-600' : 'bg-teal-600'}`}>
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span>{siteFlags.newFeature.text}</span>
+            <button
+              onClick={() => setDismissedAnnouncement(true)}
+              className="ml-2 font-black hover:underline"
+              aria-label="Dismiss announcement"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
       <Navbar
 

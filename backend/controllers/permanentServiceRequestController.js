@@ -31,7 +31,10 @@ export const PermanentServiceRequestController = {
         contractDurationYears,
         contractDurationDays,
         monthlyBudget,
-        additionalInfo
+        additionalInfo,
+        locationAddress,
+        serviceLatitude,
+        serviceLongitude
       } = req.body;
 
       const engagement = String(engagementType || '').trim().toUpperCase();
@@ -65,6 +68,9 @@ export const PermanentServiceRequestController = {
           contractDurationDays: contractDays,
           monthlyBudget: budget,
           additionalInfo: additionalInfo ? String(additionalInfo).trim() : null,
+          locationAddress: locationAddress ? String(locationAddress).trim() : null,
+          serviceLatitude: serviceLatitude != null ? Number(serviceLatitude) : null,
+          serviceLongitude: serviceLongitude != null ? Number(serviceLongitude) : null,
           status: 'PENDING'
         },
         include: REQUEST_INCLUDE

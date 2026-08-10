@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, Crown } from 'lucide-react';
+import LocationPicker from './LocationPicker';
 
 export default function BookingModal({
   provider,
@@ -7,6 +8,7 @@ export default function BookingModal({
   errorText,
 
   address, setAddress,
+  latitude, longitude, setLatitude, setLongitude,
   instructions, setInstructions,
   loyaltyTier,
   onSubmit
@@ -44,13 +46,14 @@ export default function BookingModal({
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
                 Service Location <span className="text-rose-500">*</span>
               </label>
-              <textarea
-                placeholder="Flat No, Apartment, Street name, Landmark, Pin"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                rows={2}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none"
-                required
+              <LocationPicker
+                value={{ latitude, longitude, address }}
+                onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                  setLatitude(lat);
+                  setLongitude(lng);
+                  setAddress(addr);
+                }}
+                error={errorText && !latitude}
               />
             </div>
 

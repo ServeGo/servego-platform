@@ -2,10 +2,11 @@ import { getConfig } from '../services/adminConfigService.js';
 
 /**
  * Maintenance-mode gate for the API. Registered in server.js just before the
- * `/api/v1` router. When `maintenanceMode` is on (admin-config feature flag,
- * effective within 30s — no redeploy), the public surface returns 503 while
- * admin routes, authentication and the feature-flag read stay available so an
- * admin can log in and take the site back up.
+ * `/api/v1` router. When `maintenanceMode` is on (admin-config setting, effective
+ * within 30s — no redeploy), the public surface returns 503 while admin routes,
+ * authentication and the public feature-flag read (which feeds the maintenance
+ * banner on the client) stay available so an admin can log in and take the site
+ * back up.
  */
 export async function maintenanceMode(req, res, next) {
   try {
@@ -18,7 +19,7 @@ export async function maintenanceMode(req, res, next) {
       path.startsWith('/admin') ||
       path === '/auth/login' ||
       path === '/auth/refresh' ||
-      path === '/feature-flags'
+      path === '/feature-flags/public'
     ) {
       return next();
     }

@@ -1,7 +1,6 @@
 import prisma from '../prisma/client.js';
 import { ensureProviderSubscription } from '../seeders/businessModelSeed.js';
 import { getLevelDiscount } from './providerLevelService.js';
-import { getConfig } from './adminConfigService.js';
 import {
   createGatewayOrder,
   verifyPaymentSignature,
@@ -51,11 +50,7 @@ async function loadPurchasablePlan(client, planLevel) {
 
 async function computePricing(client, provider, plan) {
   const price = Number(plan.price) || 0;
-  // Feature flag: when discounts are disabled the full list price applies.
-  const discountEnabled = await getConfig('discountEnabled', true, client);
-  const discountPercent = discountEnabled === false
-    ? 0
-    : await getLevelDiscount(provider.providerLevel, client);
+  const discountPercent = await getLevelDiscount(provider.providerLevel, client);
   const discountAmount = Number(((price * discountPercent) / 100).toFixed(2));
   const finalAmount = Number((price - discountAmount).toFixed(2));
   return { price, discountPercent, discountAmount, finalAmount };

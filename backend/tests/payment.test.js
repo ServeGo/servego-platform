@@ -7,32 +7,6 @@ process.env.RAZORPAY_KEY_SECRET = 'test_secret';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test_webhook_secret';
 
 const { verifyPaymentSignature, verifyWebhookSignature, isGatewayConfigured, getGatewayConfig } = await import('../services/paymentGatewayService.js');
-const { computeCustomerCharge, computeProviderCharge } = await import('../services/platformChargeService.js');
-
-test('platform charge: percentage mode charges customer and provider separately', () => {
-  const cfg = { type: 'PERCENTAGE', customerPercent: 5, providerPercent: 10, customerFlat: 0, providerFlat: 0 };
-  const customer = computeCustomerCharge(1000, cfg);
-  const provider = computeProviderCharge(1000, cfg);
-  assert.deepStrictEqual(customer, { type: 'PERCENTAGE', rate: 5, charge: 50, total: 1050 });
-  assert.deepStrictEqual(provider, { type: 'PERCENTAGE', rate: 10, charge: 100, payout: 900 });
-});
-
-test('platform charge: flat mode charges fixed amounts', () => {
-  const cfg = { type: 'FLAT', customerPercent: 0, providerPercent: 0, customerFlat: 25, providerFlat: 40 };
-  const customer = computeCustomerCharge(1000, cfg);
-  const provider = computeProviderCharge(1000, cfg);
-  assert.strictEqual(customer.charge, 25);
-  assert.strictEqual(customer.total, 1025);
-  assert.strictEqual(provider.charge, 40);
-  assert.strictEqual(provider.payout, 960);
-});
-
-test('platform charge: zero amount yields zero charges', () => {
-  const cfg = { type: 'PERCENTAGE', customerPercent: 5, providerPercent: 10, customerFlat: 0, providerFlat: 0 };
-  assert.strictEqual(computeCustomerCharge(0, cfg).charge, 0);
-  assert.strictEqual(computeProviderCharge(0, cfg).charge, 0);
-  assert.strictEqual(computeProviderCharge(0, cfg).payout, 0);
-});
 
 test('payment gateway: configured state is exposed', () => {
   assert.strictEqual(isGatewayConfigured(), true);

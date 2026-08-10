@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Briefcase, ShieldCheck } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import LocationPicker from './LocationPicker';
 
 export default function PermanentServiceRequestModal({ serviceName, onClose, onSuccess }) {
   const [startDate, setStartDate] = useState('');
@@ -9,6 +10,9 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
   const [contractDays, setContractDays] = useState('');
   const [budget, setBudget] = useState('');
   const [additionalInfo, setAdditionalInfo] = useState('');
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -16,6 +20,10 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
     e.preventDefault();
     setError('');
 
+    if (!latitude || !longitude || !address.trim()) {
+      setError('Please select your service location on the map.');
+      return;
+    }
     if (!startDate) {
       setError('Please select a start date.');
       return;
@@ -39,7 +47,10 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
         contractDurationYears: contractYears ? Number(contractYears) : null,
         contractDurationDays: contractDays ? Number(contractDays) : null,
         monthlyBudget: budgetValue,
-        additionalInfo: additionalInfo.trim() || null
+        additionalInfo: additionalInfo.trim() || null,
+        locationAddress: address.trim(),
+        serviceLatitude: latitude,
+        serviceLongitude: longitude
       });
       if (res.ok) {
         onSuccess(res.data);
@@ -106,6 +117,21 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+              Service Location <span className="text-rose-500">*</span>
+            </label>
+            <LocationPicker
+              value={{ latitude, longitude, address }}
+              onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                setLatitude(lat);
+                setLongitude(lng);
+                setAddress(addr);
+              }}
+              error={error && !latitude}
+            />
           </div>
 
           <div>

@@ -151,12 +151,12 @@ export async function pushNotification(io, userId, title, message, type, event, 
   return notification;
 }
 
-/** New lead pushed to a provider (booking request with response timer). */
+/** New lead pushed to a provider (booking request). */
 export async function notifyNewLead(io, providerUserId, leadPayload) {
   const notification = await createNotification(
     providerUserId,
     'New Booking Request',
-    'A new service request has arrived. You have limited time to accept it.',
+    'A new service request has arrived. Accept it to confirm the booking.',
     'LEAD'
   );
   if (io && notification) {
@@ -450,9 +450,9 @@ export async function notifyAdminPermanentServiceRequest(io, payload) {
   return notifyAdmin(io, 'New Permanent Service Request', 'A customer submitted a permanent/contract service request for admin review.', { ...payload, type: 'PERMANENT_SERVICE_REQUEST' });
 }
 
-/** Admin — a booking request's response window elapsed with no provider accepting; booking kept pending for admin review. */
+/** Admin — a booking request has waited the full response window with no provider accepting; it stays open pending admin review. */
 export async function notifyAdminLeadUnanswered(io, payload) {
-  return notifyAdmin(io, 'Unanswered Booking Request', 'A booking request expired without any provider accepting it and is still pending admin review.', { ...payload, type: 'LEAD_TIMEOUT_NO_PROVIDER' });
+  return notifyAdmin(io, 'Unanswered Booking Request', 'A booking request has been waiting a long time without any provider accepting it. Please review and assign it manually.', { ...payload, type: 'LEAD_TIMEOUT_NO_PROVIDER' });
 }
 
 /** Customer — permanent/contract request received by admin. */
@@ -487,6 +487,71 @@ export async function notifyPermanentServiceRequestRejected(customerId, payload)
     'Your permanent/contract service request could not be approved. Please check the admin note for details.',
     'SERVICE',
     'permanentRequest:rejected',
+    payload
+  );
+}
+
+/** Provider — monthly platform fee is due soon; pay it to keep receiving leads. */
+export async function notifyProviderFeeDue(io, providerUserId, payload) {
+  return pushNotification(
+    io,
+    providerUserId,
+    'Platform Fee Due',
+    `Your monthly platform fee of ₹${Math.round(Number(payload?.amount) || 0)} is due by ${new Date(payload?.dueAt).toLocaleDateString('en-IN')}. Pay it to keep receiving new service leads.`,
+    'PLATFORM_FEE',
+    'platformFee:due',
+    payload
+  );
+}
+
+/** Provider — platform fee overdue; lead distribution is paused until paid. */
+export async function notifyProviderFeeOverdue(io, providerUserId, payload) {
+  return pushNotification(
+    io,
+    providerUserId,
+    'Platform Fee Overdue',
+    'Your platform fee payment is overdue. You will not receive new service leads until it is paid.',
+    'PLATFORM_FEE',
+    'platformFee:overdue',
+    payload
+  );
+}
+
+/** Provider — platform fee payment received and the billing window advanced. */
+export async function notifyProviderFeePaid(io, providerUserId, payload) {
+  return pushNotification(
+    io,
+    providerUserId,
+    'Platform Fee Paid',
+    `Thank you! Your platform fee payment of ₹${Math.round(Number(payload?.amount) || 0)} was received. Your next payment is due by ${new Date(payload?.periodEnd).toLocaleDateString('en-IN')}.`,
+    'PLATFORM_FEE',
+    'platformFee:paid',
+    payload
+  );
+}
+
+/** Customer — monthly platform fee due soon (reminder only; access is never blocked). */
+export async function notifyCustomerFeeDue(io, customerUserId, payload) {
+  return pushNotification(
+    io,
+    customerUserId,
+    'Platform Fee Due',
+    `Your monthly platform fee of ₹${Math.round(Number(payload?.amount) || 0)} is due by ${new Date(payload?.dueAt).toLocaleDateString('en-IN')}. Please pay it to continue enjoying ServeGo.`,
+    'PLATFORM_FEE',
+    'platformFee:due',
+    payload
+  );
+}
+
+/** Customer — platform fee payment received. */
+export async function notifyCustomerFeePaid(io, customerUserId, payload) {
+  return pushNotification(
+    io,
+    customerUserId,
+    'Platform Fee Paid',
+    `Thank you! Your platform fee payment of ₹${Math.round(Number(payload?.amount) || 0)} was received.`,
+    'PLATFORM_FEE',
+    'platformFee:paid',
     payload
   );
 }

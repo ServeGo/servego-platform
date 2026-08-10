@@ -20,9 +20,12 @@ import {
   Banknote,
   ThumbsUp,
   ThumbsDown,
-  ShieldCheck
+  ShieldCheck,
+  FileSpreadsheet,
+  ReceiptText
 } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
+import { exportAllPages } from '../../../utils/exportExcel';
 
 const PAGE_SIZE = 15;
 
@@ -52,119 +55,41 @@ const STATUS_STYLES = {
 };
 
 const CONFIG_SCHEMA = {
-  premiumCategories: {
-    type: 'list',
-    label: 'Premium Categories',
-    description: 'Service categories reserved for Premium-sector providers.',
-    default: []
+  platformFeeEnabled: {
+    type: 'boolean',
+    label: 'Platform Fee Enabled',
+    description: 'Master switch for the monthly platform fee.',
+    default: true
   },
-  generalCategories: {
-    type: 'list',
-    label: 'General Categories',
-    description: 'Categories open to General-sector providers (defaults to everything not in Premium).',
-    default: []
-  },
-  defaultProviderRadiusKm: {
+  platformFeeAmount: {
     type: 'number',
-    label: 'Default Provider Radius (km)',
-    description: 'Admin default radius used when a provider has not set their custom max service radius.',
-    default: 50
+    label: 'Provider Platform Fee (₹/month)',
+    description: 'Monthly fee charged to providers; overdue providers stop receiving leads.',
+    default: 99
   },
-  leadTimeoutSeconds: {
+  platformFeeGraceDays: {
     type: 'number',
-    label: 'Lead Timeout (seconds)',
-    description: 'How long a provider has to accept a lead before it expires.',
-    default: 120
+    label: 'Provider Fee Grace Period (days)',
+    description: 'Days a provider gets after joining before the first platform fee payment is due.',
+    default: 30
   },
-  maxRedistributionAttempts: {
+  customerPlatformFeeEnabled: {
+    type: 'boolean',
+    label: 'Customer Platform Fee Enabled',
+    description: 'Master switch for the customer platform fee (reminders only, never blocks access).',
+    default: true
+  },
+  customerPlatformFeeAmount: {
     type: 'number',
-    label: 'Maximum Lead Retry Count',
-    description: 'How many ranked providers receive the lead before the request is cancelled.',
-    default: 10
-  },
-  freeLeadCount: {
-    type: 'number',
-    label: 'Free Lead Count',
-    description: 'Free leads granted to a newly approved provider (given only once).',
-    default: 1
-  },
-  leadCountPerSubscription: {
-    type: 'number',
-    label: 'Lead Count per Subscription',
-    description: 'Leads granted per purchased subscription level.',
-    default: 3
-  },
-  commissionPercent: {
-    type: 'number',
-    label: 'Legacy Platform Commission (%)',
-    description: 'Legacy provider-side platform charge. Falls back when providerPlatformChargePercent is unset.',
-    default: 10
-  },
-  platformChargeType: {
-    type: 'text',
-    label: 'Platform Charge Type',
-    description: 'PERCENTAGE (of booking amount) or FLAT (fixed rupees). Applies to all users.',
-    default: 'PERCENTAGE'
-  },
-  customerPlatformChargePercent: {
-    type: 'number',
-    label: 'Customer Platform Charge (%)',
-    description: 'Customer-side charge added on top of the booking amount.',
-    default: 5
-  },
-  providerPlatformChargePercent: {
-    type: 'number',
-    label: 'Provider Platform Charge (%)',
-    description: 'Provider-side charge (commission) deducted from the booking amount.',
-    default: 10
-  },
-  customerPlatformChargeFlat: {
-    type: 'number',
-    label: 'Customer Platform Charge (Flat ₹)',
-    description: 'Customer-side flat charge when platformChargeType = FLAT.',
-    default: 0
-  },
-  providerPlatformChargeFlat: {
-    type: 'number',
-    label: 'Provider Platform Charge (Flat ₹)',
-    description: 'Provider-side flat charge when platformChargeType = FLAT.',
-    default: 0
+    label: 'Customer Platform Fee (₹/month)',
+    description: 'Monthly fee charged to customers; reminders only.',
+    default: 49
   },
   cancellationPenaltyScore: {
     type: 'number',
     label: 'Cancellation Penalty Score',
     description: 'Penalty score added per provider-initiated cancellation.',
     default: 30
-  },
-  cancellationPenaltyThreshold: {
-    type: 'number',
-    label: 'Penalty Score Threshold',
-    description: 'Accumulated penalty score that triggers a cooldown pause.',
-    default: 60
-  },
-  cancellationWindowDays: {
-    type: 'number',
-    label: 'Cancellation Window (days)',
-    description: 'Look-back window for counting cancellations.',
-    default: 30
-  },
-  cooldownDurationHours: {
-    type: 'number',
-    label: 'Cooldown Duration (hours)',
-    description: 'How long a provider is paused after crossing the penalty threshold.',
-    default: 24
-  },
-  lateArrivalGraceMinutes: {
-    type: 'number',
-    label: 'Late Arrival Grace (minutes)',
-    description: 'Grace period after the scheduled start before a provider is marked late.',
-    default: 15
-  },
-  rankingWeights: {
-    type: 'text',
-    label: 'Ranking Weights',
-    description: 'JSON object of ranking weights (distanceKm, rating, providerLevel, acceptanceRate, cancellationRate, responseRate, experienceYears, reviewCount, serviceFee).',
-    default: '{}'
   }
 };
 
@@ -186,6 +111,7 @@ export default function AdminServeGoTab() {
     { id: 'leads', label: 'Leads' },
     { id: 'performance', label: 'Provider Performance' },
     { id: 'wallet', label: 'Wallet' },
+    { id: 'fees', label: 'Platform Fees' },
     { id: 'analytics', label: 'Analytics' }
   ];
 
@@ -214,6 +140,7 @@ export default function AdminServeGoTab() {
       {tab === 'leads' && <LeadsSection />}
       {tab === 'performance' && <PerformanceSection />}
       {tab === 'wallet' && <WalletSection />}
+      {tab === 'fees' && <PlatformFeesSection />}
       {tab === 'analytics' && <AnalyticsSection />}
     </div>
   );
@@ -694,6 +621,38 @@ function LeadsSection() {
     if (res.ok) setDetail(res.data);
   };
 
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportAllPages({
+        fetchPage: async (page, limit) => {
+          const q = new URLSearchParams({ page: String(page), limit: String(limit) });
+          if (status) q.set('status', status);
+          const res = await apiClient.get(`/admin/leads?${q.toString()}`);
+          const rows = (res.data?.leads || []).map((lead) => ({
+            Lead: lead.id,
+            Customer: lead.customer?.name || '',
+            'Customer Phone': lead.customer?.phone || '',
+            Category: lead.serviceCategory || '',
+            Status: lead.status || '',
+            Provider: lead.provider?.user?.name || '',
+            'Distance (km)': lead.distanceKm != null ? Number(lead.distanceKm).toFixed(1) : '',
+            Transfers: lead.transferCount ?? 0,
+            'Created At': fmtDate(lead.createdAt)
+          }));
+          return { rows, total: res.data?.pagination?.total || 0 };
+        },
+        fileName: 'leads-report',
+        sheetName: 'Leads'
+      });
+    } catch (err) {
+      console.error('Excel export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
@@ -701,16 +660,26 @@ function LeadsSection() {
           <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
             <Inbox className="w-4 h-4 text-teal-600" /> All Leads ({total})
           </span>
-          <div className="flex flex-wrap gap-1">
-            {[['', 'All'], ['NEW', 'New'], ['VIEWED', 'Viewed'], ['ACCEPTED', 'Accepted'], ['REJECTED', 'Rejected'], ['EXPIRED', 'Expired'], ['COMPLETED', 'Completed'], ['CANCELLED', 'Cancelled']].map(([val, label]) => (
-              <button
-                key={val || 'all'}
-                onClick={() => { setStatus(val); setPage(1); }}
-                className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${status === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting ? 'Exporting...' : 'Export Excel'}
+            </button>
+            <div className="flex flex-wrap gap-1">
+              {[['', 'All'], ['NEW', 'New'], ['VIEWED', 'Viewed'], ['ACCEPTED', 'Accepted'], ['REJECTED', 'Rejected'], ['EXPIRED', 'Expired'], ['COMPLETED', 'Completed'], ['CANCELLED', 'Cancelled']].map(([val, label]) => (
+                <button
+                  key={val || 'all'}
+                  onClick={() => { setStatus(val); setPage(1); }}
+                  className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${status === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         {loading ? (
@@ -881,6 +850,39 @@ function PerformanceSection() {
 
   const cooldownActive = (row) => Boolean(row.cooldownUntil && new Date(row.cooldownUntil) > new Date());
 
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportAllPages({
+        fetchPage: async (page, limit) => {
+          const q = new URLSearchParams({ page: String(page), limit: String(limit) });
+          if (search.trim()) q.set('search', search.trim());
+          const res = await apiClient.get(`/admin/providers/performance?${q.toString()}`);
+          const rows = (res.data?.performance || []).map((row) => ({
+            Provider: row.provider?.user?.name || '',
+            Level: row.provider?.providerLevel || '',
+            Sector: row.provider?.sector || '',
+            'Total Leads': row.totalLeads ?? 0,
+            'Acceptance Rate (%)': row.acceptanceRate != null ? Math.round(Number(row.acceptanceRate) * 100) : '',
+            'Response Rate (%)': row.responseRate != null ? Math.round(Number(row.responseRate) * 100) : '',
+            'Cancellation Rate (%)': row.cancellationRate != null ? Math.round(Number(row.cancellationRate) * 100) : '',
+            'Completed Jobs': row.completedJobs ?? 0,
+            'Total Earnings (₹)': row.totalEarnings ?? 0,
+            Cooldown: cooldownActive(row) ? fmtDate(row.cooldownUntil) : ''
+          }));
+          return { rows, total: res.data?.pagination?.total || 0 };
+        },
+        fileName: 'provider-performance-report',
+        sheetName: 'Performance'
+      });
+    } catch (err) {
+      console.error('Excel export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
@@ -889,6 +891,14 @@ function PerformanceSection() {
             <Gauge className="w-4 h-4 text-teal-600" /> Provider Performance ({total})
           </span>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting ? 'Exporting...' : 'Export Excel'}
+            </button>
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -973,12 +983,16 @@ function WalletSection() {
   const [overview, setOverview] = useState(null);
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalStatus, setWithdrawalStatus] = useState('PENDING');
+  const [withdrawalPage, setWithdrawalPage] = useState(1);
+  const [withdrawalPages, setWithdrawalPages] = useState(0);
+  const [withdrawalTotal, setWithdrawalTotal] = useState(0);
   const [ledger, setLedger] = useState([]);
   const [ledgerPage, setLedgerPage] = useState(1);
   const [ledgerPages, setLedgerPages] = useState(0);
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
+  const [exporting, setExporting] = useState('');
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState('ok');
   const [userSearch, setUserSearch] = useState('');
@@ -997,9 +1011,13 @@ function WalletSection() {
   }, []);
 
   const loadWithdrawals = useCallback(async () => {
-    const res = await apiClient.get(`/admin/wallet/withdrawals?status=${withdrawalStatus}&page=1&limit=25`);
-    if (res.ok) setWithdrawals(res.data?.withdrawals || []);
-  }, [withdrawalStatus]);
+    const res = await apiClient.get(`/admin/wallet/withdrawals?status=${withdrawalStatus}&page=${withdrawalPage}&limit=25`);
+    if (res.ok) {
+      setWithdrawals(res.data?.withdrawals || []);
+      setWithdrawalTotal(res.data?.pagination?.total || 0);
+      setWithdrawalPages(res.data?.pagination?.pages || 0);
+    }
+  }, [withdrawalStatus, withdrawalPage]);
 
   const loadLedger = useCallback(async () => {
     const q = new URLSearchParams({ page: String(ledgerPage), limit: '25' });
@@ -1053,6 +1071,54 @@ function WalletSection() {
     }
   };
 
+  const handleExport = async (kind) => {
+    setExporting(kind);
+    try {
+      if (kind === 'ledger') {
+        await exportAllPages({
+          fetchPage: async (page, limit) => {
+            const q = new URLSearchParams({ page: String(page), limit: String(limit) });
+            if (userSearch.trim()) q.set('userId', userSearch.trim());
+            const res = await apiClient.get(`/admin/wallet/ledger?${q.toString()}`);
+            const rows = (res.data?.transactions || []).map((t) => ({
+              User: t.user?.name || '',
+              Email: t.user?.email || '',
+              Type: t.type || '',
+              Category: t.category || '',
+              Amount: t.type === 'CREDIT' ? Number(t.amount) : -Number(t.amount),
+              'Balance After': t.balanceAfter ?? '',
+              Reference: t.referenceType || ''
+            }));
+            return { rows, total: res.data?.pagination?.total || 0 };
+          },
+          fileName: 'wallet-ledger-report',
+          sheetName: 'Ledger'
+        });
+      } else {
+        await exportAllPages({
+          fetchPage: async (page, limit) => {
+            const res = await apiClient.get(`/admin/wallet/withdrawals?status=${withdrawalStatus}&page=${page}&limit=${limit}`);
+            const rows = (res.data?.withdrawals || []).map((w) => ({
+              Provider: w.provider?.user?.name || '',
+              Amount: w.amount ?? 0,
+              Status: w.status || '',
+              Method: w.paymentMethod || '',
+              'Requested At': fmtDate(w.requestedAt || w.createdAt),
+              'Processed At': fmtDate(w.processedAt)
+            }));
+            return { rows, total: res.data?.pagination?.total || 0 };
+          },
+          fileName: 'withdrawals-report',
+          sheetName: 'Withdrawals'
+        });
+      }
+    } catch (err) {
+      console.error('Excel export failed:', err);
+    } finally {
+      setExporting('');
+    }
+  };
+
   if (loading && !overview) {
     return <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 text-xs font-semibold">Loading wallet...</div>;
   }
@@ -1090,60 +1156,81 @@ function WalletSection() {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-              <Banknote className="w-4 h-4 text-teal-600" /> Withdrawal Requests
+              <Banknote className="w-4 h-4 text-teal-600" /> Withdrawal Requests ({withdrawalTotal})
             </span>
-            <div className="flex gap-1">
-              {[['PENDING', 'Pending'], ['APPROVED', 'Approved'], ['PAID', 'Paid'], ['REJECTED', 'Rejected']].map(([val, label]) => (
-                <button
-                  key={val}
-                  onClick={() => setWithdrawalStatus(val)}
-                  className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${withdrawalStatus === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => handleExport('withdrawals')}
+                disabled={exporting === 'withdrawals' || withdrawalTotal === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting === 'withdrawals' ? 'Exporting...' : 'Export Excel'}
+              </button>
+              <div className="flex gap-1">
+                {[['PENDING', 'Pending'], ['APPROVED', 'Approved'], ['PAID', 'Paid'], ['REJECTED', 'Rejected']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => { setWithdrawalStatus(val); setWithdrawalPage(1); }}
+                    className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${withdrawalStatus === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           {withdrawals.length === 0 ? (
             <p className="text-slate-400 text-xs italic p-8 text-center">No {withdrawalStatus.toLowerCase()} withdrawal requests.</p>
           ) : (
-            <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
-              {withdrawals.map((w) => (
-                <div key={w.id} className="p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{fmtMoney(w.amount)}</p>
-                      <p className="text-[10px] text-slate-500 font-semibold">{w.provider?.user?.name} · {w.provider?.user?.email}</p>
-                      <p className="text-[10px] text-slate-400 font-semibold">{fmtDate(w.createdAt)}</p>
+            <>
+              <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
+                {withdrawals.map((w) => (
+                  <div key={w.id} className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-black text-slate-900">{fmtMoney(w.amount)}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold">{w.provider?.user?.name} · {w.provider?.user?.email}</p>
+                        <p className="text-[10px] text-slate-400 font-semibold">{fmtDate(w.createdAt)}</p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${WITHDRAWAL_STATUS_STYLES[w.status]}`}>{w.status}</span>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${WITHDRAWAL_STATUS_STYLES[w.status]}`}>{w.status}</span>
+                    {w.accountDetails && (w.accountDetails.upiId || w.accountDetails.accountNumber) && (
+                      <p className="text-[10px] font-bold text-slate-500 mt-2 bg-slate-50 border border-slate-100 rounded-lg p-2">
+                        Payout to: {w.accountDetails.upiId || `A/C ${w.accountDetails.accountNumber}${w.accountDetails.ifsc ? ` (${w.accountDetails.ifsc})` : ''}`}
+                      </p>
+                    )}
+                    {w.status === 'PENDING' && (
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => process(w.id, 'APPROVED')} disabled={processingId === w.id} className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
+                          <ThumbsUp className="w-3 h-3" /> Approve
+                        </button>
+                        <button onClick={() => process(w.id, 'PAID')} disabled={processingId === w.id} className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
+                          <ShieldCheck className="w-3 h-3" /> Mark Paid
+                        </button>
+                        <button onClick={() => process(w.id, 'REJECTED')} disabled={processingId === w.id} className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
+                          <ThumbsDown className="w-3 h-3" /> Reject
+                        </button>
+                      </div>
+                    )}
+                    {w.status === 'APPROVED' && (
+                      <button onClick={() => process(w.id, 'PAID')} disabled={processingId === w.id} className="mt-3 flex items-center gap-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
+                        <ShieldCheck className="w-3 h-3" /> Confirm Payment → Mark Paid
+                      </button>
+                    )}
                   </div>
-                  {w.accountDetails && (w.accountDetails.upiId || w.accountDetails.accountNumber) && (
-                    <p className="text-[10px] font-bold text-slate-500 mt-2 bg-slate-50 border border-slate-100 rounded-lg p-2">
-                      Payout to: {w.accountDetails.upiId || `A/C ${w.accountDetails.accountNumber}${w.accountDetails.ifsc ? ` (${w.accountDetails.ifsc})` : ''}`}
-                    </p>
-                  )}
-                  {w.status === 'PENDING' && (
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={() => process(w.id, 'APPROVED')} disabled={processingId === w.id} className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
-                        <ThumbsUp className="w-3 h-3" /> Approve
-                      </button>
-                      <button onClick={() => process(w.id, 'PAID')} disabled={processingId === w.id} className="flex items-center gap-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
-                        <ShieldCheck className="w-3 h-3" /> Mark Paid
-                      </button>
-                      <button onClick={() => process(w.id, 'REJECTED')} disabled={processingId === w.id} className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
-                        <ThumbsDown className="w-3 h-3" /> Reject
-                      </button>
-                    </div>
-                  )}
-                  {w.status === 'APPROVED' && (
-                    <button onClick={() => process(w.id, 'PAID')} disabled={processingId === w.id} className="mt-3 flex items-center gap-1 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg">
-                      <ShieldCheck className="w-3 h-3" /> Confirm Payment → Mark Paid
-                    </button>
-                  )}
+                ))}
+              </div>
+              {withdrawalPages > 1 && (
+                <div className="p-3 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 font-semibold">Page {withdrawalPage} of {withdrawalPages}</span>
+                  <div className="flex gap-1">
+                    <button disabled={withdrawalPage <= 1} onClick={() => setWithdrawalPage((p) => p - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                    <button disabled={withdrawalPage >= withdrawalPages} onClick={() => setWithdrawalPage((p) => p + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
 
@@ -1211,7 +1298,15 @@ function WalletSection() {
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
           <span className="text-sm font-extrabold text-slate-900">Wallet Ledger ({ledgerTotal})</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleExport('ledger')}
+              disabled={exporting === 'ledger' || ledgerTotal === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting === 'ledger' ? 'Exporting...' : 'Export Excel'}
+            </button>
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -1262,6 +1357,176 @@ function WalletSection() {
                 <div className="flex gap-1">
                   <button disabled={ledgerPage <= 1} onClick={() => setLedgerPage((p) => p - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
                   <button disabled={ledgerPage >= ledgerPages} onClick={() => setLedgerPage((p) => p + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ Platform Fees ------------------------------ */
+
+const FEE_STATUS_STYLES = {
+  ACTIVE: 'bg-emerald-100 border-emerald-300 text-emerald-800',
+  GRACE: 'bg-sky-100 border-sky-300 text-sky-800',
+  OVERDUE: 'bg-rose-100 border-rose-300 text-rose-800',
+  DISABLED: 'bg-slate-100 border-slate-300 text-slate-600'
+};
+
+function PlatformFeesSection() {
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('');
+  const [role, setRole] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(0);
+  const [exporting, setExporting] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const q = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+    if (status) q.set('status', status);
+    if (role) q.set('role', role);
+    const res = await apiClient.get(`/admin/platform-fees?${q.toString()}`);
+    if (res.ok) {
+      setAccounts(res.data?.accounts || []);
+      setTotal(res.data?.pagination?.total || 0);
+      setPages(res.data?.pagination?.pages || 0);
+    } else {
+      setAccounts([]);
+    }
+    setLoading(false);
+  }, [page, status, role]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportAllPages({
+        fetchPage: async (p, limit) => {
+          const q = new URLSearchParams({ page: String(p), limit: String(limit) });
+          if (status) q.set('status', status);
+          if (role) q.set('role', role);
+          const res = await apiClient.get(`/admin/platform-fees?${q.toString()}`);
+          const rows = (res.data?.accounts || []).map((a) => ({
+            User: a.user?.name || '',
+            Email: a.user?.email || '',
+            Role: a.role || '',
+            Status: a.status || '',
+            'Overdue': a.overdue ? 'Yes' : 'No',
+            'Amount (₹)': a.amount ?? 0,
+            'Period Start': fmtDate(a.periodStart),
+            'Period End': fmtDate(a.periodEnd),
+            'Grace Ends': fmtDate(a.graceEndsAt),
+            'Last Payment': fmtDate(a.lastPaymentAt),
+            'Joined': fmtDate(a.user?.createdAt)
+          }));
+          return { rows, total: res.data?.pagination?.total || 0 };
+        },
+        fileName: 'platform-fees-report',
+        sheetName: 'Platform Fees'
+      });
+    } catch (err) {
+      console.error('Excel export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+            <ReceiptText className="w-4 h-4 text-teal-600" /> Monthly Platform Fees ({total})
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting ? 'Exporting...' : 'Export Excel'}
+            </button>
+            <div className="flex flex-wrap gap-1">
+              {[['', 'All'], ['ACTIVE', 'Active'], ['GRACE', 'Grace'], ['OVERDUE', 'Overdue'], ['DISABLED', 'Disabled']].map(([val, label]) => (
+                <button
+                  key={val || 'all'}
+                  onClick={() => { setStatus(val); setPage(1); }}
+                  className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${status === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="px-2 py-1.5 text-[10px] font-black text-slate-300">|</span>
+              {[['', 'All roles'], ['PROVIDER', 'Providers'], ['CUSTOMER', 'Customers']].map(([val, label]) => (
+                <button
+                  key={val || 'allroles'}
+                  onClick={() => { setRole(val); setPage(1); }}
+                  className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${role === val ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {loading ? (
+          <p className="text-slate-400 text-xs italic p-6 text-center">Loading platform fee accounts...</p>
+        ) : accounts.length === 0 ? (
+          <p className="text-slate-400 text-xs italic p-6 text-center">No platform fee accounts found.</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {['User', 'Role', 'Status', 'Amount', 'Period End', 'Grace Ends', 'Last Payment', 'Overdue'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {accounts.map((a) => (
+                    <tr key={a.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-slate-800">{a.user?.name || '—'}</p>
+                        <p className="text-[9px] text-slate-400 font-mono">{a.user?.email}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-slate-100 text-slate-600 border-slate-200">{a.role}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${FEE_STATUS_STYLES[a.status] || 'bg-slate-100 border-slate-300 text-slate-600'}`}>{a.status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 font-semibold">{fmtMoney(a.amount)}</td>
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.periodEnd)}</td>
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.graceEndsAt)}</td>
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.lastPaymentAt)}</td>
+                      <td className="px-4 py-3">
+                        {a.overdue ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-rose-50 text-rose-700 border-rose-200">Yes</span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pages > 1 && (
+              <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 font-semibold">Page {page} of {pages}</span>
+                <div className="flex gap-1">
+                  <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                  <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
                 </div>
               </div>
             )}

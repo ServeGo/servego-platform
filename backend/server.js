@@ -12,8 +12,8 @@ import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/securi
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
 import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
-import { startBackupCron, stopBackupCron } from './services/backupService.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
+import { advanceFeeBilling } from './services/platformFeeService.js';
 import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
 import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
@@ -125,7 +125,8 @@ async function bootstrap() {
   });
 
   // API routes (maintenance gate first: the whole public surface 503s while
-  // `maintenanceMode` is on, except admin/login/feature-flags — see middleware).
+  // `maintenanceMode` is on, except admin/login/public feature-flag reads —
+  // see middleware).
   app.use('/api/v1', maintenanceMode, apiRouter);
 
   // Socket.io
@@ -272,10 +273,18 @@ async function bootstrap() {
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');
     startAutoCancelCron(io);
-    startBackupCron();
     void scheduleAllLeadTimers(io).catch((err) => {
       console.error('Lead timer scheduling failed:', err.message);
     });
+    // Daily platform-fee billing sweep (mark overdue, send due reminders).
+    void advanceFeeBilling({ io }).catch((err) => {
+      console.error('Platform fee billing sweep failed:', err.message);
+    });
+    setInterval(() => {
+      void advanceFeeBilling({ io }).catch((err) => {
+        console.error('Platform fee billing sweep failed:', err.message);
+      });
+    }, 24 * 60 * 60 * 1000);
     // Recover any jobs a previous process left mid-flight, then drain the
     // async side-effect queue (email, analytics, invoices, performance).
     void recoverInterruptedJobs()
@@ -306,7 +315,6 @@ async function bootstrap() {
   const shutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
     stopAutoCancelCron();
-    stopBackupCron();
     stopQueueWorkers();
     await drainQueueWorkers(10000);
     httpServer.close(async () => {
