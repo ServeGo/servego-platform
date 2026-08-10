@@ -161,6 +161,7 @@ export default function AdminPermanentServicesTab({ providersList }) {
                 <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/50">
                   <th className="py-3 px-6">Customer</th>
                   <th className="py-3 px-6">Service</th>
+                  <th className="py-3 px-6">Location</th>
                   <th className="py-3 px-6">Engagement</th>
                   <th className="py-3 px-6">Start</th>
                   <th className="py-3 px-6">Budget/Mo</th>
@@ -180,6 +181,14 @@ export default function AdminPermanentServicesTab({ providersList }) {
                         <div className="text-[10px] text-slate-400 font-semibold">{r.customer?.email || ''}</div>
                       </td>
                       <td className="py-4 px-6 font-extrabold text-slate-900">{r.serviceCategory}</td>
+                      <td className="py-4 px-6 max-w-[180px]">
+                        <div className="font-semibold text-slate-700 truncate" title={r.locationAddress || ''}>{r.locationAddress || '—'}</div>
+                        {r.serviceLatitude != null && (
+                          <div className="text-[9px] text-slate-400 font-mono font-semibold">
+                            {Number(r.serviceLatitude).toFixed(5)}, {Number(r.serviceLongitude).toFixed(5)}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-4 px-6">
                         <div>{r.engagementType === 'CONTRACT' ? 'Contract' : 'Permanent'}</div>
                         <div className="text-[10px] text-slate-400 font-semibold">{durationText(r)}</div>

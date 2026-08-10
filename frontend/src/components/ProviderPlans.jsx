@@ -36,8 +36,11 @@ export default function ProviderPlans({ providerId }) {
   const [subscription, setSubscription] = useState(null);
   const [remainingState, setRemainingState] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [feeStatus, setFeeStatus] = useState(null);
+  const [feeHistory, setFeeHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [payingFee, setPayingFee] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('ONLINE');
@@ -47,16 +50,20 @@ export default function ProviderPlans({ providerId }) {
     if (!providerId) return;
     setLoading(true);
     try {
-      const [plansRes, subRes, remainingRes, txRes] = await Promise.all([
+      const [plansRes, subRes, remainingRes, txRes, feeRes, feeHistoryRes] = await Promise.all([
         api.get('/subscriptions/plans'),
         api.get('/subscriptions/me'),
         api.get('/subscriptions/remaining'),
-        api.get('/subscriptions/transactions')
+        api.get('/subscriptions/transactions'),
+        api.get('/platform-fee/status'),
+        api.get('/platform-fee/history')
       ]);
       if (plansRes.ok) setPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
       if (subRes.ok) setSubscription(subRes.data);
       if (remainingRes.ok) setRemainingState(remainingRes.data);
       if (txRes.ok) setTransactions(Array.isArray(txRes.data) ? txRes.data : []);
+      if (feeRes.ok) setFeeStatus(feeRes.data);
+      if (feeHistoryRes.ok) setFeeHistory(Array.isArray(feeHistoryRes.data) ? feeHistoryRes.data : []);
       setError('');
     } catch (e) {
       setError('Failed to load subscription data.');
@@ -164,6 +171,71 @@ export default function ProviderPlans({ providerId }) {
   const nextPlanLevel = activePlanLevel + 1;
   const visiblePlans = plans.filter((p) => p.level === activePlanLevel || p.level === nextPlanLevel);
 
+  const handlePayFee = async () => {
+    if (!feeStatus?.enabled) return;
+    setPayingFee(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await api.post('/platform-fee/order', {});
+      if (!res.ok) {
+        setError(res.data?.message || res.data?.error || 'Failed to start the platform fee payment.');
+        setPayingFee(false);
+        return;
+      }
+
+      if (!window.Razorpay) await loadRazorpayScript();
+      const order = res.data;
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amountPaise,
+        currency: order.currency || 'INR',
+        name: 'ServeGo',
+        description: `Monthly platform fee — ${fmtMoney(order.amountInr)}`,
+        prefill: {
+          name: currentUser?.name || '',
+          email: currentUser?.email || ''
+        },
+        theme: { color: '#0f766e' },
+        handler: async (response) => {
+          try {
+            const verifyRes = await api.post('/platform-fee/verify', {
+              transactionId: order.transactionId,
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature
+            });
+            if (verifyRes.ok) {
+              setSuccess('Platform fee paid. Your billing window is advanced for another month.');
+            } else {
+              setError(verifyRes.data?.message || verifyRes.data?.error || 'Payment verification failed.');
+            }
+            await load();
+          } catch (e) {
+            setError('Network error while confirming your payment.');
+            await load();
+          } finally {
+            setPayingFee(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setPayingFee(false)
+        }
+      });
+      rzp.on('payment.failed', (resp) => {
+        setError(resp?.error?.description || 'Payment failed. Please try again.');
+        setPayingFee(false);
+      });
+      rzp.open();
+    } catch (e) {
+      setError(e.message || 'Network error during payment.');
+      setPayingFee(false);
+    }
+  };
+
+  const feeOverdue = Boolean(feeStatus?.overdue);
+
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-3xl p-5">
@@ -249,6 +321,65 @@ export default function ProviderPlans({ providerId }) {
         </div>
       )}
 
+      {feeStatus && (
+        <div className={`bg-white border rounded-3xl p-5 ${feeOverdue ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-200'}`}>
+          <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1 flex items-center gap-1.5">
+                <IndianRupee className="w-3.5 h-3.5 text-teal-600" /> Monthly Platform Fee
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h4 className="text-lg font-extrabold text-slate-900">{fmtMoney(feeStatus.amount)} <span className="text-xs font-bold text-slate-400">/ month</span></h4>
+                {feeOverdue ? (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase rounded-full border bg-rose-50 text-rose-700 border-rose-200 px-2.5 py-1">
+                    <AlertTriangle className="w-3 h-3" /> Overdue — leads paused
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 px-2.5 py-1">
+                    <CheckCircle2 className="w-3 h-3" /> Up to date
+                  </span>
+                )}
+                {!feeStatus.enabled && (
+                  <span className="px-2.5 py-1 text-[9px] font-black uppercase rounded-full border bg-slate-100 text-slate-500 border-slate-200">
+                    Currently disabled
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 font-semibold mt-1.5">
+                {feeOverdue
+                  ? `Payment due since ${fmtDate(feeStatus.dueAt)}. You will not receive new leads until it is paid.`
+                  : feeStatus.dueAt
+                    ? `Next payment due ${fmtDate(feeStatus.dueAt)}.`
+                    : 'Keep this fee paid to keep receiving new service leads.'}
+              </p>
+            </div>
+            {feeStatus.enabled && (
+              <button
+                onClick={handlePayFee}
+                disabled={payingFee}
+                className="shrink-0 bg-teal-600 hover:bg-teal-700 text-white text-xs font-black rounded-xl px-5 py-2.5 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                {payingFee ? 'Processing...' : `Pay ${fmtMoney(feeStatus.amount)}`}
+              </button>
+            )}
+          </div>
+
+          {feeHistory.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">Recent payments</p>
+              <div className="flex flex-wrap gap-2">
+                {feeHistory.slice(0, 3).map((p) => (
+                  <span key={p.id} className="text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                    {fmtMoney(p.amount)} · {p.paymentStatus} · {fmtDate(p.paidAt || p.createdAt)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading && plans.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
           Loading plans...
@@ -306,7 +437,7 @@ export default function ProviderPlans({ providerId }) {
                     `${plan.leadCount} service lead${plan.leadCount !== 1 ? 's' : ''}`,
                     plan.sector === 'PREMIUM' ? 'Premium sector requests' : 'General sector requests',
                     'Verified customer requests only',
-                    'Leads expire after a short accept window'
+                    'Unanswered requests are flagged for admin follow-up'
                   ].map((f) => (
                     <p key={f} className="text-[11px] font-semibold text-slate-600 flex items-start gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 mt-0.5 shrink-0" /> {f}

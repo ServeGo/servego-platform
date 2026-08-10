@@ -1,85 +1,90 @@
 /**
- * Feature flags — admin-controlled runtime toggles stored in the AdminConfig
- * table (JSONB) and read through the 30s-cached getConfig path, so flags take
- * effect without a redeploy. Every flag is registered here (single source of
- * truth for the admin UI), type-validated on write, and consumed by feature
- * gates spread across the services.
+ * Feature flags — a small set of admin-controlled runtime toggles stored in the
+ * AdminConfig table (JSONB), read through the 30s-cached getConfig path, so
+ * changes apply within ~30s without a redeploy.
  *
- * Maintenance mode is the only flag with global scope (a middleware in
- * server.js); the rest gate specific subsystems (premium category matching,
- * subscription discounts, the referral program, and the newest release).
+ * Flags:
+ *   - referralBonusAmount: the referral payout amount, applied to every user.
+ *   - newFeatureEnabled / newFeatureAudience / newFeatureText / newFeatureValidUntil:
+ *     the "what's new" announcement headline, shown to either customers or
+ *     providers (one audience at a time). The headline auto-expires 24 hours
+ *     after it is activated (or last edited while active).
  */
 
 import { getConfig, setConfig } from './adminConfigService.js';
 import prisma from '../prisma/client.js';
+
+/** Announcement headline lifetime: 24 hours from activation. */
+export const ANNOUNCEMENT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * @typedef {{
  *   key: string,
  *   label: string,
  *   description: string,
+ *   category: string,
  *   valueType: 'boolean'|'number'|'string',
  *   default: boolean|number|string,
- *   public: boolean
+ *   public: boolean,
+ *   min?: number,
+ *   max?: number,
+ *   allowed?: string[]
  * }} FlagDefinition
  */
 
 /** @type {Record<string, FlagDefinition>} */
 export const FEATURE_FLAGS = {
-  premiumCategoriesEnabled: {
-    key: 'premiumCategoriesEnabled',
-    label: 'Premium Categories',
-    description: 'When on, categories listed in "premiumCategories" are served only by Premium-sector providers.',
-    valueType: 'boolean',
-    default: true,
-    public: false
-  },
-  discountEnabled: {
-    key: 'discountEnabled',
-    label: 'Discounts & Level Pricing',
-    description: 'When off, provider level discounts are not applied to subscription purchases (full price).',
-    valueType: 'boolean',
-    default: true,
-    public: false
-  },
-  referralEnabled: {
-    key: 'referralEnabled',
-    label: 'Referral Program',
-    description: 'When off, applying referral codes is blocked and no referral bonus is awarded.',
-    valueType: 'boolean',
-    default: true,
-    public: false
-  },
   referralBonusAmount: {
     key: 'referralBonusAmount',
     label: 'Referral Bonus Amount (₹)',
-    description: 'Referral bonus credited to the applicant when a referral code is applied.',
+    description: 'Bonus credited to a new user when they apply a referral code. Applies to every referral.',
+    category: 'Growth',
     valueType: 'number',
     default: 250,
+    min: 0,
+    max: 10000,
     public: false
-  },
-  maintenanceMode: {
-    key: 'maintenanceMode',
-    label: 'Maintenance Mode',
-    description: 'When on, the public API returns 503 (except admin routes, login and feature flags) so the site can be taken down safely without a deploy.',
-    valueType: 'boolean',
-    default: false,
-    public: true
   },
   newFeatureEnabled: {
     key: 'newFeatureEnabled',
     label: 'New Feature Announcement',
-    description: 'When on, the newest release is announced to users (banner on the dashboard).',
+    description: 'Shows a "what\u2019s new" headline to users. Choose the audience and write the message below.',
+    category: 'Marketing',
     valueType: 'boolean',
     default: false,
+    public: true
+  },
+  newFeatureAudience: {
+    key: 'newFeatureAudience',
+    label: 'Announcement Audience',
+    description: 'Who sees the announcement: customers or providers.',
+    category: 'Marketing',
+    valueType: 'string',
+    allowed: ['customer', 'provider'],
+    default: 'customer',
+    public: true
+  },
+  newFeatureText: {
+    key: 'newFeatureText',
+    label: 'Announcement Message',
+    description: 'The message shown in the announcement banner.',
+    category: 'Marketing',
+    valueType: 'string',
+    default: '',
+    public: true
+  },
+  newFeatureValidUntil: {
+    key: 'newFeatureValidUntil',
+    label: 'Announcement Valid Until',
+    description: 'Internal: the headline auto-expires 24h after activation/editing. Managed by the service, not shown in the admin UI.',
+    category: 'Marketing',
+    valueType: 'string',
+    default: '',
     public: true
   }
 };
 
-/**
- * Read a feature flag, honoring its registered default when the config key has
- * never been set. Callers inside a transaction pass `client` (the tx).
- */
+/** Read a boolean flag, honoring its registered default when never set. */
 export async function isFeatureEnabled(key, fallback = true, client = prisma) {
   const def = FEATURE_FLAGS[key];
   const fb = def ? def.default : fallback;
@@ -87,7 +92,7 @@ export async function isFeatureEnabled(key, fallback = true, client = prisma) {
   return value !== false && value !== 'false' && value !== 0 && value !== '0';
 }
 
-/** Read a flag's raw stored value (for number/string flags like bonus amounts). */
+/** Read a flag's raw stored value (numbers/strings). */
 export async function getFeatureFlagValue(key, client = prisma) {
   const def = FEATURE_FLAGS[key];
   return getConfig(key, def ? def.default : null, client);
@@ -106,7 +111,7 @@ export async function getAllFeatureFlags() {
   }));
 }
 
-/** Flags safe to expose to unauthenticated clients (maintenance banner, etc.). */
+/** Flags safe to expose to unauthenticated clients (announcement banner, etc.). */
 export async function getPublicFeatureFlags() {
   const publicKeys = Object.values(FEATURE_FLAGS).filter((f) => f.public).map((f) => f.key);
   const rows = await prisma.adminConfig.findMany({ where: { key: { in: publicKeys } } });
@@ -116,10 +121,15 @@ export async function getPublicFeatureFlags() {
     const def = FEATURE_FLAGS[key];
     result[key] = valueMap[key] ?? def.default;
   }
+  // The announcement headline auto-expires 24h after activation — report it as
+  // disabled once the window has passed so clients stop showing the banner.
+  const enabled = result.newFeatureEnabled === true;
+  const validUntil = new Date(String(result.newFeatureValidUntil || '')).getTime() || 0;
+  result.newFeatureEnabled = enabled && validUntil > Date.now();
   return result;
 }
 
-/** Coerce and validate an incoming value against a flag's declared type. */
+/** Coerce and validate an incoming value against a flag's declared type/bounds. */
 export function validateFeatureFlagValue(key, value) {
   const def = FEATURE_FLAGS[key];
   if (!def) {
@@ -137,24 +147,51 @@ export function validateFeatureFlagValue(key, value) {
       err.code = 'INVALID_FLAG_VALUE';
       throw err;
     }
+    if (def.min !== undefined && n < def.min) {
+      const err = new Error(`Feature flag "${key}" must be at least ${def.min}.`);
+      err.code = 'INVALID_FLAG_VALUE';
+      throw err;
+    }
+    if (def.max !== undefined && n > def.max) {
+      const err = new Error(`Feature flag "${key}" must be at most ${def.max}.`);
+      err.code = 'INVALID_FLAG_VALUE';
+      throw err;
+    }
     return n;
   }
-  return String(value);
+  const s = String(value);
+  if (Array.isArray(def.allowed) && !def.allowed.includes(s)) {
+    const err = new Error(`Feature flag "${key}" must be one of: ${def.allowed.join(', ')}.`);
+    err.code = 'INVALID_FLAG_VALUE';
+    throw err;
+  }
+  return s;
 }
 
-/**
- * Persist a feature flag value (type-validated) and return the refreshed
- * definition. Writes go through setConfig, so the 30s cache is warmed
- * immediately.
- */
+/** Persist a flag value (type-validated) and return the refreshed definition. */
 export async function setFeatureFlag(key, value, updatedBy = null) {
   const normalized = validateFeatureFlagValue(key, value);
   const row = await setConfig(key, normalized, updatedBy);
   const def = FEATURE_FLAGS[key];
-  return {
+  const result = {
     ...def,
     value: row.value,
     updatedBy: row.updatedBy,
     updatedAt: row.updatedAt
   };
+
+  // Announcement headline lifecycle: activating it (or editing the audience or
+  // message while it is active) restarts the 24h window; disabling it expires
+  // it immediately.
+  const active = await getFeatureFlagValue('newFeatureEnabled');
+  if (key === 'newFeatureEnabled' || ((key === 'newFeatureAudience' || key === 'newFeatureText') && active)) {
+    if (key === 'newFeatureEnabled' ? normalized : active) {
+      const validUntil = new Date(Date.now() + ANNOUNCEMENT_TTL_MS).toISOString();
+      await setConfig('newFeatureValidUntil', validUntil, updatedBy);
+    } else {
+      await setConfig('newFeatureValidUntil', '', updatedBy);
+    }
+  }
+
+  return result;
 }

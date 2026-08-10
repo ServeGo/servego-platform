@@ -1,7 +1,6 @@
 import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
 import { levelRank, applyPromotion } from './providerLevelService.js';
-import { getPlatformChargeConfig, computeCustomerCharge, computeProviderCharge } from './platformChargeService.js';
 import {
   recordLeadOffered,
   recordLeadAccepted,
@@ -9,6 +8,7 @@ import {
   recordJobCompleted
 } from './providerPerformanceService.js';
 import { consumeLeadOnCompletion, subscriptionIsActive } from './subscriptionService.js';
+import { isAccountOverdue } from './platformFeeService.js';
 import { refreshProviderReputation } from './providerReputationService.js';
 import { creditWallet } from './walletService.js';
 
@@ -146,21 +146,8 @@ export async function findEligibleProviders({
   customerLng = null,
   client = prisma
 }) {
-  const [premiumCategories, defaultRadiusKm, legacyRadiusKm, premiumCategoriesEnabled] = await Promise.all([
-    getConfig('premiumCategories', [], client),
-    getConfig('defaultProviderRadiusKm', null, client),
-    getConfig('providerRadiusKm', 50, client),
-    getConfig('premiumCategoriesEnabled', true, client)
-  ]);
-  const defaultKm = Number(defaultRadiusKm ?? legacyRadiusKm) || 50;
-
-  const premiumList = Array.isArray(premiumCategories)
-    ? premiumCategories.map((c) => String(c).trim().toLowerCase())
-    : [];
-  const categoryKey = String(serviceCategory || '').trim().toLowerCase();
-  // Feature flag: when premium categories are disabled the sector restriction
-  // is lifted and every eligible provider can serve every category.
-  const isPremiumCategory = premiumCategoriesEnabled !== false && premiumList.includes(categoryKey);
+  const platformFeeEnabled = await getConfig('platformFeeEnabled', true, client);
+  const defaultKm = 50;
 
   const providers = await client.provider.findMany({
     where: {
@@ -188,7 +175,9 @@ export async function findEligibleProviders({
           })
     },
     include: {
-      user: { select: { id: true, name: true, avatar: true, phone: true } },
+      user: {
+        select: { id: true, name: true, avatar: true, phone: true, platformFeeAccount: true }
+      },
       subscription: {
         select: { level: true, remainingLeads: true, sector: true, status: true, paymentStatus: true }
       },
@@ -213,9 +202,11 @@ export async function findEligibleProviders({
     if (!subscriptionIsActive(p.subscription, { provider: p, performance: p.performance })) {
       return false;
     }
-    // Rule 8 — sector eligibility: Premium providers serve General + Premium;
-    // General providers serve General categories only.
-    if (isPremiumCategory && p.sector !== 'PREMIUM') return false;
+    // Rule 10 — the monthly platform fee must be up to date. Overdue providers
+    // stop receiving leads even with a valid subscription.
+    if (Boolean(platformFeeEnabled) && isAccountOverdue(p.user.platformFeeAccount)) {
+      return false;
+    }
 
     // Rule 6 — inside the provider's service radius (mandatory when coords known).
     const km = distanceMap.get(p.id);
@@ -232,19 +223,9 @@ export async function findEligibleProviders({
 
 /** Diagnose why a specific preferred provider is not in the eligible pool. */
 async function diagnoseProvider(providerId, { serviceId = null, serviceCategory = null }, client) {
-  const [premiumCategories, premiumCategoriesEnabled] = await Promise.all([
-    getConfig('premiumCategories', [], client),
-    getConfig('premiumCategoriesEnabled', true, client)
-  ]);
-  const premiumList = Array.isArray(premiumCategories)
-    ? premiumCategories.map((c) => String(c).trim().toLowerCase())
-    : [];
-  const categoryKey = String(serviceCategory || '').trim().toLowerCase();
-  const isPremiumCategory = premiumCategoriesEnabled !== false && premiumList.includes(categoryKey);
-
   const provider = await client.provider.findUnique({
     where: { id: providerId },
-    include: { subscription: true, performance: true, user: { select: { status: true } } }
+    include: { subscription: true, performance: true, user: { select: { status: true, platformFeeAccount: true } } }
   });
   if (!provider) return { code: 'PROVIDER_NOT_FOUND', message: 'Provider not found.' };
   if (!provider.isVerified) return { code: 'NOT_VERIFIED', message: 'This provider has not been verified yet and cannot accept bookings.' };
@@ -254,14 +235,15 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
   if (provider.isOnline === false || provider.acceptingBookings === false) {
     return { code: 'PROVIDER_UNAVAILABLE', message: 'This provider is not currently accepting new bookings.' };
   }
-  if (isPremiumCategory && provider.sector !== 'PREMIUM') {
-    return { code: 'SECTOR_RESTRICTED', message: 'This service is reserved for Premium providers.' };
-  }
   if (provider.performance?.cooldownUntil && new Date(provider.performance.cooldownUntil) > new Date()) {
     return { code: 'PROVIDER_IN_COOLDOWN', message: 'This provider is temporarily paused due to repeated cancellations.' };
   }
   if (!subscriptionIsActive(provider.subscription, { provider, performance: provider.performance })) {
     return { code: 'SUBSCRIPTION_INACTIVE', message: 'This provider has used all their booking leads and cannot receive new requests.' };
+  }
+  const platformFeeEnabled = await getConfig('platformFeeEnabled', true, client);
+  if (Boolean(platformFeeEnabled) && isAccountOverdue(provider.user?.platformFeeAccount)) {
+    return { code: 'PLATFORM_FEE_OVERDUE', message: 'This provider has an overdue platform fee and cannot receive new leads.' };
   }
   if (serviceId || serviceCategory) {
     const categoryMatches = serviceCategory
@@ -318,6 +300,8 @@ export async function createBookingWithLead({
   notes = null,
   customerLat = null,
   customerLng = null,
+  serviceLatitude = null,
+  serviceLongitude = null,
   client = prisma
 }) {
   return withClientTransaction(client, async (tx) => {
@@ -350,10 +334,10 @@ export async function createBookingWithLead({
     const timestamp = new Date();
 
     const baseAmount = amount != null && !Number.isNaN(Number(amount)) ? Number(amount) : null;
-    const chargeConfig = await getPlatformChargeConfig(tx);
-    const customerCharge = computeCustomerCharge(baseAmount || 0, chargeConfig);
-    const providerCharge = computeProviderCharge(baseAmount || 0, chargeConfig);
 
+    // Per-booking platform charges were removed in favour of the monthly
+    // platform fee. The customer pays the base amount and the provider keeps
+    // the full amount (the booking columns are kept for historical shape).
     const booking = await tx.booking.create({
       data: {
         customerId,
@@ -363,11 +347,13 @@ export async function createBookingWithLead({
         locationAddress,
         city,
         instructions,
+        serviceLatitude: serviceLatitude != null ? Number(serviceLatitude) : null,
+        serviceLongitude: serviceLongitude != null ? Number(serviceLongitude) : null,
         amount: baseAmount,
-        customerPlatformCharge: baseAmount != null ? customerCharge.charge : 0,
-        providerPlatformCharge: baseAmount != null ? providerCharge.charge : 0,
-        totalAmount: baseAmount != null ? customerCharge.total : null,
-        providerPayout: baseAmount != null ? providerCharge.payout : null,
+        customerPlatformCharge: 0,
+        providerPlatformCharge: 0,
+        totalAmount: baseAmount,
+        providerPayout: baseAmount,
         ...(customerLat != null && customerLng != null
           ? { endLocation: { address: locationAddress || '', latitude: customerLat, longitude: customerLng } }
           : {}),
@@ -401,7 +387,7 @@ export async function createBookingWithLead({
       }
     });
 
-    const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 86400, tx)) || 86400;
+    const leadTimeoutSeconds = 86400;
     const expiryTime = new Date(Date.now() + leadTimeoutSeconds * 1000);
 
     const assignedLead = await tx.lead.update({
@@ -538,11 +524,11 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
       data: { bookingId, actorId: providerId, actorRole: 'provider', action: 'STATUS_COMPLETED', note: 'Booking completed' }
     });
 
-    const chargeConfig = await getPlatformChargeConfig(tx);
+    // Per-booking platform charges were removed; the provider keeps the full
+    // booking amount (the monthly platform fee replaces commission).
     const amount = Number(booking.amount) || 0;
-    const providerCharge = computeProviderCharge(amount, chargeConfig);
-    const commission = providerCharge.charge;
-    const earnings = providerCharge.payout;
+    const commission = 0;
+    const earnings = amount;
 
     await tx.booking.update({
       where: { id: bookingId },
@@ -620,11 +606,6 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
   const triedIds = [...new Set(tried.map((t) => t.providerId).filter(Boolean))];
   if (lead.providerId) triedIds.push(lead.providerId);
 
-  const maxAttempts = Number(await getConfig('maxRedistributionAttempts', 10, client)) || 10;
-  if (lead.transferCount >= maxAttempts) {
-    return { nextProvider: null, lead, booking: lead.booking, exhausted: true };
-  }
-
   const booking = lead.booking;
   let customerLat = null;
   let customerLng = null;
@@ -650,7 +631,7 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
   }
 
   const nextProvider = candidates[0];
-  const leadTimeoutSeconds = Number(await getConfig('leadTimeoutSeconds', 86400, client)) || 86400;
+  const leadTimeoutSeconds = 86400;
   const expiryTime = new Date(Date.now() + leadTimeoutSeconds * 1000);
 
   await client.leadAssignmentHistory.updateMany({

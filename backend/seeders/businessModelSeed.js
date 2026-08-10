@@ -18,35 +18,17 @@ export const SUBSCRIPTION_PLAN_DEFAULTS = [
 ];
 
 export const ADMIN_CONFIG_DEFAULTS = [
-  // Lead distribution
-  { key: 'leadTimeoutSeconds', value: 86400, description: 'Seconds a provider has to accept/reject a lead before it expires (86400 = 24 hours).' },
-  { key: 'maxRedistributionAttempts', value: 10, description: 'Maximum Lead Retry Count — how many ranked providers a lead is offered to before the customer is notified.' },
-  { key: 'leadExpiryEnabled', value: true, description: 'Master switch for the provider response timer.' },
+  // Monthly platform fee (replaces per-booking commission). Providers must
+  // keep this paid to receive leads; customers are reminded but never blocked.
+  { key: 'platformFeeEnabled', value: true, description: 'Master switch for the monthly platform fee.' },
+  { key: 'platformFeeAmount', value: 99, description: 'Monthly platform fee (₹) charged to providers; overdue providers stop receiving leads.' },
+  { key: 'platformFeeGraceDays', value: 30, description: 'Days a provider gets after joining before the first platform fee payment is due.' },
+  { key: 'customerPlatformFeeEnabled', value: true, description: 'Master switch for the customer platform fee (reminders only, never blocks access).' },
+  { key: 'customerPlatformFeeAmount', value: 49, description: 'Monthly platform fee (₹) charged to customers; reminders only.' },
 
-  // Radius (mandatory when coordinates are available)
-  { key: 'defaultProviderRadiusKm', value: 50, description: 'Admin Default Radius used when a provider has not set their custom max service radius.' },
-
-  // Money
-  { key: 'commissionPercent', value: 10, description: 'Legacy provider-side platform charge (%). Kept as a fallback for providerPlatformChargePercent.' },
-  { key: 'platformChargeType', value: 'PERCENTAGE', description: 'Platform charge mode applied to all users: PERCENTAGE or FLAT.' },
-  { key: 'customerPlatformChargePercent', value: 5, description: 'Customer-side platform charge (%) added on top of the booking amount.' },
-  { key: 'providerPlatformChargePercent', value: 10, description: 'Provider-side platform charge (%) deducted from the booking amount (platform commission).' },
-  { key: 'customerPlatformChargeFlat', value: 0, description: 'Customer-side platform charge (flat ₹) when platformChargeType = FLAT.' },
-  { key: 'providerPlatformChargeFlat', value: 0, description: 'Provider-side platform charge (flat ₹) when platformChargeType = FLAT.' },
-
-  // Subscription / free leads
-  { key: 'freeLeadCount', value: 1, description: 'Free leads granted to a newly approved provider (given only once).' },
-  { key: 'leadCountPerSubscription', value: 3, description: 'Leads granted per purchased subscription level.' },
-
-  // Cancellation penalty (penalty score model)
-  { key: 'cancellationPenaltyScore', value: 30, description: 'Penalty Score added per provider-initiated cancellation.' },
-  { key: 'cancellationPenaltyThreshold', value: 60, description: 'Accumulated penalty score that triggers a cooldown pause.' },
-  { key: 'cancellationWindowDays', value: 30, description: 'Rolling window (days) used to count repeated cancellations.' },
-  { key: 'cooldownDurationHours', value: 24, description: 'Hours a provider is disabled from receiving leads after the penalty threshold is crossed.' },
-  { key: 'cooldownPenalty', value: 'TEMP_DISABLE', description: 'Penalty applied on repeated cancellations.' },
-
-  // Late arrival
-  { key: 'lateArrivalGraceMinutes', value: 15, description: 'Grace period (minutes) after the scheduled start before a provider is marked late.' },
+  // Cancellation penalty (penalty score model) — only providers who accept a
+  // booking and then cancel are penalised.
+  { key: 'cancellationPenaltyScore', value: 30, description: 'Penalty Score added per provider-initiated cancellation (accept-then-cancel only).' },
 
   // Real-time location tracking
   { key: 'locationTrackingEnabled', value: true, description: 'Master switch for live provider location sharing on active bookings.' },
@@ -60,27 +42,15 @@ export const ADMIN_CONFIG_DEFAULTS = [
   { key: 'walletMaximumWithdrawal', value: 0, description: 'Maximum amount (₹) per payout request; 0 = unlimited.' },
   { key: 'walletWithdrawalNote', value: 'Payouts are processed within 24-48 hours after admin approval.', description: 'Info note shown on the provider withdrawal form.' },
 
-  // Categories
-  { key: 'premiumCategories', value: [], description: 'Service categories reserved for Premium-sector providers (matched by normalized name).' },
-  { key: 'generalCategories', value: [], description: 'Service categories open to General-sector providers (defaults to every category not in premiumCategories).' },
+  // Referrals
+  { key: 'referralBonusAmount', value: 250, description: 'Referral bonus (₹) credited to a new user when a referral code is applied.' },
 
-  // Ranking
-  { key: 'rankingWeights', value: { distanceKm: 0.25, rating: 0.2, providerLevel: 0.15, acceptanceRate: 0.1, cancellationRate: 0.08, responseRate: 0.08, experienceYears: 0.06, reviewCount: 0.05, serviceFee: 0.03 }, description: 'Ranking weights used to compute a provider rank score (tie-breaker model; live matching keeps the fixed priority order).' },
-
-  // Feature flags (admin toggles, effective within 30s — no redeploy).
-  // Source of truth for definitions/descriptions: services/featureFlagsService.js
-  { key: 'premiumCategoriesEnabled', value: true, description: 'When on, categories in premiumCategories are served only by Premium-sector providers.' },
-  { key: 'discountEnabled', value: true, description: 'When off, provider level discounts are not applied to subscription purchases.' },
-  { key: 'referralEnabled', value: true, description: 'When off, applying referral codes is blocked and no referral bonus is awarded.' },
-  { key: 'referralBonusAmount', value: 250, description: 'Referral bonus (₹) credited to the applicant when a referral code is applied.' },
-  { key: 'maintenanceMode', value: false, description: 'When on, the public API returns 503 (admin routes, login and feature flags stay up).' },
-  { key: 'newFeatureEnabled', value: false, description: 'When on, the newest release is announced to users (dashboard banner).' },
-
-  // Database backup scheduler (services/backupService.js)
-  { key: 'backupScheduleEnabled', value: true, description: 'Master switch for automatic daily/weekly logical backups.' },
-  { key: 'backupDailyTimeUtc', value: '02:00', description: 'Daily backup time in UTC (HH:MM, 24h).' },
-  { key: 'backupWeeklyDay', value: 0, description: 'Weekly backup day of week, 0 = Sunday … 6 = Saturday (UTC).' },
-  { key: 'backupRetentionCount', value: 14, description: 'Number of most recent backups to keep on disk (older snapshots are pruned automatically).' }
+  // Platform controls (admin Settings): maintenance + feature flags
+  { key: 'maintenanceMode', value: false, description: 'When on, the public API returns 503 (admin routes, login and feature-flag reads stay up).' },
+  { key: 'newFeatureEnabled', value: false, description: 'Show the "what\u2019s new" announcement banner to the selected audience.' },
+  { key: 'newFeatureAudience', value: 'customer', description: 'Who sees the announcement: customer or provider.' },
+  { key: 'newFeatureText', value: '', description: 'The announcement banner message.' },
+  { key: 'newFeatureValidUntil', value: '', description: 'Announcement expiry (ISO); managed by the feature-flag service (24h window).' }
 ];
 
 export async function seedBusinessModelIfEmpty() {
@@ -131,7 +101,58 @@ export async function seedBusinessModelIfEmpty() {
     'minProviderExperienceForLeads',
     'maxActiveLeadsPerProvider',
     'enableLeadPurchases',
-    'allowLeadPurchaseBelowMinRating'
+    'allowLeadPurchaseBelowMinRating',
+    // Per-booking platform charges replaced by the monthly platform fee model.
+    'commissionPercent',
+    'platformChargeType',
+    'customerPlatformChargePercent',
+    'providerPlatformChargePercent',
+    'customerPlatformChargeFlat',
+    'providerPlatformChargeFlat',
+    // Lead expiry / redistribution caps removed — leads no longer expire and
+    // the admin is alerted instead; redistribution is unlimited.
+    'leadExpiryEnabled',
+    'maxRedistributionAttempts',
+    // Lead response window removed from admin config — timeout is fixed at 24h.
+    'leadTimeoutSeconds',
+    // Default radius removed from admin config — providers must set their own
+    // radius; a 50 km fallback applies when they have not.
+    'defaultProviderRadiusKm',
+    // Penalty / cooldown tuning removed from admin config — fixed thresholds.
+    'cancellationPenaltyThreshold',
+    'cancellationWindowDays',
+    'cooldownDurationHours',
+    // Premium/general category lists removed — sector gating disabled; matching
+    // uses the fixed priority order (ranking weights were cosmetic).
+    'premiumCategories',
+    'generalCategories',
+    'rankingWeights',
+    // Free-lead / lead-count keys removed from admin config (free lead is fixed
+    // at 1 and lead counts come from the subscription plans).
+    'freeLeadCount',
+    'leadCountPerSubscription',
+    // Dead keys.
+    'cooldownPenalty',
+    'lateArrivalGraceMinutes',
+    // Feature-flag keys removed with the Feature Flags subsystem. The premium
+    // category and referral restrictions are now always active.
+    'premiumCategoriesEnabled',
+    'referralEnabled',
+    'discountEnabled',
+    'levelDiscountsEnabled',
+    'releaseBannerEnabled',
+    // Legacy per-audience announcement keys replaced by the unified feature
+    // flags (newFeatureEnabled / newFeatureAudience / newFeatureText).
+    'customerAnnouncementEnabled',
+    'customerAnnouncementText',
+    'providerAnnouncementEnabled',
+    'providerAnnouncementText',
+    // Backup feature removed entirely — retire its config keys.
+    'backupDailyTimeUtc',
+    'backupWeeklyTimeUtc',
+    'backupWeeklyDay',
+    'backupScheduleEnabled',
+    'backupRetentionCount'
   ];
   const removed = await prisma.adminConfig.deleteMany({ where: { key: { in: OBSOLETE_KEYS } } });
   if (removed.count > 0) {
@@ -159,8 +180,7 @@ export async function ensureProviderSubscription(providerId, client = prisma) {
   const existing = await client.providerSubscription.findUnique({ where: { providerId } });
   if (existing) return existing;
 
-  const freeLeadCountConfig = await client.adminConfig.findUnique({ where: { key: 'freeLeadCount' } });
-  const freeLeadCount = Number(freeLeadCountConfig?.value ?? 1) || 1;
+  const freeLeadCount = 1;
 
   return client.providerSubscription.create({
     data: {

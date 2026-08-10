@@ -97,10 +97,16 @@ export const createBookingValidation = [
     .isLength({ max: 200 }).withMessage('Service category too long')
     .escape(),
   body('locationAddress')
-    .optional()
     .trim()
+    .notEmpty().withMessage('Service location is required')
     .isLength({ max: 500 }).withMessage('Address too long')
     .escape(),
+  body('serviceLatitude')
+    .notEmpty().withMessage('Please select your location on the map')
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude must be between -90 and 90'),
+  body('serviceLongitude')
+    .notEmpty().withMessage('Please select your location on the map')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude must be between -180 and 180'),
   body('city')
     .optional()
     .trim()
@@ -165,7 +171,18 @@ export const createPermanentServiceRequestValidation = [
     .optional()
     .trim()
     .isLength({ max: 2000 }).withMessage('Additional information too long')
-    .escape()
+    .escape(),
+  body('locationAddress')
+    .trim()
+    .notEmpty().withMessage('Service location is required')
+    .isLength({ max: 500 }).withMessage('Address too long')
+    .escape(),
+  body('serviceLatitude')
+    .notEmpty().withMessage('Please select your location on the map')
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude must be between -90 and 90'),
+  body('serviceLongitude')
+    .notEmpty().withMessage('Please select your location on the map')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude must be between -180 and 180')
 ];
 
 export const updatePermanentServiceRequestValidation = [

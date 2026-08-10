@@ -25,7 +25,7 @@ export function getCorsConfig() {
 
   return {
     origin: isWildcard ? true : allowedOrigins,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   };
 }

@@ -73,6 +73,14 @@ const purge = async () => {
   await prisma.job.deleteMany({ where: { type: 'notification', payload: { path: ['userId'], equals: 'tracking-test-customer' } } });
   await prisma.notification.deleteMany({ where: { userId: 'tracking-test-customer' } });
   await prisma.booking.deleteMany({ where: { customerId: 'tracking-test-customer' } });
+  // Dependent rows must go first (RESTRICT FK from ProviderSubscription, etc.).
+  const testProviders = await prisma.provider.findMany({ where: { userId: 'tracking-test-provider' }, select: { id: true } });
+  const providerIds = testProviders.map((p) => p.id);
+  if (providerIds.length) {
+    await prisma.providerSubscription.deleteMany({ where: { providerId: { in: providerIds } } });
+  }
+  await prisma.platformFeePayment.deleteMany({ where: { userId: { in: ['tracking-test-provider', 'tracking-test-customer'] } } });
+  await prisma.platformFeeAccount.deleteMany({ where: { userId: { in: ['tracking-test-provider', 'tracking-test-customer'] } } });
   await prisma.provider.deleteMany({ where: { userId: 'tracking-test-provider' } });
   await prisma.user.deleteMany({ where: { id: { in: ['tracking-test-customer', 'tracking-test-provider'] } } });
 };

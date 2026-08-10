@@ -177,12 +177,10 @@ export async function recordJobCancelled(providerId, userId, reason, { bookingId
   const rates = recomputeRates(updated);
   await client.providerPerformance.update({ where: { id: perf.id }, data: rates });
 
-  const [penaltyScore, penaltyThreshold, windowDays, cooldownHours] = await Promise.all([
-    getConfig('cancellationPenaltyScore', 30, client),
-    getConfig('cancellationPenaltyThreshold', 60, client),
-    getConfig('cancellationWindowDays', 30, client),
-    getConfig('cooldownDurationHours', 24, client)
-  ]);
+  const penaltyScore = Number(await getConfig('cancellationPenaltyScore', 30, client)) || 30;
+  const penaltyThreshold = 60;
+  const windowDays = 30;
+  const cooldownHours = 24;
 
   const windowStart = new Date(Date.now() - Number(windowDays) * 24 * 60 * 60 * 1000);
   const cancellationsInWindow = await client.cancellationReason.count({

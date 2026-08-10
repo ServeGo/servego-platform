@@ -43,6 +43,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
 
   // Form fields
   const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
   const [instructions, setInstructions] = useState('');
   const [errorText, setErrorText] = useState('');
   const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
@@ -81,6 +83,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
       if (intent.catId === catId) {
         sessionStorage.removeItem('servego_booking_intent');
         setAddress('');
+        setLatitude(null);
+        setLongitude(null);
         setErrorText('');
         setShowEngagementChoice(true);
       }
@@ -93,6 +97,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
   const handleChooseTemporary = () => {
     setShowEngagementChoice(false);
     setAddress('');
+    setLatitude(null);
+    setLongitude(null);
     setErrorText('');
     setBookingStep(1);
   };
@@ -110,8 +116,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
   const handleCompleteCheckout = async (e) => {
     e.preventDefault();
 
-    if (!address.trim()) {
-      setErrorText('Please enter your service location');
+    if (!latitude || !longitude || !address.trim()) {
+      setErrorText('Please select your service location on the map');
       return;
     }
 
@@ -123,6 +129,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
       const created = await createBooking({
         serviceCategory: categoryMeta.name,
         locationAddress: address,
+        serviceLatitude: latitude,
+        serviceLongitude: longitude,
         city: 'Hyderabad',
         instructions
       });
@@ -189,6 +197,8 @@ export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) =
               onClose={() => setBookingStep(0)}
               errorText={errorText}
               address={address} setAddress={setAddress}
+              latitude={latitude} longitude={longitude}
+              setLatitude={setLatitude} setLongitude={setLongitude}
               instructions={instructions} setInstructions={setInstructions}
               loyaltyTier={loyaltyTier}
               onSubmit={handleCompleteCheckout}

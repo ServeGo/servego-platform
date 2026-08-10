@@ -1,19 +1,14 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { creditWallet } from '../services/walletService.js';
-import { getConfig } from '../services/adminConfigService.js';
+import { getFeatureFlagValue } from '../services/featureFlagsService.js';
 
 const normalizeCode = (code) => (code || '').toString().trim();
 
 export const ReferralsController = {
   applyReferral: async (req, res) => {
     try {
-      // Feature flag: the whole referral program can be paused without a deploy.
-      const referralEnabled = await getConfig('referralEnabled', true);
-      if (referralEnabled === false) {
-        return sendApiError(res, 403, 'REFERRALS_DISABLED', 'The referral program is currently disabled.');
-      }
-      const BONUS_EARNED = Number(await getConfig('referralBonusAmount', 250)) || 0;
+      const BONUS_EARNED = Number(await getFeatureFlagValue('referralBonusAmount')) || 0;
 
       const { code } = req.body || {};
       const userId = req.user.id;

@@ -116,6 +116,9 @@ export default function PermanentRequestsView({ onNavigate }) {
               <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-semibold">
                 <InfoRow label="Start Date" value={formatDate(r.startDate)} />
                 <InfoRow label="Submitted" value={formatDate(r.createdAt)} />
+                {r.locationAddress && (
+                  <InfoRow label="Service Location" value={r.locationAddress} />
+                )}
               </div>
 
               {r.additionalInfo && (

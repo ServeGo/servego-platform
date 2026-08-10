@@ -224,8 +224,12 @@ export const BookingController = {
         city: bookingData.city || 'Hyderabad',
         instructions: bookingData.instructions || '',
         notes: bookingData.notes || null,
-        customerLat: customer.latitude ?? null,
-        customerLng: customer.longitude ?? null
+        // Exact service location picked on the map is authoritative; fall back
+        // to the customer's profile coordinates for legacy/admin-created rows.
+        serviceLatitude: bookingData.serviceLatitude != null ? Number(bookingData.serviceLatitude) : null,
+        serviceLongitude: bookingData.serviceLongitude != null ? Number(bookingData.serviceLongitude) : null,
+        customerLat: bookingData.serviceLatitude != null ? Number(bookingData.serviceLatitude) : customer.latitude ?? null,
+        customerLng: bookingData.serviceLongitude != null ? Number(bookingData.serviceLongitude) : customer.longitude ?? null
       });
 
       const io = req.app.get('socketio');
