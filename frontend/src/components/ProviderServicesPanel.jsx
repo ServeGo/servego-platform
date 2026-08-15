@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Plus, Save, Loader2 } from 'lucide-react';
 import { api } from '../utils/apiClient';
 
@@ -41,6 +41,14 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
 
 
   const providerId = provider?.id;
+
+  // The Services tab only mounts on click, so fetch on mount — the dashboard's
+  // background prefetch may still be warming when the tab opens, and the panel
+  // is the authoritative source once mounted (it also refreshes the header).
+  useEffect(() => {
+    if (providerId) fetchProviderServices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId]);
 
   const filteredServices = useMemo(() => {
     if (!Array.isArray(myServices)) return [];
@@ -165,10 +173,11 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
           <button
             type="button"
             onClick={openRegister}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-4 py-2 rounded-xl text-xs transition-colors shadow-sm flex items-center gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-3 sm:px-4 py-2 rounded-xl text-xs transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            Register For a service
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Register</span>
+            <span className="hidden sm:inline">&nbsp;For a service</span>
           </button>
         </div>
 

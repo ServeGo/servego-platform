@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Wallet, ArrowDownLeft, ArrowUpRight, Send, RefreshCw, AlertTriangle, CheckCircle2, Banknote, Copy, Check, Gift } from 'lucide-react';
 import { api } from '../utils/apiClient';
-import { useApp } from '../context/AppContext';
+import { getErrorMessage } from '../utils/errorMessages';
+import { useAuth } from '../context/AppContext';
+import SkeletonLoader from './SkeletonLoader';
 
 const fmtMoney = (v) => {
   const n = Number(v || 0);
@@ -32,7 +34,7 @@ const STATUS_STYLES = {
 };
 
 export default function ProviderWalletAmbassador({ provider }) {
-  const { currentUser, applyReferralCode } = useApp();
+  const { currentUser, applyReferralCode } = useAuth();
 
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -88,7 +90,7 @@ export default function ProviderWalletAmbassador({ provider }) {
       setAmount(''); setUpiId(''); setAccountNumber(''); setIfsc(''); setDescription('');
       load();
     } else {
-      flash('err', res.data?.message || res.data?.error || 'Failed to request withdrawal.');
+      flash('err', getErrorMessage(res.data, 'Failed to request withdrawal.'));
     }
   };
 
@@ -112,11 +114,7 @@ export default function ProviderWalletAmbassador({ provider }) {
   };
 
   if (loading) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
-        Loading wallet...
-      </div>
-    );
+    return <SkeletonLoader type="text" count={3} />;
   }
 
   const balance = Number(wallet?.balance || 0);
@@ -149,7 +147,7 @@ export default function ProviderWalletAmbassador({ provider }) {
           <div className="mt-3 text-4xl sm:text-5xl font-black">{fmtMoney(balance)}</div>
           <p className="text-slate-400 text-[11px] font-semibold mt-2">Earnings land here instantly when a booking is completed. Withdraw once approved by the admin.</p>
 
-          <div className="grid grid-cols-3 gap-3 mt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
             <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
               <span className="text-[10px] text-slate-300 font-black uppercase block">Total Earned</span>
               <span className="text-lg font-black mt-1 block">{fmtMoney(wallet?.totalEarned)}</span>
@@ -199,7 +197,7 @@ export default function ProviderWalletAmbassador({ provider }) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] uppercase tracking-widest font-black text-slate-400 block mb-1">Account No.</label>
                 <input
@@ -321,7 +319,7 @@ export default function ProviderWalletAmbassador({ provider }) {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-2xl">
               <span className="text-[10px] text-emerald-800 font-black uppercase block">Earnings Bonus</span>
               <span className="text-2xl font-black text-emerald-800 mt-2 block">₹{provider?.referralsEarningsBonus || 0}</span>

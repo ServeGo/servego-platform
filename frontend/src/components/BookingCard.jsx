@@ -2,7 +2,7 @@ import React from 'react';
 import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck, Navigation, UserCheck, Hourglass } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
-import { useApp } from '../context/AppContext';
+import { useRealtime, useToast } from '../context/AppContext';
 
 function DispatchStepper({ phase }) {
   const steps = [
@@ -54,7 +54,8 @@ export default function BookingCard({
   setChatInput,
   onSendMessage
 }) {
-  const { getBookingLocation } = useApp();
+  const { getBookingLocation } = useRealtime();
+  const { showToast } = useToast();
   const liveLocation = getBookingLocation(booking.id);
 
   return (
@@ -194,9 +195,12 @@ export default function BookingCard({
 
         {['pending', 'confirmed'].includes(booking.status) && (
           <button 
-            onClick={() => {
+            onClick={async () => {
               if (window.confirm('Are you sure you want to cancel this booking?')) {
-                onCancel(booking.id, 'cancelled', 'Cancelled by customer');
+                const result = await onCancel(booking.id, 'cancelled', 'Cancelled by customer');
+                if (result?.error) {
+                  showToast({ title: 'Could not cancel booking', message: result.error, type: 'error' });
+                }
               }
             }}
             className="px-4 py-2 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-xs font-bold transition-all"

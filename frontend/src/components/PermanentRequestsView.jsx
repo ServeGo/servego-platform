@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Briefcase, Clock, CheckCircle2, XCircle, Ban, Info } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import SkeletonLoader from './SkeletonLoader';
 
 const STATUS_STYLES = {
   PENDING: 'bg-amber-100 border-amber-300 text-amber-800',
@@ -80,7 +81,7 @@ export default function PermanentRequestsView({ onNavigate }) {
       )}
 
       {loading ? (
-        <p className="text-slate-400 text-xs italic p-6 text-center">Loading requests...</p>
+        <SkeletonLoader type="list" count={3} />
       ) : requests.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
           <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-3">

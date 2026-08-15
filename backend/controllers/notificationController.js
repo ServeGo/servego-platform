@@ -7,6 +7,18 @@ export const NotificationController = {
     try {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
       const where = req.user.role === 'admin' ? {} : { userId: req.user.id };
+
+      // Realtime-recovery sync: `?after=<id|ISO timestamp>` returns only rows
+      // newer than the client's lastSeen watermark. Accepts either a
+      // notification id (keyset on the id column) or an ISO timestamp (filter
+      // on createdAt), so the client never needs its own clock.
+      const after = String(req.query.after || '').trim();
+      const afterWhere = after
+        ? (Number.isNaN(Date.parse(after))
+            ? { id: { gt: after } }
+            : { createdAt: { gt: new Date(after) } })
+        : {};
+
       const cursorToken = String(req.query.cursor || '').trim();
       const cursorMode = cursorToken || String(req.query.mode || '').toLowerCase() === 'cursor';
 
@@ -25,11 +37,11 @@ export const NotificationController = {
 
         const [raw, total] = await Promise.all([
           prisma.notification.findMany({
-            where: { ...where, ...cursorWhere },
+            where: { ...where, ...afterWhere, ...cursorWhere },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: limit + 1
           }),
-          prisma.notification.count({ where })
+          prisma.notification.count({ where: { ...where, ...afterWhere } })
         ]);
 
         const { items, nextCursor, hasMore } = sliceCursorPage(raw, limit);
@@ -37,7 +49,7 @@ export const NotificationController = {
       }
 
       const notifications = await prisma.notification.findMany({
-        where,
+        where: { ...where, ...afterWhere },
         orderBy: { createdAt: 'desc' },
         take: limit
       });

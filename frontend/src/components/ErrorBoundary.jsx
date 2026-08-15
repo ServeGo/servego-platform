@@ -1,4 +1,5 @@
 import React from 'react';
+import { getErrorMessage } from '../utils/errorMessages';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -42,7 +43,7 @@ export class ErrorBoundary extends React.Component {
             </div>
             <h3 className="text-lg font-semibold text-red-800 mb-2">Something went wrong</h3>
             <p className="text-sm text-red-600 mb-4">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              {getErrorMessage({ message: this.state.error?.message })}
             </p>
             <div className="flex gap-2 justify-center">
               {this.props.onRetry && (

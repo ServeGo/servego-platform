@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useApp } from '../../../context/AppContext';
+import { useData } from '../../../context/AppContext';
 import { api } from '../../../utils/apiClient';
 import { Loader2 } from 'lucide-react';
 
 export default function AdminAnalyticsTab() {
-  const { bookings, providers, services } = useApp();
+  const { bookings, providers, services } = useData();
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 

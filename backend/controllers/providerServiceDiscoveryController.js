@@ -1,6 +1,7 @@
 import prisma from '../prisma/client.js';
 import { resolveServiceForQuery } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { badgeItem } from '../utils/serializers.js';
 
 export const ProviderServiceDiscoveryController = {
   getApprovedProvidersByCategory: async (req, res) => {
@@ -63,18 +64,17 @@ export const ProviderServiceDiscoveryController = {
           provider: {
             include: {
               user: {
+                // Public endpoint: no contact fields. The serializer only
+                // reads name/avatar (photo lives on the provider row).
                 select: {
                   id: true,
                   name: true,
-                  email: true,
-                  phone: true,
                   avatar: true
                 }
               },
               badges: true
             }
-          },
-          service: true
+          }
         }
       });
 
@@ -100,7 +100,7 @@ export const ProviderServiceDiscoveryController = {
         serviceAreas: Array.isArray(p.serviceAreas) ? p.serviceAreas : [],
         isVerified: p.isVerified,
         verificationLevel: p.verificationLevel,
-        badges: p.badges || []
+        badges: Array.isArray(p.badges) ? p.badges.map(badgeItem) : []
       }));
 
       return sendApiSuccess(res, 200, formatted);

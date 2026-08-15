@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 
 function parseCommaList(text) {
   if (!text) return [];
@@ -20,7 +20,8 @@ function Field({ label, children }) {
 
 
 export default function ProviderAvailability() {
-  const { currentUser, providers, updateProviderAvailability } = useApp();
+  const { currentUser } = useAuth();
+  const { providers, updateProviderAvailability } = useData();
 
   const activeProvider = useMemo(() => {
     const providerIdCandidate = currentUser?.providerId;

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { CheckCircle2, MapPin, Mail, Phone, Landmark, Send, Loader2 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 
 export const Contact = () => {
-  const { submitSupportTicket, currentUser } = useApp();
+  const { submitSupportTicket } = useData();
+  const { currentUser } = useAuth();
 
   // Logged-in ticket form state
   const [name, setName] = useState('');

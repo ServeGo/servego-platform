@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Wallet, ArrowDownLeft, ArrowUpRight, Send, RefreshCw, AlertTriangle, CheckCircle2, Banknote } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import { getErrorMessage } from '../utils/errorMessages';
+import SkeletonLoader from './SkeletonLoader';
 
 const fmtMoney = (v) => {
   const n = Number(v || 0);
@@ -81,16 +83,12 @@ export default function ProviderWallet({ providerId }) {
       setAmount(''); setUpiId(''); setAccountNumber(''); setIfsc(''); setDescription('');
       load();
     } else {
-      flash('err', res.data?.message || res.data?.error || 'Failed to request withdrawal.');
+      flash('err', getErrorMessage(res.data, 'Failed to request withdrawal.'));
     }
   };
 
   if (loading) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
-        Loading wallet...
-      </div>
-    );
+    return <SkeletonLoader type="text" count={3} />;
   }
 
   const balance = Number(wallet?.balance || 0);

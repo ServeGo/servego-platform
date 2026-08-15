@@ -11,6 +11,7 @@ import { consumeLeadOnCompletion, subscriptionIsActive } from './subscriptionSer
 import { isAccountOverdue } from './platformFeeService.js';
 import { refreshProviderReputation } from './providerReputationService.js';
 import { creditWallet } from './walletService.js';
+import { normalizeBookingStatus } from '../utils/workflow.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 function withClientTransaction(client, fn) {
@@ -134,6 +135,16 @@ function rankProviders(providers, distanceMap) {
  * (rule 6), not in cooldown, not busy with an active job. Returns providers
  * sorted by the ranking algorithm (rule 7).
  *
+ * The pipeline is "progressively cheaper":
+ *   1. PostgreSQL does the filtering — every hard eligibility rule (including
+ *      cooldown, platform-fee arrears and the service radius) is a WHERE clause,
+ *      so only a small candidate set is ever loaded into Node. The radius uses a
+ *      cheap bounding box that is provably a superset of the true circle (the
+ *      box is sized to the largest effective radius among candidates), so the
+ *      box never wrongly excludes a far-radius provider.
+ *   2. Only the small candidate set is ranked in Node.
+ *   3. Ranking (via `rankProviders`) is the final step before assignment.
+ *
  * The provider's own `maxRadiusKm` wins; otherwise the admin default radius is
  * used. When customer coordinates are known the radius filter is mandatory —
  * providers without usable coordinates are not eligible for that lead.
@@ -148,45 +159,135 @@ export async function findEligibleProviders({
 }) {
   const platformFeeEnabled = await getConfig('platformFeeEnabled', true, client);
   const defaultKm = 50;
+  const now = new Date();
+  const hasCustomerCoords = customerLat != null && customerLng != null;
 
-  const providers = await client.provider.findMany({
-    where: {
-      id: excludeProviderIds.length ? { notIn: excludeProviderIds } : undefined,
-      isVerified: true,
-      accountStatus: 'ACTIVE',
-      user: { status: 'ACTIVE' },
-      isOnline: true,
-      acceptingBookings: true,
-      // Free/paid leads: effective subscription must still pass the computed
-      // check below (payment successful, remaining leads, no cooldown).
-      subscription: { is: { remainingLeads: { gt: 0 } } },
-      bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
-      ...(serviceId
-        ? { providerServices: { some: { serviceId } } }
-        : {
-            OR: [
-              { category: { equals: serviceCategory, mode: 'insensitive' } },
-              {
-                providerServices: {
-                  some: { service: { name: { equals: serviceCategory, mode: 'insensitive' } } }
-                }
-              }
-            ]
-          })
+  // Step 1 — every hard rule below runs in PostgreSQL, not Node.
+  const baseWhere = {
+    id: excludeProviderIds.length ? { notIn: excludeProviderIds } : undefined,
+    isVerified: true,
+    accountStatus: 'ACTIVE',
+    user: { status: 'ACTIVE' },
+    isOnline: true,
+    acceptingBookings: true,
+    // Rule 3 — effective subscription active: remaining leads > 0, paid, and
+    // the subscription itself not failed/cancelled.
+    subscription: {
+      is: {
+        remainingLeads: { gt: 0 },
+        status: { notIn: ['FAILED', 'CANCELLED'] },
+        paymentStatus: 'PAID'
+      }
     },
-    include: {
+    // Not busy with an active job.
+    bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
+    ...(serviceId
+      ? { providerServices: { some: { serviceId } } }
+      : {
+          OR: [
+            { category: { equals: serviceCategory, mode: 'insensitive' } },
+            {
+              providerServices: {
+                some: { service: { name: { equals: serviceCategory, mode: 'insensitive' } } }
+              }
+            }
+          ]
+        })
+  };
+
+  const where = {
+    AND: [
+      baseWhere,
+      // Rule 3 — not in cooldown: no performance row, no cooldown set, or the
+      // cooldown window has already passed.
+      {
+        OR: [
+          { performance: { is: null } },
+          { performance: { is: { cooldownUntil: null } } },
+          { performance: { is: { cooldownUntil: { lte: now } } } }
+        ]
+      }
+    ]
+  };
+
+  // Rule 10 — the monthly platform fee must be up to date. Pushed into SQL too;
+  // providers without an account yet (lazily created) are never overdue.
+  if (Boolean(platformFeeEnabled)) {
+    where.AND.push({
+      OR: [
+        { user: { platformFeeAccount: { is: null } } },
+        {
+          user: {
+            platformFeeAccount: {
+              is: {
+                OR: [
+                  { status: 'DISABLED' },
+                  { status: { not: 'OVERDUE' }, OR: [{ periodEnd: null }, { periodEnd: { gte: now } }] }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    });
+  }
+
+  // Rule 6 — service radius as a cheap bounding box. The box must be a superset
+  // of the true circle, so it is sized to the largest effective radius among
+  // candidates (a provider may set maxRadiusKm larger than the admin default).
+  // The precise haversine check still runs in Node — but only on this subset.
+  if (hasCustomerCoords) {
+    const lat = Number(customerLat);
+    const lng = Number(customerLng);
+    const { _max } = await client.provider.aggregate({
+      _max: { maxRadiusKm: true },
+      where: baseWhere
+    });
+    const boxRadiusKm = Math.max(defaultKm, Number(_max.maxRadiusKm) || defaultKm);
+    const dLat = boxRadiusKm / 110.574;
+    const cosAtPole = Math.cos(Math.min(Math.abs(lat) + dLat, 89) * (Math.PI / 180));
+    const dLng = boxRadiusKm / (111.32 * Math.max(cosAtPole, 0.05));
+    where.AND.push({
+      latitude: { gte: lat - dLat, lte: lat + dLat },
+      longitude: { gte: lng - dLng, lte: lng + dLng }
+    });
+  }
+
+  // Only the small candidate set crosses the wire (select, not include).
+  const providers = await client.provider.findMany({
+    where,
+    select: {
+      id: true,
+      userId: true,
+      rating: true,
+      providerLevel: true,
+      experienceYears: true,
+      reviewCount: true,
+      serviceFee: true,
+      latitude: true,
+      longitude: true,
+      maxRadiusKm: true,
+      createdAt: true,
       user: {
-        select: { id: true, name: true, avatar: true, phone: true, platformFeeAccount: true }
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+          phone: true,
+          platformFeeAccount: { select: { status: true, periodEnd: true } }
+        }
       },
       subscription: {
         select: { level: true, remainingLeads: true, sector: true, status: true, paymentStatus: true }
       },
-      performance: true
+      performance: {
+        select: { cooldownUntil: true, acceptanceRate: true, cancellationRate: true, responseRate: true }
+      }
     }
   });
 
-  const hasCustomerCoords = customerLat != null && customerLng != null;
-
+  // Step 2 — rank only the candidates. The guards below are cheap defense-in-
+  // depth on the small set; the SQL WHERE clauses already enforce the same rules.
   const distanceMap = new Map();
   for (const p of providers) {
     if (hasCustomerCoords && p.latitude != null && p.longitude != null) {
@@ -197,18 +298,16 @@ export async function findEligibleProviders({
   }
 
   const eligible = providers.filter((p) => {
-    // Rule 3 — effective subscription active (provider approved/available,
-    // payment successful, remaining leads > 0, not in cooldown).
+    // Rule 3 — effective subscription active (redundant guard; SQL enforces it).
     if (!subscriptionIsActive(p.subscription, { provider: p, performance: p.performance })) {
       return false;
     }
-    // Rule 10 — the monthly platform fee must be up to date. Overdue providers
-    // stop receiving leads even with a valid subscription.
+    // Rule 10 — platform fee up to date (redundant guard; SQL enforces it).
     if (Boolean(platformFeeEnabled) && isAccountOverdue(p.user.platformFeeAccount)) {
       return false;
     }
 
-    // Rule 6 — inside the provider's service radius (mandatory when coords known).
+    // Rule 6 — precise radius check on the SQL-shrunk candidate set.
     const km = distanceMap.get(p.id);
     if (hasCustomerCoords) {
       if (km == null) return false;
@@ -304,32 +403,36 @@ export async function createBookingWithLead({
   serviceLongitude = null,
   client = prisma
 }) {
+  // Provider matching is a read-only pass, so it runs before the Serializable
+  // transaction — the transaction below only creates the booking and its lead.
+  // The broadcast model (first-accept-wins) tolerates a provider going offline
+  // in the short window before the open offers are written.
+  let ranked = await findEligibleProviders({
+    serviceCategory,
+    serviceId,
+    excludeProviderIds: [],
+    customerLat,
+    customerLng,
+    client
+  });
+
+  if (preferredProviderId) {
+    const preferred = ranked.find((p) => p.id === preferredProviderId);
+    if (!preferred) {
+      const diagnosis = await diagnoseProvider(preferredProviderId, { serviceId, serviceCategory }, client);
+      throw serviceError(diagnosis.code, diagnosis.message);
+    }
+    ranked = [preferred, ...ranked.filter((p) => p.id !== preferredProviderId)];
+  }
+
+  if (!ranked.length) {
+    throw serviceError(
+      'NO_ELIGIBLE_PROVIDERS',
+      'No eligible providers are available for this request right now. Please try again later.'
+    );
+  }
+
   return withClientTransaction(client, async (tx) => {
-    let ranked = await findEligibleProviders({
-      serviceCategory,
-      serviceId,
-      excludeProviderIds: [],
-      customerLat,
-      customerLng,
-      client: tx
-    });
-
-    if (preferredProviderId) {
-      const preferred = ranked.find((p) => p.id === preferredProviderId);
-      if (!preferred) {
-        const diagnosis = await diagnoseProvider(preferredProviderId, { serviceId, serviceCategory }, tx);
-        throw serviceError(diagnosis.code, diagnosis.message);
-      }
-      ranked = [preferred, ...ranked.filter((p) => p.id !== preferredProviderId)];
-    }
-
-    if (!ranked.length) {
-      throw serviceError(
-        'NO_ELIGIBLE_PROVIDERS',
-        'No eligible providers are available for this request right now. Please try again later.'
-      );
-    }
-
     const assignedProvider = ranked[0];
     const timestamp = new Date();
 
@@ -407,12 +510,10 @@ export async function createBookingWithLead({
       }))
     });
 
-    // Prisma runs interactive-transaction queries serially on one connection,
-    // so Promise.all here would not parallelize. recordLeadOffered is now a
-    // single upsert per provider, keeping this loop's round trips minimal.
-    for (const p of ranked) {
-      await recordLeadOffered(p.id, tx);
-    }
+    // Offered-count bookkeeping (recordLeadOffered) is derived analytics and
+    // deliberately happens AFTER the transaction commits, via the job queue —
+    // the caller enqueues one `performance` job per offered provider. It must
+    // never add serial round trips to this critical path.
 
     return { booking, lead: assignedLead, provider: assignedProvider, providers: ranked, rankedCount: ranked.length };
   });
@@ -499,6 +600,37 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
 }
 
 /**
+ * Provider starts work on a CONFIRMED booking: CONFIRMED → ONGOING. The only
+ * legal source state is CONFIRMED; a compare-and-swap on `status` makes a
+ * double-tap or a stale client fail atomically instead of double-transitioning.
+ * Returns the updated booking.
+ */
+export async function startBookingWork({ bookingId, actorId, actorRole = 'provider', note = null, client = prisma }) {
+  return withClientTransaction(client, async (tx) => {
+    const transitioned = await tx.booking.updateMany({
+      where: { id: bookingId, status: 'CONFIRMED' },
+      data: {
+        status: 'ONGOING',
+        startedAt: new Date(),
+        statusHistory: { push: { status: 'ONGOING', timestamp: new Date().toISOString(), note: note || 'Work started' } }
+      }
+    });
+    if (transitioned.count === 0) {
+      const current = await tx.booking.findUnique({ where: { id: bookingId }, select: { status: true } });
+      if (!current) throw serviceError('BOOKING_NOT_FOUND', 'Booking not found.');
+      if (normalizeBookingStatus(current.status) === 'ONGOING') {
+        throw serviceError('NO_CHANGE', 'Work has already started for this booking.');
+      }
+      throw serviceError('INVALID_TRANSITION', `Booking cannot start work from its current status (${current.status}).`);
+    }
+    await tx.bookingEvent.create({
+      data: { bookingId, actorId, actorRole, action: 'STATUS_ONGOING', note: note || 'Work started' }
+    });
+    return tx.booking.findUnique({ where: { id: bookingId } });
+  });
+}
+
+/**
  * Booking reaches COMPLETED. Consumes the provider's lead, credits earnings
  * net of commission, refreshes reputation and checks for a provider promotion —
  * all in one transaction. Returns everything the caller needs to notify.
@@ -508,13 +640,25 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
     const booking = await tx.booking.findUnique({ where: { id: bookingId } });
     if (!booking) throw serviceError('BOOKING_NOT_FOUND', 'Booking not found.');
 
-    const updated = await tx.booking.update({
-      where: { id: bookingId },
+    // Compare-and-swap: only an ONGOING booking may be completed. A racing second
+    // call (double-click, retry) matches zero rows and aborts BEFORE any side
+    // effect runs, so it can never double-credit the wallet, double-increment
+    // performance or double-consume the lead.
+    const transitioned = await tx.booking.updateMany({
+      where: { id: bookingId, status: 'ONGOING' },
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
         statusHistory: { push: { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' } }
-      },
+      }
+    });
+    if (transitioned.count === 0) {
+      const current = await tx.booking.findUnique({ where: { id: bookingId }, select: { status: true } });
+      if (!current) throw serviceError('BOOKING_NOT_FOUND', 'Booking not found.');
+      throw serviceError('INVALID_TRANSITION', `Booking cannot be completed from its current status (${current.status}).`);
+    }
+    const updated = await tx.booking.findUnique({
+      where: { id: bookingId },
       include: {
         customer: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
       }
@@ -592,11 +736,17 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
  *
  * Returns { nextProvider, lead, booking } or throws when nothing found.
  */
-async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, client }) {
+async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, expectedProviderId = null, client }) {
   const lead = await client.lead.findUnique({ where: { id: leadId }, include: { booking: true } });
   if (!lead) throw serviceError('LEAD_NOT_FOUND', 'Lead not found.');
   if (['ACCEPTED', 'COMPLETED'].includes(lead.status)) {
     return { nextProvider: null, lead, booking: lead.booking };
+  }
+  if (expectedProviderId != null && lead.providerId && lead.providerId !== expectedProviderId) {
+    // A concurrent cancellation already re-pointed this lead to another
+    // provider — the caller's cancel was effectively handled. Never re-transfer
+    // a lead that has already moved on.
+    return { nextProvider: null, lead, booking: lead.booking, settled: false, alreadyHandled: true };
   }
 
   const tried = await client.leadAssignmentHistory.findMany({
@@ -660,8 +810,8 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
 
   let updatedBooking = booking;
   if (booking && ['PENDING', 'CONFIRMED', 'CANCELLED'].includes(booking.status)) {
-    updatedBooking = await client.booking.update({
-      where: { id: booking.id },
+    const claimed = await client.booking.updateMany({
+      where: { id: booking.id, status: { in: ['PENDING', 'CONFIRMED', 'CANCELLED'] } },
       data: {
         providerId: nextProvider.id,
         status: 'PENDING',
@@ -676,14 +826,17 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, c
         }
       }
     });
-    await client.bookingEvent.create({
-      data: {
-        bookingId: booking.id,
-        actorRole: 'SYSTEM',
-        action: 'LEAD_REASSIGNED',
-        note: `Lead reassigned to the next available provider (${reason}).`
-      }
-    });
+    if (claimed.count > 0) {
+      updatedBooking = await client.booking.findUnique({ where: { id: booking.id } });
+      await client.bookingEvent.create({
+        data: {
+          bookingId: booking.id,
+          actorRole: 'SYSTEM',
+          action: 'LEAD_REASSIGNED',
+          note: `Lead reassigned to the next available provider (${reason}).`
+        }
+      });
+    }
   }
 
   return { nextProvider, lead: updatedLead, booking: updatedBooking, exhausted: false };
@@ -736,9 +889,9 @@ async function settleLeadInTx({ leadId, booking, reason = 'NO_PROVIDER', client,
  * Public redistribute — wraps `redistributeInTx` in its own transaction when
  * the caller is not already inside one and resolves final notifications.
  */
-export async function redistributeLead({ leadId, reason = 'REJECTED', details = null, client = prisma, cancelBookingOnSettle = true }) {
+export async function redistributeLead({ leadId, reason = 'REJECTED', details = null, expectedProviderId = null, client = prisma, cancelBookingOnSettle = true }) {
   return withClientTransaction(client, async (tx) => {
-    const result = await redistributeInTx({ leadId, reason, details, client: tx });
+    const result = await redistributeInTx({ leadId, reason, details, expectedProviderId, client: tx });
 
     if (result.exhausted || !result.nextProvider) {
       return settleLeadInTx({ leadId, booking: result.booking, reason, client: tx, cancelBookingOnSettle });
@@ -873,8 +1026,7 @@ export async function listProviderLeads(providerId, client = prisma) {
           amount: true,
           createdAt: true
         }
-      },
-      assignmentHistory: { orderBy: { assignedAt: 'desc' } }
+      }
     },
     orderBy: { createdAt: 'desc' }
   });
@@ -886,8 +1038,7 @@ export async function listCustomerLeads(customerId, client = prisma) {
     where: { customerId },
     include: {
       provider: { include: { user: { select: { id: true, name: true, avatar: true, phone: true } } } },
-      booking: { select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true } },
-      assignmentHistory: { orderBy: { assignedAt: 'asc' } }
+      booking: { select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true } }
     },
     orderBy: { createdAt: 'desc' }
   });

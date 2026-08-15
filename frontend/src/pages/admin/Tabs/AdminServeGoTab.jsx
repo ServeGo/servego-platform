@@ -220,7 +220,7 @@ function ConfigSection() {
                     <p className="text-[10px] text-slate-500 font-medium mt-0.5">{schema.description}</p>
                     <code className="text-[9px] text-slate-400 font-mono">{key}</code>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {schema.type === 'boolean' ? (
                       <button
                         onClick={() => setValues((prev) => ({ ...prev, [key]: !prev[key] }))}
@@ -240,14 +240,14 @@ function ConfigSection() {
                         value={typeof values[key] === 'object' && values[key] !== null ? JSON.stringify(values[key]) : (values[key] ?? '')}
                         onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                         placeholder="JSON"
-                        className="w-64 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
+                        className="w-full sm:w-64 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
                       />
                     ) : (
                       <input
                         value={Array.isArray(values[key]) ? values[key].join(', ') : (values[key] ?? '')}
                         onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                         placeholder="Comma separated"
-                        className="w-56 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
+                        className="w-full sm:w-56 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
                       />
                     )}
                     <button
@@ -890,7 +890,7 @@ function PerformanceSection() {
           <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
             <Gauge className="w-4 h-4 text-teal-600" /> Provider Performance ({total})
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleExport}
               disabled={exporting || total === 0}
@@ -1146,7 +1146,7 @@ function WalletSection() {
         ].map((s) => (
           <div key={s.label} className="bg-white border border-slate-200 rounded-2xl p-4">
             <p className="text-[9px] uppercase tracking-widest font-black text-slate-400">{s.label}</p>
-            <p className={`text-xl font-black mt-1 ${s.tone || 'text-slate-900'}`}>{s.value}</p>
+            <p className={`text-xl font-black mt-1 break-all ${s.tone || 'text-slate-900'}`}>{s.value}</p>
           </div>
         ))}
       </div>

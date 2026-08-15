@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw, Gift, Sparkles, ShieldCheck, CreditCard, IndianRupee } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { getErrorMessage } from '../utils/errorMessages';
+import SkeletonLoader from './SkeletonLoader';
 
 const fmtMoney = (v) => {
   const n = Number(v || 0);
@@ -25,7 +27,7 @@ const CATEGORY_META = {
 };
 
 export default function WalletView() {
-  const { currentUser } = useApp();
+  const { currentUser } = useAuth();
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [feeStatus, setFeeStatus] = useState(null);
@@ -63,7 +65,7 @@ export default function WalletView() {
     try {
       const res = await api.post('/platform-fee/order', {});
       if (!res.ok) {
-        setFeeError(res.data?.message || res.data?.error || 'Failed to start the platform fee payment.');
+        setFeeError(getErrorMessage(res.data, 'Failed to start the platform fee payment.'));
         setPayingFee(false);
         return;
       }
@@ -90,11 +92,11 @@ export default function WalletView() {
             if (verifyRes.ok) {
               setFeeSuccess('Platform fee paid. Your billing window is advanced for another month.');
             } else {
-              setFeeError(verifyRes.data?.message || verifyRes.data?.error || 'Payment verification failed.');
+              setFeeError(getErrorMessage(verifyRes.data, 'Payment verification failed.'));
             }
             await load();
           } catch (e) {
-            setFeeError('Network error while confirming your payment.');
+            setFeeError(getErrorMessage(e, 'Could not confirm your payment.'));
             await load();
           } finally {
             setPayingFee(false);
@@ -103,22 +105,18 @@ export default function WalletView() {
         modal: { ondismiss: () => setPayingFee(false) }
       });
       rzp.on('payment.failed', (resp) => {
-        setFeeError(resp?.error?.description || 'Payment failed. Please try again.');
+        setFeeError(resp?.error?.description || getErrorMessage(resp, 'Payment failed. Please try again.'));
         setPayingFee(false);
       });
       rzp.open();
     } catch (e) {
-      setFeeError(e.message || 'Network error during payment.');
+      setFeeError(getErrorMessage(e, 'Could not process the payment.'));
       setPayingFee(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
-        Loading wallet...
-      </div>
-    );
+    return <SkeletonLoader type="text" count={3} />;
   }
 
   return (

@@ -9,8 +9,11 @@ import {
   Receipt,
   RefreshCw
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
+import { getErrorMessage } from '../utils/errorMessages';
+import SkeletonLoader from './SkeletonLoader';
 
 const SECTOR_STYLES = {
   GENERAL: 'bg-slate-100 border-slate-200 text-slate-700',
@@ -31,7 +34,7 @@ const fmtDate = (d) => {
 };
 
 export default function ProviderPlans({ providerId }) {
-  const { currentUser } = useApp();
+  const { currentUser } = useAuth();
   const [plans, setPlans] = useState([]);
   const [subscription, setSubscription] = useState(null);
   const [remainingState, setRemainingState] = useState(null);
@@ -46,17 +49,17 @@ export default function ProviderPlans({ providerId }) {
   const [paymentMethod, setPaymentMethod] = useState('ONLINE');
   const [showHistory, setShowHistory] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false } = {}) => {
     if (!providerId) return;
     setLoading(true);
     try {
       const [plansRes, subRes, remainingRes, txRes, feeRes, feeHistoryRes] = await Promise.all([
-        api.get('/subscriptions/plans'),
-        api.get('/subscriptions/me'),
-        api.get('/subscriptions/remaining'),
-        api.get('/subscriptions/transactions'),
-        api.get('/platform-fee/status'),
-        api.get('/platform-fee/history')
+        cachedRequest('subscriptions/plans', () => api.get('/subscriptions/plans'), { force }),
+        cachedRequest('subscriptions/me', () => api.get('/subscriptions/me'), { force }),
+        cachedRequest('subscriptions/remaining', () => api.get('/subscriptions/remaining'), { force }),
+        cachedRequest('subscriptions/transactions', () => api.get('/subscriptions/transactions'), { force }),
+        cachedRequest('platform-fee/status', () => api.get('/platform-fee/status'), { force }),
+        cachedRequest('platform-fee/history', () => api.get('/platform-fee/history'), { force })
       ]);
       if (plansRes.ok) setPlans(Array.isArray(plansRes.data) ? plansRes.data : []);
       if (subRes.ok) setSubscription(subRes.data);
@@ -99,7 +102,7 @@ export default function ProviderPlans({ providerId }) {
         paymentMethod
       });
       if (!res.ok) {
-        setError(res.data?.message || res.data?.error || 'Purchase failed.');
+        setError(getErrorMessage(res.data, 'Purchase failed.'));
         setPurchasing(false);
         return;
       }
@@ -108,7 +111,7 @@ export default function ProviderPlans({ providerId }) {
       if (res.data?.transaction?.paymentStatus === 'PAID') {
         setSuccess(`Subscription activated. ${res.data.finalAmount != null ? `Paid ${fmtMoney(res.data.finalAmount)}. ` : ''}Leads credited — start accepting requests!`);
         setPurchasing(false);
-        await load();
+        await load({ force: true });
         return;
       }
 
@@ -138,12 +141,12 @@ export default function ProviderPlans({ providerId }) {
             if (verifyRes.ok) {
               setSuccess(`Payment successful. ${fmtMoney(verifyRes.data?.finalAmount ?? price)} paid — leads credited!`);
             } else {
-              setError(verifyRes.data?.message || verifyRes.data?.error || 'Payment verification failed.');
+              setError(getErrorMessage(verifyRes.data, 'Payment verification failed.'));
             }
-            await load();
+            await load({ force: true });
           } catch (e) {
-            setError('Network error while confirming your payment.');
-            await load();
+            setError(getErrorMessage(e, 'Could not confirm your payment.'));
+            await load({ force: true });
           } finally {
             setPurchasing(false);
           }
@@ -153,12 +156,12 @@ export default function ProviderPlans({ providerId }) {
         }
       });
       rzp.on('payment.failed', (resp) => {
-        setError(resp?.error?.description || 'Payment failed. Please try again.');
+        setError(resp?.error?.description || getErrorMessage(resp, 'Payment failed. Please try again.'));
         setPurchasing(false);
       });
       rzp.open();
     } catch (e) {
-      setError(e.message || 'Network error during purchase.');
+      setError(getErrorMessage(e, 'Could not process the payment.'));
       setPurchasing(false);
     }
   };
@@ -179,7 +182,7 @@ export default function ProviderPlans({ providerId }) {
     try {
       const res = await api.post('/platform-fee/order', {});
       if (!res.ok) {
-        setError(res.data?.message || res.data?.error || 'Failed to start the platform fee payment.');
+        setError(getErrorMessage(res.data, 'Failed to start the platform fee payment.'));
         setPayingFee(false);
         return;
       }
@@ -209,12 +212,12 @@ export default function ProviderPlans({ providerId }) {
             if (verifyRes.ok) {
               setSuccess('Platform fee paid. Your billing window is advanced for another month.');
             } else {
-              setError(verifyRes.data?.message || verifyRes.data?.error || 'Payment verification failed.');
+              setError(getErrorMessage(verifyRes.data, 'Payment verification failed.'));
             }
-            await load();
+            await load({ force: true });
           } catch (e) {
-            setError('Network error while confirming your payment.');
-            await load();
+            setError(getErrorMessage(e, 'Could not confirm your payment.'));
+            await load({ force: true });
           } finally {
             setPayingFee(false);
           }
@@ -224,12 +227,12 @@ export default function ProviderPlans({ providerId }) {
         }
       });
       rzp.on('payment.failed', (resp) => {
-        setError(resp?.error?.description || 'Payment failed. Please try again.');
+        setError(resp?.error?.description || getErrorMessage(resp, 'Payment failed. Please try again.'));
         setPayingFee(false);
       });
       rzp.open();
     } catch (e) {
-      setError(e.message || 'Network error during payment.');
+      setError(getErrorMessage(e, 'Could not process the payment.'));
       setPayingFee(false);
     }
   };
@@ -246,7 +249,7 @@ export default function ProviderPlans({ providerId }) {
               Buy a lead pack to keep receiving new service requests. Your provider level discount is applied automatically.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowHistory((v) => !v)}
               className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl transition-all flex items-center gap-1.5"
@@ -381,9 +384,7 @@ export default function ProviderPlans({ providerId }) {
       )}
 
       {loading && plans.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
-          Loading plans...
-        </div>
+        <SkeletonLoader type="card" count={3} className="grid grid-cols-1 md:grid-cols-3 gap-4" />
       ) : visiblePlans.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
           No plans are available right now. Check back soon.

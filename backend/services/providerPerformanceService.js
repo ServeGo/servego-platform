@@ -159,6 +159,26 @@ export async function recordJobCompleted(providerId, amount, commission, { jobDu
 export async function recordJobCancelled(providerId, userId, reason, { bookingId = null, leadId = null, detail = null, client = prisma } = {}) {
   const perf = await ensurePerformance(providerId, client);
 
+  // Idempotency guard: a double-clicked provider cancel (or a retried request)
+  // must not double-record the reason, the counter or the penalty. A provider
+  // cancels a booking once — one reason row per booking is the natural key.
+  if (bookingId) {
+    const existing = await client.cancellationReason.findFirst({
+      where: { bookingId, actor: 'PROVIDER' },
+      select: { id: true }
+    });
+    if (existing) {
+      return {
+        cancelledJobs: Number(perf.cancelledJobs || 0),
+        cancellationsInWindow: Number(perf.penaltyScore || 0),
+        penaltyScore: Number(perf.penaltyScore || 0),
+        cooldownTriggered: false,
+        cooldownUntil: perf.cooldownUntil,
+        alreadyRecorded: true
+      };
+    }
+  }
+
   await client.cancellationReason.create({
     data: {
       bookingId,

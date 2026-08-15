@@ -53,8 +53,11 @@ export function startAutoCancelCron(io) {
 
         const newHistory = buildStatusHistory(booking.statusHistory, 'CANCELLED', 'Auto-cancelled: provider did not respond within the allowed time.');
 
-        await prisma.booking.update({
-          where: { id: booking.id },
+        // Compare-and-swap: only cancel if the booking is STILL PENDING. If a
+        // provider accepted (or another worker cancelled) between the read and
+        // this write, zero rows match and nothing below runs.
+        const transitioned = await prisma.booking.updateMany({
+          where: { id: booking.id, status: 'PENDING' },
           data: {
             status: 'CANCELLED',
             statusHistory: newHistory,
@@ -62,6 +65,7 @@ export function startAutoCancelCron(io) {
             cancelledReason: 'Auto-cancelled: provider did not respond within the allowed time.'
           }
         });
+        if (transitioned.count === 0) continue;
 
         await prisma.bookingEvent.create({
           data: {
@@ -75,8 +79,8 @@ export function startAutoCancelCron(io) {
 
         if (booking.lead) {
           cancelLeadExpiry(booking.lead.id);
-          await prisma.lead.update({
-            where: { id: booking.lead.id },
+          await prisma.lead.updateMany({
+            where: { id: booking.lead.id, status: { in: ['NEW', 'VIEWED'] } },
             data: { status: 'EXPIRED', lastRejectReason: 'AUTO_CANCEL' }
           });
         }

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, CheckCircle2, Send } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 import { SERVICE_CATEGORIES } from '../data';
 
 // Components
@@ -11,12 +11,12 @@ import ServiceEngagementChoice from '../components/ServiceEngagementChoice';
 import PermanentServiceRequestModal from '../components/PermanentServiceRequestModal';
 
 export const ServiceDetails = ({ catId, onNavigate, onViewPermanentRequests }) => {
+  const { currentUser } = useAuth();
   const {
-    currentUser,
     createBooking,
     bookings,
     getCustomerLoyaltyTier,
-  } = useApp();
+  } = useData();
 
   // Metadata — try static lookup first, fall back to a synthetic entry built
   // from the catId itself (for DB-driven services like 'dhobi', 'cook', etc.)

@@ -1,12 +1,46 @@
 import prisma from '../prisma/client.js';
 import { ensureProviderSubscription } from '../seeders/businessModelSeed.js';
 import { getLevelDiscount } from './providerLevelService.js';
+import { createTtlCache } from '../utils/ttlCache.js';
 import {
   createGatewayOrder,
   verifyPaymentSignature,
   isGatewayConfigured,
   getGatewayConfig
 } from './paymentGatewayService.js';
+
+// Subscription plans are admin-configured and rarely change, but are read on
+// every plans screen. Cache briefly; invalidate on admin plan writes.
+const PLANS_CACHE_TTL_MS = 60 * 1000;
+const plansCache = createTtlCache(PLANS_CACHE_TTL_MS);
+
+export function invalidatePlansCache() {
+  plansCache.invalidate('active');
+  plansCache.invalidate('all');
+}
+
+async function getActivePlans(client) {
+  if (client === prisma) {
+    const cached = plansCache.get('active');
+    if (cached !== undefined) return cached;
+  }
+  const plans = await client.subscriptionPlan.findMany({
+    where: { active: true },
+    orderBy: { level: 'asc' }
+  });
+  if (client === prisma) plansCache.set('active', plans);
+  return plans;
+}
+
+export async function getAllPlans(client = prisma) {
+  if (client === prisma) {
+    const cached = plansCache.get('all');
+    if (cached !== undefined) return cached;
+  }
+  const plans = await client.subscriptionPlan.findMany({ orderBy: { level: 'asc' } });
+  if (client === prisma) plansCache.set('all', plans);
+  return plans;
+}
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 function withClientTransaction(client, fn) {
@@ -476,10 +510,7 @@ export async function getSubscriptionHistory(providerId, client = prisma) {
 /** Plans available to the provider, annotated with the discount they would get. */
 export async function getAvailablePlans(providerId, client = prisma) {
   const [plans, provider] = await Promise.all([
-    client.subscriptionPlan.findMany({
-      where: { active: true },
-      orderBy: { level: 'asc' }
-    }),
+    getActivePlans(client),
     client.provider.findUnique({
       where: { id: providerId },
       select: { providerLevel: true }

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 
 
 export function Login({ onNavigate }) {
-  const { login } = useApp();
+  const { login } = useAuth();
 
   // Read redirect intent from URL query param (set by booking flow when unauthenticated)
   const redirectParam = typeof window !== 'undefined'

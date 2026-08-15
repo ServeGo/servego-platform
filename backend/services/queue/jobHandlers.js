@@ -5,6 +5,7 @@ import {
   recordLateArrival,
   recordLeadIgnored,
   recordLeadExpired,
+  recordLeadOffered,
   recordJobCompleted
 } from '../providerPerformanceService.js';
 
@@ -141,6 +142,8 @@ export const jobHandlers = {
   performance: async ({ action, providerId, amount = 0, commission = 0, jobDurationMs = null } = {}) => {
     if (!providerId) throw new Error('performance job requires providerId');
     switch (action) {
+      case 'leadOffered':
+        return recordLeadOffered(providerId);
       case 'jobStarted':
         return recordJobStarted(providerId);
       case 'lateArrival':

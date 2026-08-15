@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import { useApp } from '../context/AppContext';
+import { useData, useUI } from '../context/AppContext';
 
 function decodeHtmlEntities(str) {
   if (!str) return str;
@@ -15,9 +15,9 @@ export default function AdminOtherServicesRequestsPanel() {
     providerServiceItems,
     fetchProviderServiceItems,
     approveProviderServiceRequest,
-    denyProviderServiceRequest,
-    runWithActionSpinner
-  } = useApp();
+    denyProviderServiceRequest
+  } = useData();
+  const { runWithActionSpinner } = useUI();
 
   const [processingId, setProcessingId] = useState(null);
   const [processingAction, setProcessingAction] = useState(null);

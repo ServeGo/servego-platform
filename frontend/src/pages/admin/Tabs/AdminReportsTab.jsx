@@ -210,7 +210,7 @@ export default function AdminReportsTab() {
         <p className="text-slate-500 text-xs">Operational data, audit trail, and exportable summaries.</p>
       </div>
 
-      <div className="flex gap-1 bg-white border border-slate-200 p-1 rounded-2xl w-fit">
+      <div className="flex flex-wrap gap-1 bg-white border border-slate-200 p-1 rounded-2xl w-full sm:w-fit">
         {tabs.map(t => (
           <button
             key={t.id}

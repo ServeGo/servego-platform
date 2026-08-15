@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useApp } from '../context/AppContext';
+import { Loader2 } from 'lucide-react';
+import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { normalizeBooking } from '../utils/normalizeCustomerData';
 
 // Components
 import DashboardHeader from '../components/DashboardHeader';
@@ -17,12 +19,13 @@ import PermanentRequestsView from '../components/PermanentRequestsView';
 import WalletView from '../components/WalletView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
-  const { 
-    currentUser, bookings, updateBookingStatus, submitReview, 
-    providers, favoriteProviders, toggleFavoriteProvider, tickets, submitSupportTicket, 
-    notifications, markNotificationAsRead, applyReferralCode, getCustomerLoyaltyTier, sendChatMessage,
-    updateUserProfile, savedProsData
-  } = useApp();
+  const { currentUser, applyReferralCode, updateUserProfile } = useAuth();
+  const {
+    bookings, updateBookingStatus, submitReview,
+    providers, favoriteProviders, toggleFavoriteProvider, tickets, submitSupportTicket,
+    notifications, markNotificationAsRead, getCustomerLoyaltyTier, sendChatMessage,
+    savedProsData
+  } = useData();
 
   const [internalActiveTab, setInternalActiveTab] = useState('bookings');
   const activeTab = activeTabProp || internalActiveTab;
@@ -282,14 +285,61 @@ const BOOKING_SUB_TABS = [
   { id: 'past', label: 'Past', statuses: ['completed', 'reviewed', 'COMPLETED', 'REVIEWED'] },
 ];
 
+const TAB_STATUS_QUERY = {
+  active: 'CONFIRMED,ONGOING',
+  pending: 'PENDING',
+  cancelled: 'CANCELLED',
+  past: 'COMPLETED',
+};
+
+const TAB_PAGE_SIZE = 10;
+
 function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, onReview, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
   const [subTab, setSubTab] = useState('active');
+  const [tabItems, setTabItems] = useState({});
+  const [tabMeta, setTabMeta] = useState({});
 
-  const filtered = useMemo(() => {
-    const tab = BOOKING_SUB_TABS.find(t => t.id === subTab);
-    if (!tab) return bookings;
-    return bookings.filter(b => tab.statuses.includes((b.status || '').toLowerCase()));
-  }, [bookings, subTab]);
+  const items = tabItems[subTab] || [];
+  const meta = tabMeta[subTab] || {};
+
+  const fetchPage = useCallback(async ({ tab, cursor = null, append = false } = {}) => {
+    const params = new URLSearchParams({ mode: 'cursor', limit: String(TAB_PAGE_SIZE), statuses: TAB_STATUS_QUERY[tab] });
+    if (cursor) params.set('cursor', cursor);
+
+    setTabMeta(prev => ({ ...prev, [tab]: { ...(prev[tab] || {}), loading: !append, loadingMore: append, error: '' } }));
+
+    const res = await api.get(`/bookings?${params.toString()}`);
+    if (!res.ok) {
+      setTabMeta(prev => ({ ...prev, [tab]: { ...(prev[tab] || {}), loading: false, loadingMore: false, error: res.data?.message || 'Failed to load bookings.' } }));
+      return;
+    }
+
+    const data = res.data || {};
+    const incoming = (data.bookings || []).map(normalizeBooking);
+    setTabItems(prev => ({ ...prev, [tab]: append ? [...(prev[tab] || []), ...incoming] : incoming }));
+    setTabMeta(prev => ({
+      ...prev,
+      [tab]: {
+        ...(prev[tab] || {}),
+        nextCursor: data.pagination?.nextCursor ?? null,
+        hasMore: !!data.pagination?.hasMore,
+        total: data.pagination?.total ?? (prev[tab]?.total ?? 0),
+        loading: false,
+        loadingMore: false,
+        error: ''
+      }
+    }));
+  }, []);
+
+  // Fetch the first page of the active tab once; later pages come via Load more.
+  useEffect(() => {
+    if (!tabItems[subTab]) fetchPage({ tab: subTab });
+  }, [subTab, tabItems, fetchPage]);
+
+  const loadMore = () => {
+    if (!meta.nextCursor || meta.loadingMore || meta.loading) return;
+    fetchPage({ tab: subTab, cursor: meta.nextCursor, append: true });
+  };
 
   const counts = useMemo(() => {
     const result = {};
@@ -313,7 +363,18 @@ function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, on
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {meta.loading ? (
+        <div className="flex items-center justify-center gap-2 text-xs text-slate-400 py-12 bg-white rounded-xl border border-slate-200 shadow-2xs">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading {subTab} bookings...
+        </div>
+      ) : meta.error ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-2xs">
+          <p className="text-xs text-rose-600 font-semibold">{meta.error}</p>
+          <button onClick={() => fetchPage({ tab: subTab })} className="mt-4 text-xs font-bold text-teal-600 hover:text-teal-700">
+            Retry
+          </button>
+        </div>
+      ) : items.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
           <p className="text-slate-500 text-xs font-medium">No {subTab} bookings.</p>
           {subTab === 'pending' && (
@@ -324,7 +385,7 @@ function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, on
         </div>
       ) : (
         <div className="space-y-6">
-          {filtered.map(bk => (
+          {items.map(bk => (
             <BookingCard
               key={bk.id}
               booking={bk}
@@ -339,6 +400,18 @@ function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, on
               onSendMessage={onSendMessage}
             />
           ))}
+          {meta.hasMore && (
+            <div className="flex justify-center">
+              <button
+                onClick={loadMore}
+                disabled={meta.loadingMore}
+                className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold px-5 py-2.5 text-xs rounded-xl transition-colors"
+              >
+                {meta.loadingMore && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Load more
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

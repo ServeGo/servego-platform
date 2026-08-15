@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { providerListItem } from '../utils/serializers.js';
 
 export const AdminDashboardController = {
   getSummary: async (req, res) => {
@@ -238,7 +239,8 @@ export const AdminDashboardController = {
         prisma.provider.findMany({
           include: {
             user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
-            reviews: true,
+            // providerListItem renders the review audit only on the owner's own
+            // row (never for admin tables), so don't load full review rows here.
             badges: true
           },
           skip,
@@ -249,7 +251,7 @@ export const AdminDashboardController = {
       ]);
 
       sendApiSuccess(res, 200, {
-        providers,
+        providers: providers.map((p) => providerListItem(p, { includeContact: true })),
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
       });
     } catch (err) {
@@ -275,52 +277,49 @@ export const AdminDashboardController = {
         startDate.setDate(startDate.getDate() - 90);
       }
 
-      // Get booking trends
-      const bookingsByDay = await prisma.booking.groupBy({
-        by: ['status'],
-        _count: true,
-        where: {
-          createdAt: { gte: startDate }
-        }
-      });
-
-      // Get top providers by completed bookings
-      const topProviders = await prisma.booking.groupBy({
-        by: ['providerId'],
-        _count: true,
-        where: {
-          status: 'COMPLETED',
-          createdAt: { gte: startDate }
-        },
-        orderBy: {
-          _count: {
-            providerId: 'desc'
+      // Get booking trends, top providers, top services, rating distribution.
+      // All four are independent aggregates — run them in parallel.
+      const [bookingsByDay, topProviders, topServices, ratingGroups] = await Promise.all([
+        prisma.booking.groupBy({
+          by: ['status'],
+          _count: true,
+          where: {
+            createdAt: { gte: startDate }
           }
-        },
-        take: 10
-      });
-
-      // Get top services by bookings
-      const topServices = await prisma.booking.groupBy({
-        by: ['serviceCategory'],
-        _count: true,
-        where: {
-          createdAt: { gte: startDate }
-        },
-        orderBy: {
-          _count: {
-            serviceCategory: 'desc'
-          }
-        },
-        take: 10
-      });
-
-      // Get rating distribution
-      const ratingGroups = await prisma.review.groupBy({
-        by: ['rating'],
-        _count: true,
-        where: { createdAt: { gte: startDate } }
-      });
+        }),
+        prisma.booking.groupBy({
+          by: ['providerId'],
+          _count: true,
+          where: {
+            status: 'COMPLETED',
+            createdAt: { gte: startDate }
+          },
+          orderBy: {
+            _count: {
+              providerId: 'desc'
+            }
+          },
+          take: 10
+        }),
+        prisma.booking.groupBy({
+          by: ['serviceCategory'],
+          _count: true,
+          where: {
+            createdAt: { gte: startDate }
+          },
+          orderBy: {
+            _count: {
+              serviceCategory: 'desc'
+            }
+          },
+          take: 10
+        }),
+        prisma.review.groupBy({
+          by: ['rating'],
+          _count: true,
+          where: { createdAt: { gte: startDate } }
+        })
+      ]);
 
       const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
       let totalReviewsThisPeriod = 0;

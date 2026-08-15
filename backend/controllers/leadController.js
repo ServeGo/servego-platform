@@ -122,10 +122,13 @@ export const LeadController = {
       await notifyLeadAccepted(io, updated.customerId, buildLeadPayload(result.lead ?? lead, updated));
       if (io) {
         io.to(`user:${updated.customerId}`).emit('booking:statusChanged', { bookingId: updated.id, status: 'CONFIRMED' });
-        // Auto-cancel the remaining offers — tell every losing provider.
-        for (const loser of result.cancelledProviders || []) {
-          await notifyLeadCancelled(io, loser.userId, buildLeadPayload(result.lead ?? lead, updated));
-        }
+        // Auto-cancel the remaining offers — tell every losing provider in
+        // parallel (each is an independent notify + queue insert).
+        await Promise.all(
+          (result.cancelledProviders || []).map((loser) =>
+            notifyLeadCancelled(io, loser.userId, buildLeadPayload(result.lead ?? lead, updated))
+          )
+        );
       }
 
       return sendApiSuccess(res, 200, updated);

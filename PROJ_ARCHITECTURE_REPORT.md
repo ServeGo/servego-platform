@@ -327,7 +327,7 @@ Each module below is documented as **Purpose / Endpoints / Permissions / Busines
 ### 3.4 Bookings
 **Purpose:** Core booking lifecycle: create, view, timeline audit, state-machine transitions and booking chat.
 **Endpoints:**
-- `GET /api/v1/bookings` → `BookingController.getAll` (role-scoped: customer=own, provider=own providerId, admin=all; paginated)
+- `GET /api/v1/bookings` → `BookingController.getAll` (role-scoped: customer=own, provider=own providerId, admin=all; paginated; optional `?updatedAfter=<ISO timestamp>` returns only rows whose `updatedAt` is newer — reconnect resync, §14.6/§24.5)
 - `GET /api/v1/bookings/:id` → `BookingController.getById` (ownership enforced)
 - `GET /api/v1/bookings/:id/timeline` → `BookingController.getTimeline` (admin; statusHistory + `BookingEvent` audit trail)
 - `POST /api/v1/bookings` → `BookingController.create` (broadcast: creates booking + lead and opens an offer to every eligible provider; double-booking guards; `Serializable` transaction; socket events)
@@ -384,7 +384,7 @@ Each module below is documented as **Purpose / Endpoints / Permissions / Busines
 ### 3.8 Notifications
 **Purpose:** In-app notification inbox + realtime push.
 **Endpoints:**
-- `GET /api/v1/notifications` → `NotificationController.getAll` (limit param; admin sees all)
+- `GET /api/v1/notifications` → `NotificationController.getAll` (limit param; admin sees all; optional `?after=<notificationId|ISO timestamp>` returns only rows newer than the client's lastSeen watermark — reconnect resync, §14.6/§24.5)
 - `POST /api/v1/notifications` → `NotificationController.create` (self or admin only)
 - `PATCH /api/v1/notifications/:id/read` → `NotificationController.read`
 - `PATCH /api/v1/notifications/read-all` → `NotificationController.readAll`
@@ -645,6 +645,8 @@ Schema: `backend/prisma/schema.prisma` — 40 models, 26 enums, 33 migrations.
 34. `remove_disputes` — dispute feature dropped: dispute tables removed
 35. `remove_backup_manifest` — `Backup` table dropped (feature 22 removed, §24.2)
 36. `platform_fee` — `PlatformFeeAccount` + `PlatformFeePayment` models; monthly platform fee replaces per-booking commission (§3.17, §15.8)
+37. `service_location_coords` — customer's exact service location picked on the map at booking time (`Booking` + `PermanentServiceRequest` `serviceLatitude`/`serviceLongitude`/`locationAddress`); authoritative for radius matching and tracking
+38. `perf_indexes_v2` — 14 composite indexes derived from real queries (worker claim poll, notification feed, auto-cancel cron, provider analytics, lead expiry sweep, payout queues, discovery) — rule 13 (§24.3)
 
 ---
 
@@ -813,6 +815,17 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 - Payment modes: cash-after-job (allowed) or gateway (rejected until configured — `gateway: 'CASH'` only).
 - Provider earnings are computed on completion (full booking price credited to the wallet; per-booking commission removed in favour of the monthly platform fee), and the lead is consumed at the same moment (§8.5).
 
+### 9.4 State-transition guards & idempotency (rules 17–18)
+- **One authoritative transition layer** — `utils/workflow.js` (`normalizeBookingStatus`, `isValidBookingTransition`, `buildStatusHistory`) + CAS-guarded service functions are the only writers of `booking.status`; controllers never touch the column directly and the explicit routes (`accept` / `decline` / `cancel` / `complete` / `updateStatus`) all funnel through them.
+- **Compare-and-swap on current DB state** — every transition is an `updateMany` filtered on the expected source status, so a stale client, double-click, retry or worker race matches zero rows and aborts **before** any side effect runs:
+  - `acceptLeadForBooking` — PENDING booking + NEW/VIEWED lead; a second accept hits the CAS and throws `ACCEPT_RACE` (§8.3).
+  - `startBookingWork` — CONFIRMED→ONGOING; a repeat call returns `NO_CHANGE` (§8.3).
+  - `completeBooking` — ONGOING→COMPLETED; a racing duplicate can never double-credit the wallet, double-increment performance or double-consume the lead; otherwise `INVALID_TRANSITION`.
+  - cancel routes — role + source-state guarded; an already-cancelled booking is an idempotent no-op (no duplicate event/analytics).
+  - `autoCancelService` — hourly cron CAS on `{ id, status: 'PENDING' }`; if a provider accepted (or another worker cancelled) between the read and write, zero rows match and the cron moves on.
+- **Derived-row idempotency (rule 18)** — `recordJobCancelled` guards on one `CancellationReason` per booking+provider (`findFirst` → `alreadyRecorded`, never a double penalty); queue jobs carry `dedupeKey` so retries don't fan out duplicate notifications (§15.5); the `invoice` handler upserts per booking; `redistributeLead` returns `alreadyHandled` when the lead has already moved on. A repeat transition is always a no-op or a typed error (e.g. `NO_CHANGE`, `INVALID_TRANSITION`, `ACCEPT_RACE`), never a duplicate write.
+- **Auditability** — every transition writes a `BookingEvent` + statusHistory entry recording who/what/why.
+
 ---
 
 ## 10) Reputation & badge/verification model
@@ -888,6 +901,18 @@ Aliases normalized in `utils/workflow.js`: `accepted→CONFIRMED`, `declined→C
 
 ### 14.4 Styling & UX conventions
 - White cards, `rounded-2xl/3xl`, slate palette, Lucide icons, `font-black` uppercase labels, teal/amber status chips, skeleton loaders, optimistic UI on booking creation.
+- **Loading UX (rule 15)** — every data-fetching screen renders `SkeletonLoader` (`card`/`list`/`text` variants) while loading and an empty state when done: wired into `Home`, `Services`, `ProviderLeadsInbox`, `ProviderPlans`, `PermanentRequestsView`, `ProviderWallet`, `ProviderWalletAmbassador` and `WalletView` via the `servicesLoading` flag exposed by `DataContext`.
+- **Optimistic UI is selective (rule 16)** — reserved for harmless reversible actions (saving a provider as favourite); payment, cancellation, completion and status-changing actions disable the button + show "Processing…" until the server confirms, then reconcile from the server response (reverting + surfacing the error on failure).
+
+### 14.5 Error UX (machine-readable codes → friendly copy)
+- `utils/errorMessages.js` is the single source of truth for what the UI shows on failure. Backend failures always carry `{ code, message }` (rule 19), so `getErrorMessage(payload, fallback)` resolves an exact code from `CODE_COPY` (~50 `LEAD_*`/`BOOKING_*`/`PAYMENT_*`/`AUTH_*`/… entries) or the longest matching domain prefix (`PREFIX_FALLBACK`), detects network-shaped messages via `NETWORK_PATTERNS` (`NETWORK_ERROR_MESSAGE`), and only then falls back to the caller's fallback — never a bare "Something went wrong". `getRecoveryAction(payload)` / `getErrorInfo` expose the optional action ("Refresh leads", "View booking", "Try again") that callers render as a button.
+- Wired into `utils/apiClient.js` (typed errors carrying the backend payload), `ErrorBoundary`, `AuthContext` (login/register/forgot/reset), `DataContext` (createBooking, updateBookingStatus, availability), `ProviderLeadsInbox` (accept/reject errors + "Refresh leads" action), `ProviderPlans`, `WalletView`, `ProviderWallet`, `ProviderWalletAmbassador` and `BookingCard` (cancel errors via toast).
+
+### 14.6 Realtime connection recovery (rule 23)
+- `utils/reconnectWatermark.js` keeps a per-user `lastSeen` watermark in localStorage (`servego_reconnect_watermark_<userId>`, server timestamps only) with `read`/`save`/`advance`/`clear`; `advance` never moves the marker backwards.
+- `RealtimeContext` emits `authenticate` on every (re)connect (re-joins `user:{id}` / `room:admin`), sets `connectionStatus` to `'reconnecting'` on `disconnect` and `'online'` on `connect`, and on a **reconnect** (skipped on the very first connect, `hasConnectedOnceRef`) calls `DataContext.resyncAfterReconnect()`.
+- `resyncAfterReconnect()` reads the watermark and pulls `GET /notifications?after=<watermark>` + `GET /bookings?updatedAfter=<watermark>` (merge mode upserts by id), advancing the watermark from server timestamps; without a watermark it falls back to a full refetch. The 30s poll remains as the eventual-consistency net, and failed poll fetches keep the last-known rows instead of clearing them.
+- `App.jsx` renders an amber banner while `connectionStatus !== 'online'` — "Connection lost. You may be seeing outdated info — retrying in the background." when offline, "Reconnecting to live updates…" while reconnecting.
 
 ---
 
@@ -989,6 +1014,7 @@ Booking and subscription side-effects that used to run **inline in the request p
 - Client connects with `{ token }`; socket.io auth middleware verifies JWT and joins room `user:${userId}` (admins also join `room:admin`).
 - Server pushes to user rooms: `notification:new` / `notification`, `newLead`, `leadAccepted`, `leadRejected`, `leadReassigned`, `leadExpired`, `leadAssignmentFailed`, `bookingUpdated`, `bookingStatusChanged`, `booking:created`, `booking:statusChanged`, `booking:cancelled`, `booking:messageCreated`, `booking:message`, `bookingMessage`, `chatMessageReceived` (booking room), `promotion` / `provider:levelChanged`, `subscription:purchased`, `subscription:paymentSuccess`, `subscription:invoiceGenerated`, `subscription:expired`, `subscription:lowLeads`, `providerAssigned`, `providerChanged`, `providerOnTheWay`, `bookingCompleted`, `provider:cooldown`, `accountStatusChanged`, `providerService:approved`, `providerService:rejected`, `serviceApproved`, `category:activeCountChanged`, `location:update` (live GPS fix + ETA + route polyline), `provider:onTheWay` / `provider:arrived` (dispatch lifecycle), `platformFee:due` / `platformFee:reminder` / `platformFee:overdue` / `platformFee:paid`.
 - Admin room (`room:admin`) receives: `newApprovalRequest`, `adminAlert:newSupportTicket`, `admin:notification` (payment failed, provider suspended, high cancellation, subscription purchased, provider promoted), `adminAlert:platformFeeOverdue`.
+- Reconnect recovery: the client re-emits `authenticate` on every (re)connect (re-joining `user:{id}` / `room:admin`), then resyncs missed state from a per-user watermark via `GET /notifications?after=` and `GET /bookings?updatedAfter=` (merged locally); `connectionStatus` drives the "Reconnecting…" banner (§14.6).
 - Controllers reach the io instance via `req.app.get('socketio')`.
 
 ### 16.3 Health endpoint
@@ -1029,7 +1055,7 @@ Booking and subscription side-effects that used to run **inline in the request p
 - Middleware: `backend/middleware/security.js` (rate limiters + CSP incl. OSM/Google connect-src for the live map), `logging.js` (request logger), `upload.js` (multer→Cloudinary), `validation.js` (express-validator)
 - Utils: `auth.js, response.js, workflow.js, permissions.js, availability.js, validation.js, runtimeConfig.js`
 - Seeds: `seeders/servicesSeed.js`, `seeders/businessModelSeed.js`; demo: `prisma/seed.js`
-- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (36)
+- Schema: `prisma/schema.prisma` + `prisma/client.js` + `prisma/migrations/` (38)
 - Scripts: `scripts/cleanup-db.js`, `scripts/migrate-photos-to-cloudinary.js`, `scripts/fix-html-entity-descriptions.js`, `scripts/check-experience.js`
 - Tests: `backend/tests/*.test.js`
 
@@ -1038,9 +1064,11 @@ Booking and subscription side-effects that used to run **inline in the request p
 - Context: `frontend/src/context/AppContext.jsx` (exports `socketRef`)
 - API client: `frontend/src/utils/apiClient.js`
 - Normalizers: `frontend/src/utils/normalizeCustomerData.js`, `frontend/src/utils/normalizeAdminData.js`
+- Error & reconnect utils: `frontend/src/utils/errorMessages.js` (§14.5), `frontend/src/utils/reconnectWatermark.js` (§14.6)
 - Hook: `frontend/src/hooks/useAdminPanelController.js`
 - Customer: `frontend/src/pages/CustomerDashboard.jsx`
 - Provider: `frontend/src/pages/ProviderDashboard.jsx` + `frontend/src/components/ProviderLeadsInbox.jsx`, `frontend/src/components/ProviderPlans.jsx`, `frontend/src/components/ProviderLevelPerformance.jsx`
+- Shared components: `frontend/src/components/SkeletonLoader.jsx` (loading/empty states, rule 15), `frontend/src/components/ErrorBoundary.jsx` (render-error fallback, rule 19)
 - Admin: `frontend/src/pages/AdminPanel.jsx`, `frontend/src/pages/admin/AdminPanelTabsRouter.jsx`, `frontend/src/pages/admin/Tabs/AdminServeGoTab.jsx` (6 sub-tabs)
 - Public pages: `frontend/src/pages/public/*`
 
@@ -1081,7 +1109,7 @@ Booking and subscription side-effects that used to run **inline in the request p
 ## 22) Non-functional requirements
 
 **Performance**
-- Hot columns are indexed (`provider.status`, `booking.status/createdAt`, `lead.status/expiryTime`, `notification.userId`, etc. — see §6 tables); composite hot-path indexes added in migration 33 (§24.3).
+- Hot columns are indexed (`provider.status`, `booking.status/createdAt`, `lead.status/expiryTime`, `notification.userId`, etc. — see §6 tables); composite hot-path indexes added in migrations 33 and 38 (§24.3).
 - Derived counts (`activeSpecialistCount`, reputation aggregates) are precomputed/stored rather than recomputed per request.
 - `AdminConfig` (30s) and level-rule (60s) caches avoid DB round-trips on hot paths.
 - Admin list endpoints are paginated (bookings, providers, leads, audit logs, performance).
@@ -1124,7 +1152,7 @@ Booking and subscription side-effects that used to run **inline in the request p
 | Database | PostgreSQL via Prisma ORM |
 | Prisma models | 37 |
 | Prisma enums | 22 |
-| Migrations | 36 |
+| Migrations | 38 |
 | Controllers | 26 |
 | Services | 22 |
 | Middleware files | 4 (`security`, `logging`, `upload`, `validation`) |
@@ -1161,6 +1189,7 @@ Feature 22 was implemented (feature-flag work) and later removed entirely: `back
 - **Cursor mode (opt-in)** — `bookingController.getAll` and `notificationController.getAll` support `?mode=cursor&limit=N` for the first page then `?cursor=<base64(id|date)>` via `parseCursor`/`encodeCursor`/`sliceCursorPage` (keyset on `createdAt,id`, `maxLimit+1` take). Cursor responses return `pagination: { total, nextCursor, hasMore }`; invalid cursors return `400 INVALID_CURSOR`. Without cursor params both endpoints keep their legacy shapes (bookings offset pagination; notifications plain array).
 - **Payload/N+1 reduction** — `providerServiceDiscoveryController` drops the nested `reviews: true` include and serves precomputed `reviewCount`/`rating` scalars.
 - **Indexes (migration 33)** — composite hot-path indexes listed in §6.7, covering notification filtering, provider review/timeline queries, account-status scans, provider↔service joins, request-queue filtering and wallet-transaction listing.
+- **Indexes v2 (migration 38)** — rule 13: 14 composite indexes derived from the queries the app actually runs — `Job(type,status,availableAt)` (worker claim poll), `Notification(userId,createdAt)` (feed), `Booking(status,createdAt)` (auto-cancel cron + admin aggregates), `Booking(providerId,createdAt)` (provider analytics), `Lead(status,createdAt)` + `Lead(customerId,createdAt)` + `Lead(status,expiryTime)` (admin list, customer feed, expiry sweep), `Review(createdAt)` (admin list/analytics), `ProviderServiceRequest(providerId,status)` (provider's own requests), `WalletWithdrawalRequest(userId,createdAt)` + `WalletWithdrawalRequest(status,createdAt)` (payout queue), `SubscriptionTransaction(providerId,purchasedAt)` (history), `PermanentServiceRequest(status,createdAt)` (admin list), `Provider(accountStatus,isVerified)` (discovery/lead matching). All exist in `prisma/schema.prisma` `@@index` directives and match the `Table_col1_col2_idx` naming convention.
 - **Frontend compatibility + code-splitting** — normalizers (`normalizeCustomerData.js`) and `AppContext.jsx` accept both wrapper and raw-array shapes; admin panels request `?limit=100` to keep full-ish lists. `AdminPanelTabsRouter.jsx` now `React.lazy`s each tab under a `Suspense` fallback, so the main bundle stays ~1,630 kB and each admin tab loads on demand.
 - Tests: `tests/pagination.test.js` (limit clamp, offsetMeta, per-endpoint pagination, cursor paging with no overlap + final-page null cursor + invalid-cursor 400, plain-array backward compat, cursor token round-trip).
 
@@ -1173,6 +1202,15 @@ Feature 22 was implemented (feature-flag work) and later removed entirely: `back
 - **Frontend** — `ProviderPlans.jsx` and `WalletView.jsx` show a fee card with Razorpay checkout (`POST /platform-fee/order` → verify); `AdminServeGoTab.jsx` gains a **Platform Fees** sub-tab (accounts table, status filter, summary counts, Excel export).
 - **Cleanup** — per-booking `platformChargeService.js` deleted; `commissionPercent`/`platformCharge*`/`leadExpiryEnabled`/`maxRedistributionAttempts`/`freeLeadCount`/`leadCountPerSubscription` and the config-only knobs (`leadTimeoutSeconds`, `defaultProviderRadiusKm`, `cancellationPenaltyThreshold`, `cancellationWindowDays`, `cooldownDurationHours`, `premiumCategories`, `generalCategories`, `rankingWeights`) removed and auto-pruned from the seed (values fixed in code); `payment.test.js` updated; all 14 backend test suites pass.
 - **Admin export** — `frontend/src/utils/exportExcel.js` (xlsx) powers Export buttons on every ServeGo report sub-tab; endpoints page with `?page=1&limit=100` so exports capture the full dataset, not just the first page.
+
+### 24.5 Production hardening (rules 15–20, 23)
+
+- **Loading & optimistic UX (rules 15–16)** — `SkeletonLoader` wired into all data-fetching screens with empty states; optimistic updates limited to reversible actions, dangerous ops use disabled-button + "Processing…" until server confirmation (§14.4).
+- **Booking state consistency (rule 17)** — single workflow layer (`utils/workflow.js`) + CAS-guarded transitions; a stale/duplicate request can never double-transition (§9.4).
+- **Idempotent operations (rule 18)** — CAS transitions, `CancellationReason` natural-key guard, queue `dedupeKey`, invoice upsert; repeats are no-ops or typed errors, never duplicate writes (§9.4, §15.5).
+- **Error UX (rule 19)** — centralized code → friendly copy in `frontend/src/utils/errorMessages.js` (§14.5): exact-code map + domain-prefix fallback + network detection, with optional recovery actions; no screen renders a bare "Something went wrong" or a raw stack trace.
+- **Non-blocking emails (rule 20)** — confirmed: `sendMail` runs only inside queue workers (`jobHandlers.js`); booking-request/completed emails, analytics, invoice generation and performance bookkeeping are enqueued via `fireAndForget`/`enqueueJob` with `dedupeKey` (§15.5) — no controller awaits an email/side-effect send.
+- **Realtime reconnect recovery (rule 23)** — per-user localStorage watermark (`reconnectWatermark.js`), `authenticate` re-emit + re-join on every (re)connect, `resyncAfterReconnect()` merging `GET /notifications?after=` and `GET /bookings?updatedAfter=` results, and a visible "Reconnecting…/Connection lost" banner (§14.6, §16.2). Backend `after`/`updatedAfter` params are opt-in and backward-compatible (§3.4, §3.8).
 
 ---
 
