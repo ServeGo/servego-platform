@@ -17,8 +17,9 @@ import {
   Users,
   CalendarDays
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useData, useRealtime } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 
 const LEVEL_META = {
   BRONZE: { color: 'bg-orange-900/90', ring: 'ring-orange-500/40', text: 'text-orange-300', banner: 'from-orange-800 via-amber-900 to-orange-950' },
@@ -68,7 +69,8 @@ function Stat({ label, value, hint, icon: Icon, colorClass }) {
 }
 
 export default function ProviderLevelAnalytics({ providerId }) {
-  const { socketRef, fetchProviderAnalytics } = useApp();
+  const { socketRef } = useRealtime();
+  const { fetchProviderAnalytics } = useData();
 
   // Lifetime performance + levels
   const [data, setData] = useState(null);
@@ -83,15 +85,15 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const [loadingAnalytics, setLoadingAnalytics] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false } = {}) => {
     if (!providerId) return;
     setLoading(true);
     try {
       const [perf, rulesRes, promos, subHistRes] = await Promise.all([
-        api.get('/provider-performance/me'),
-        api.get('/level-rules'),
-        api.get('/promotions/me'),
-        api.get('/subscriptions/transactions')
+        cachedRequest('provider-performance/me', () => api.get('/provider-performance/me'), { force }),
+        cachedRequest('level-rules', () => api.get('/level-rules'), { force }),
+        cachedRequest('promotions/me', () => api.get('/promotions/me'), { force }),
+        cachedRequest('subscriptions/transactions', () => api.get('/subscriptions/transactions'), { force })
       ]);
       if (perf.ok) setData(perf.data);
       if (rulesRes.ok) setRules(Array.isArray(rulesRes.data) ? rulesRes.data : []);
@@ -113,7 +115,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
   useEffect(() => {
     const socket = socketRef?.current;
     if (!socket) return undefined;
-    const handler = () => load();
+    const handler = () => load({ force: true });
     socket.on('promotion', handler);
     return () => socket.off('promotion', handler);
   }, [socketRef, load]);
@@ -142,7 +144,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const handleAcknowledge = async (promotionId) => {
     try {
       const res = await api.post(`/promotions/${promotionId}/acknowledge`, {});
-      if (res.ok) await load();
+      if (res.ok) await load({ force: true });
     } catch {
       // ignore — refresh will resync
     }

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { Mail, ArrowRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export function ForgotPassword({ onNavigate }) {
-  const { forgotPassword } = useApp();
+  const { forgotPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [errorMsg, setErrorMsg] = useState('');

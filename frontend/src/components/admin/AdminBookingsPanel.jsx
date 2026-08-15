@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, X, Clock, Loader2 } from 'lucide-react';
 import { api } from '../../utils/apiClient';
+import { normalizeBooking } from '../../utils/normalizeCustomerData';
+
+const PAGE_SIZE = 20;
 
 const STATUS_BADGES = {
   pending: { label: 'Awaiting partner', cls: 'bg-amber-50 text-amber-800 border-amber-300' },
@@ -110,28 +113,62 @@ function TimelineModal({ bookingId, onClose }) {
   );
 }
 
-export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
-  const [searchId, setSearchId] = useState('');
+export default function AdminBookingsPanel({ onOverrideCancel }) {
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [timelineBookingId, setTimelineBookingId] = useState(null);
 
-  const filtered = React.useMemo(() => {
-    let arr = Array.isArray(bookings) ? bookings : [];
-    if (searchId.trim()) {
-      const q = searchId.trim().toLowerCase();
-      arr = arr.filter(bk =>
-        bk.id?.toLowerCase().includes(q) ||
-        bk.customerName?.toLowerCase().includes(q) ||
-        bk.providerName?.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter !== 'all') {
-      arr = arr.filter(bk => (bk.status || '').toLowerCase() === statusFilter);
-    }
-    return arr;
-  }, [bookings, searchId, statusFilter]);
-
   const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'ongoing', 'completed', 'cancelled'];
+
+  // Debounce the search box so each keystroke does not fire a request.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const fetchPage = useCallback(async ({ cursor = null, append = false } = {}) => {
+    const params = new URLSearchParams({ mode: 'cursor', limit: String(PAGE_SIZE) });
+    if (statusFilter !== 'all') params.set('status', statusFilter.toUpperCase());
+    if (debouncedSearch) params.set('adminSearch', debouncedSearch);
+    if (cursor) params.set('cursor', cursor);
+
+    if (append) setLoadingMore(true); else setLoading(true);
+    setError('');
+
+    const res = await api.get(`/bookings?${params.toString()}`);
+    if (!res.ok) {
+      setError(res.data?.message || 'Failed to load bookings.');
+      setLoading(false);
+      setLoadingMore(false);
+      return;
+    }
+
+    const data = res.data || {};
+    const incoming = (data.bookings || []).map(normalizeBooking);
+    setRows(prev => append ? [...prev, ...incoming] : incoming);
+    setTotal(data.pagination?.total ?? 0);
+    setNextCursor(data.pagination?.nextCursor ?? null);
+    setHasMore(!!data.pagination?.hasMore);
+    setLoading(false);
+    setLoadingMore(false);
+  }, [statusFilter, debouncedSearch]);
+
+  useEffect(() => {
+    fetchPage({ cursor: null, append: false });
+  }, [fetchPage]);
+
+  const loadMore = () => {
+    if (!nextCursor || loadingMore || loading) return;
+    fetchPage({ cursor: nextCursor, append: true });
+  };
 
   return (
     <div className="space-y-6">
@@ -149,8 +186,8 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
-            value={searchId}
-            onChange={e => setSearchId(e.target.value)}
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
             placeholder="Search by Booking ID, customer, provider..."
             className="w-full bg-slate-50 border border-slate-200 focus:border-teal-500 rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold outline-none"
           />
@@ -183,12 +220,24 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filtered.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-xs text-slate-400 italic">
+                    <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading bookings...</span>
+                  </td>
+                </tr>
+              )}
+              {!loading && error && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-xs text-rose-600 font-semibold">{error}</td>
+                </tr>
+              )}
+              {!loading && !error && rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-xs text-slate-400 italic">No bookings match your filter.</td>
                 </tr>
               )}
-              {filtered.map(bk => (
+              {rows.map(bk => (
                 <tr key={bk.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="py-4 px-5 font-mono font-bold text-slate-900 text-[11px]">{bk.id}</td>
                   <td className="py-4 px-5">
@@ -228,10 +277,18 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
-        {filtered.length === 0 && (
+        {loading && (
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-400 py-10">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading bookings...
+          </div>
+        )}
+        {!loading && error && (
+          <p className="text-xs text-rose-600 font-semibold text-center py-8">{error}</p>
+        )}
+        {!loading && !error && rows.length === 0 && (
           <p className="text-xs text-slate-400 italic text-center py-8">No bookings match your filter.</p>
         )}
-        {filtered.map(bk => (
+        {rows.map(bk => (
           <div key={bk.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono font-bold text-slate-900 text-xs">{bk.id}</span>
@@ -269,6 +326,23 @@ export default function AdminBookingsPanel({ bookings, onOverrideCancel }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Pagination footer */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <p className="text-[11px] text-slate-400 font-semibold">
+          Showing {rows.length} of {total} booking{total === 1 ? '' : 's'}
+        </p>
+        {hasMore && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore || loading}
+            className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold px-5 py-2.5 text-xs rounded-xl transition-colors"
+          >
+            {loadingMore && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Load more
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 import { Menu, X, Bell, User, ChevronDown, LogOut } from 'lucide-react';
 
 export default function Navbar({
@@ -13,7 +13,8 @@ export default function Navbar({
   adminActiveTab,
   setAdminActiveTab,
 }) {
-  const { currentUser, notifications, markNotificationAsRead, clearNotifications, logout } = useApp();
+  const { currentUser, logout } = useAuth();
+  const { notifications, markNotificationAsRead, clearNotifications } = useData();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
@@ -260,7 +261,7 @@ export default function Navbar({
               </button>
 
               {notifDropdownOpen && (
-                <div className="absolute right-0 mt-3 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-50 text-xs">
+                <div className="fixed left-4 right-4 top-16 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-4 text-xs sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-80">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
                     <span className="font-extrabold text-slate-950 block uppercase text-[10px] tracking-wide">
                       Notifications
@@ -330,7 +331,7 @@ export default function Navbar({
                     <button
                       onClick={() => {
                         setUserDropdownOpen(false);
-                        setProviderActiveTab('availability');
+                        setProviderActiveTab('profile');
                       }}
                       className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block"
                     >
@@ -430,7 +431,7 @@ export default function Navbar({
               </button>
 
               {notifDropdownOpen && (
-                <div className="absolute right-0 mt-3 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-50 text-xs text-slate-700 max-h-96 overflow-y-auto text-left">
+                <div className="fixed left-4 right-4 top-16 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-4 text-xs text-slate-700 max-h-96 overflow-y-auto text-left sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-80">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3 font-semibold">
                     <span className="font-extrabold text-slate-900 block uppercase text-[10px] tracking-wide">Notifications alert</span>
                     <button onClick={() => clearNotifications()} className="hover:underline text-[9px] text-teal-700 font-bold">Clear all</button>

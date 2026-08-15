@@ -7,6 +7,7 @@ import {
 } from '../services/providerLevelService.js';
 import { getPerformance } from '../services/providerPerformanceService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { providerPerformanceSummary } from '../utils/serializers.js';
 
 async function resolveProviderId(req) {
   const provider = await prisma.provider.findUnique({
@@ -44,37 +45,13 @@ export const ProviderBusinessController = {
             experienceYears: true,
             serviceFee: true,
             latitude: true,
-            longitude: true,
-            subscription: {
-              select: {
-                level: true,
-                remainingLeads: true,
-                status: true,
-                paymentStatus: true,
-                leadCount: true,
-                price: true,
-                discountAmount: true,
-                finalAmount: true,
-                paymentMethod: true,
-                transactionId: true,
-                invoiceNumber: true,
-                lastPurchaseAt: true,
-                activatedAt: true,
-                sector: true,
-                planId: true,
-                plan: true
-              }
-            }
+            longitude: true
           }
         }),
         getPerformance(providerId)
       ]);
 
-      return sendApiSuccess(res, 200, {
-        provider,
-        performance,
-        levelOrder: levelOrder()
-      });
+      return sendApiSuccess(res, 200, providerPerformanceSummary(provider, performance, levelOrder()));
     } catch (err) {
       return errorResponse(res, err, 'Failed to load provider performance.');
     }

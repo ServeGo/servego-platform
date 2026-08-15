@@ -50,7 +50,7 @@ Source: `backend/routes/api.js`
 
 ## [bookings]
 ### GET
-- /bookings
+- /bookings (optional `?updatedAfter=<ISO timestamp>` → rows with newer `updatedAt`, reconnect resync)
 - /bookings/mine
 - /bookings/:id/timeline
 - /bookings/:id
@@ -64,7 +64,7 @@ Source: `backend/routes/api.js`
 
 ## [notifications]
 ### GET
-- /notifications
+- /notifications (optional `?after=<notificationId|ISO timestamp>` → rows newer than lastSeen, reconnect resync)
 - /notifications/mine
 
 ### POST

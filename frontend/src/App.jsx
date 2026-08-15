@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider, useAuth, useData, useUI, useRealtime } from './context/AppContext';
 import { api as apiClient } from './utils/apiClient';
 import './cursor.css';
 
@@ -21,6 +21,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CustomerBottomNav from './components/CustomerBottomNav';
+import ProviderBottomNav from './components/ProviderBottomNav';
 import ActionSpinnerOverlay from './components/ActionSpinnerOverlay';
 
 
@@ -108,10 +109,20 @@ const updateBrowserRoute = (page, categoryId = null, tab = null) => {
 };
 
 export function MainLayout() {
-  const { currentUser, logout, notifications, actionSpinner, isInitializing } = useApp();
+  const { currentUser, logout, isInitializing } = useAuth();
+  const { notifications, bookings } = useData();
+  const { actionSpinner } = useUI();
+  const { connectionStatus } = useRealtime();
 
   const unreadNotifications = (notifications || []).filter(
     (n) => n.userId === currentUser?.id && !n.isRead
+  ).length;
+
+  // Active jobs for this provider — mirrors the dashboard's "Leads" tab count.
+  const providerLeadsCount = (bookings || []).filter(
+    (b) =>
+      b.providerId === currentUser?.providerId &&
+      ['pending', 'confirmed', 'ongoing'].includes(b.status)
   ).length;
 
   const [currentPage, setCurrentPage] = useState('home');
@@ -715,6 +726,20 @@ export function MainLayout() {
     <div className="flex flex-col min-h-screen">
       <ActionSpinnerOverlay isOpen={!!actionSpinner?.isOpen} message={actionSpinner?.message} />
 
+      {currentUser && connectionStatus !== 'online' && (
+        <div
+          role="status"
+          className="bg-amber-500/90 text-white text-center text-xs font-semibold px-4 py-1.5 flex items-center justify-center gap-2"
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse shrink-0" />
+          <span>
+            {connectionStatus === 'offline'
+              ? 'Connection lost. You may be seeing outdated info — retrying in the background.'
+              : 'Reconnecting to live updates…'}
+          </span>
+        </div>
+      )}
+
       {currentUser &&
         siteFlags.newFeature.enabled &&
         siteFlags.newFeature.text &&
@@ -761,6 +786,17 @@ export function MainLayout() {
           onNavigate={handlePageTransition}
           setCustomerActiveTab={setCustomerActiveTabExternal}
           notificationsCount={unreadNotifications}
+        />
+      )}
+
+      {/* Mobile sticky bottom navigation for the provider role (native-app feel) */}
+      {currentUser?.role === 'provider' && (
+        <ProviderBottomNav
+          currentPage={currentPage}
+          activeTab={providerActiveTabExternal}
+          setProviderActiveTab={setProviderActiveTabExternal}
+          onNavigate={handlePageTransition}
+          leadsCount={providerLeadsCount}
         />
       )}
     </div>

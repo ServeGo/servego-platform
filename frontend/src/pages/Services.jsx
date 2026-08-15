@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth, useData, useUI } from '../context/AppContext';
 
 // Components
 import ServiceHeader from '../components/ServiceHeader';
 import ServiceCard from '../components/ServiceCard';
 import SupportBanner from '../components/SupportBanner';
+import SkeletonLoader from '../components/SkeletonLoader';
 
+// Live search only fires after the user pauses typing (see the search effect
+// below) — typing "plum → plumb → plumbe → plumber" sends one request, not four.
+const SEARCH_DEBOUNCE_MS = 350;
 
 export const Services = ({ onNavigate }) => {
   const {
@@ -14,13 +18,17 @@ export const Services = ({ onNavigate }) => {
     setCategory,
     selectedArea,
     setArea,
-    searchServices,
-    currentUser
-  } = useApp();
+  } = useUI();
+  const { searchServices } = useData();
+  const { currentUser } = useAuth();
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const debounceTimerRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const searchSeqRef = useRef(0);
 
   // On mount: read ?query= and ?location= from URL and seed the search state
   useEffect(() => {
@@ -33,15 +41,32 @@ export const Services = ({ onNavigate }) => {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    searchServices(searchQuery, selectedArea).then((data) => {
-      if (!cancelled) {
-        setResults(data);
-        setIsLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
+    // Debounce the keystrokes, then cancel the previous in-flight request
+    // before firing the new one so only the final paused query hits the server.
+    clearTimeout(debounceTimerRef.current);
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+
+    const seq = ++searchSeqRef.current;
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    debounceTimerRef.current = setTimeout(() => {
+      if (seq !== searchSeqRef.current) return;
+      setIsLoading(true);
+      searchServices(searchQuery, selectedArea, controller.signal).then((data) => {
+        // `data` is null for aborted requests; the seq guard also rejects any
+        // response that raced past the abort.
+        if (seq === searchSeqRef.current && data) {
+          setResults(data);
+          setIsLoading(false);
+        }
+      });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimerRef.current);
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+    };
   }, [searchQuery, selectedArea, searchServices]);
 
   // Live filtering: every keystroke updates the searchQuery
@@ -89,7 +114,9 @@ export const Services = ({ onNavigate }) => {
         />
 
         {isLoading ? (
-          <div className="text-center py-20 text-sm font-semibold text-slate-500">Loading services…</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <SkeletonLoader type="card" count={6} />
+          </div>
         ) : results.length === 0 && searchQuery.trim() ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-xs max-w-xl mx-auto">
             <h3 className="text-xl font-bold text-slate-900">No Services Match "{searchQuery}"</h3>

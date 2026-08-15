@@ -88,6 +88,7 @@ model Notification {
   @@index([createdAt])
   @@index([type])
   @@index([userId, isRead])
+  @@index([userId, createdAt])
 
   user      User     @relation(fields: [userId], references: [id])
 }
@@ -169,6 +170,7 @@ model Provider {
   @@index([isFeatured])
   @@index([createdAt])
   @@index([accountStatus])
+  @@index([accountStatus, isVerified])
 
   bookings          Booking[]
   user              User      @relation(fields: [userId], references: [id])
@@ -263,6 +265,7 @@ model ProviderServiceRequest {
   providerServices     ProviderService[]
 
   @@index([status, createdAt])
+  @@index([providerId, status])
 }
 
 
@@ -330,6 +333,8 @@ model Booking {
   @@index([createdAt])
   @@index([customerId, status])
   @@index([providerId, status])
+  @@index([status, createdAt])
+  @@index([providerId, createdAt])
 
   customer        User          @relation("CustomerBookings", fields: [customerId], references: [id])
   provider        Provider      @relation(fields: [providerId], references: [id])
@@ -393,6 +398,7 @@ model Review {
   @@unique([bookingId])
   @@index([providerId, createdAt])
   @@index([reviewerId])
+  @@index([createdAt])
 }
 
 enum UserRole {
@@ -603,6 +609,7 @@ model SubscriptionTransaction {
   @@index([providerId])
   @@index([purchasedAt])
   @@index([gatewayOrderId])
+  @@index([providerId, purchasedAt])
 }
 
 // Monthly platform fee — one billing account per user (provider or customer).
@@ -706,6 +713,9 @@ model Lead {
   @@index([status])
   @@index([expiryTime])
   @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([customerId, createdAt])
+  @@index([status, expiryTime])
 }
 
 model LeadAssignmentHistory {
@@ -801,6 +811,7 @@ model PermanentServiceRequest {
   @@index([customerId])
   @@index([status])
   @@index([serviceCategory])
+  @@index([status, createdAt])
 
   customer         User     @relation("CustomerServiceRequests", fields: [customerId], references: [id])
   assignedProvider Provider? @relation("PermanentServiceAssignments", fields: [assignedProviderId], references: [id])
@@ -964,6 +975,8 @@ model WalletWithdrawalRequest {
   @@index([providerId])
   @@index([status])
   @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
 }
 
 // Admin-configurable platform settings (lead timeout, radius, commission, discounts, thresholds...).
@@ -1101,6 +1114,7 @@ model Job {
   @@index([status, availableAt])
   @@index([type, status])
   @@index([dedupeKey])
+  @@index([type, status, availableAt])
 }
 
 model PlatformDailyStat {

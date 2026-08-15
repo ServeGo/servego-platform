@@ -1,8 +1,9 @@
 import prisma from '../prisma/client.js';
-import { recordJobCancelled } from '../services/providerPerformanceService.js';
+import { recordJobCancelled, recordLeadOffered } from '../services/providerPerformanceService.js';
 import {
   createBookingWithLead,
   acceptLeadForBooking,
+  startBookingWork,
   completeBooking,
   rejectLead,
   redistributeLead,
@@ -22,11 +23,12 @@ import {
   notifySubscriptionExpired,
   notifyRemainingLeadsLow
 } from '../services/notificationService.js';
-import { enqueueJob } from '../services/queue/queueService.js';
+import { enqueueJob, isQueueEnabled } from '../services/queue/queueService.js';
 import { bookingRequestEmail, bookingCompletedEmail } from '../services/emailService.js';
 import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { bookingListItem } from '../utils/serializers.js';
 import { parsePagination, offsetMeta, parseCursor, sliceCursorPage } from '../utils/pagination.js';
 import {
   updateProviderLocation,
@@ -48,6 +50,19 @@ const BOOKING_INCLUDE = {
   service: true,
 };
 
+// List rows only render the service label — don't pull full Service rows
+// (description, popularIssues JSON) onto every booking of the page. The full
+// shape stays on the single-booking `getById` path.
+const BOOKING_LIST_INCLUDE = {
+  customer: { select: { id: true, name: true, email: true, phone: true } },
+  provider: {
+    include: {
+      user: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
+    }
+  },
+  service: { select: { id: true, name: true } },
+};
+
 /**
  * Enqueue a side-effect job without blocking the request. Failures to enqueue
  * are logged and swallowed — the core booking state is already committed.
@@ -58,18 +73,60 @@ function fireAndForget(job) {
   });
 }
 
+/**
+ * Offered-count bookkeeping is derived analytics — it must never sit on the
+ * customer's critical path. With queue workers enabled the increments are
+ * drained as `performance` jobs; when the queue is disabled (dev/test) we fall
+ * back to direct writes so behaviour is unchanged. Failures are logged, never
+ * fatal — the booking transaction has already committed by this point.
+ */
+function trackLeadOffers(providerIds) {
+  if (isQueueEnabled()) {
+    for (const providerId of providerIds) {
+      fireAndForget({ type: 'performance', payload: { action: 'leadOffered', providerId } });
+    }
+    return null;
+  }
+  return Promise.allSettled(providerIds.map((providerId) => recordLeadOffered(providerId))).then((results) => {
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error('[BookingController] Lead-offered bookkeeping failed:', result.reason?.message);
+      }
+    }
+  });
+}
+
 export const BookingController = {
   getAll: async (req, res) => {
     try {
-      const { page = 1, limit = 50, status, providerId, customerId, adminSearch } = req.query;
+      const { page = 1, limit = 50, status, statuses, providerId, customerId, adminSearch } = req.query;
       const maxLimit = Math.min(100, Math.max(1, parseInt(limit)));
 
+      // Accept a single `status` or a comma-separated `statuses` list (e.g.
+      // `statuses=CONFIRMED,ONGOING` for grouped tabs). Both are normalized so
+      // lowercase/aliased values from the UI resolve against the stored enum.
+      const BOOKING_STATUSES = ['PENDING', 'CONFIRMED', 'ONGOING', 'COMPLETED', 'CANCELLED'];
+      const normalizeStatus = (raw) => {
+        const s = String(raw || '').trim().toUpperCase().replace('REVIEWED', 'COMPLETED');
+        return BOOKING_STATUSES.includes(s) ? s : null;
+      };
+
       const where = {};
-      if (status) where.status = status;
+      const statusList = [
+        ...(status ? [normalizeStatus(status)] : []),
+        ...(statuses ? String(statuses).split(',').map(normalizeStatus) : [])
+      ].filter(Boolean);
+      if (statusList.length === 1) where.status = statusList[0];
+      else if (statusList.length > 1) where.status = { in: statusList };
       if (providerId) where.providerId = providerId;
       if (customerId) where.customerId = customerId;
       if (req.user.role === 'admin' && adminSearch) {
-        where.id = { equals: String(adminSearch).trim() };
+        const q = String(adminSearch).trim();
+        where.OR = [
+          { id: { contains: q, mode: 'insensitive' } },
+          { customer: { name: { contains: q, mode: 'insensitive' } } },
+          { provider: { user: { name: { contains: q, mode: 'insensitive' } } } }
+        ];
       }
 
       if (req.user.role === 'provider') {
@@ -88,6 +145,16 @@ export const BookingController = {
         where.providerId = provider.id;
       } else if (req.user.role === 'customer') {
         where.customerId = req.user.id;
+      }
+
+      // Realtime-recovery sync: `?updatedAfter=<ISO timestamp>` returns only
+      // rows touched after the client's lastSeen watermark (server time, never
+      // the client clock). Bookings store an updatedAt on every mutation, so a
+      // status/assignment change made while the socket was down is replayed.
+      const updatedAfter = String(req.query.updatedAfter || '').trim();
+      if (updatedAfter) {
+        const ts = new Date(updatedAfter);
+        if (!Number.isNaN(ts.getTime())) where.updatedAt = { gt: ts };
       }
 
       const cursorToken = String(req.query.cursor || '').trim();
@@ -110,7 +177,7 @@ export const BookingController = {
         const [raw, total] = await Promise.all([
           prisma.booking.findMany({
             where: { ...where, ...cursorWhere },
-            include: BOOKING_INCLUDE,
+            include: BOOKING_LIST_INCLUDE,
             take: maxLimit + 1,
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
           }),
@@ -118,7 +185,10 @@ export const BookingController = {
         ]);
 
         const { items, nextCursor, hasMore } = sliceCursorPage(raw, maxLimit);
-        return sendApiSuccess(res, 200, { bookings: items, pagination: { total, nextCursor, hasMore } });
+        return sendApiSuccess(res, 200, {
+          bookings: items.map(bookingListItem),
+          pagination: { total, nextCursor, hasMore }
+        });
       }
 
       const skip = (Math.max(1, parseInt(page)) - 1) * maxLimit;
@@ -126,7 +196,7 @@ export const BookingController = {
       const [bookings, total] = await Promise.all([
         prisma.booking.findMany({
           where,
-          include: BOOKING_INCLUDE,
+          include: BOOKING_LIST_INCLUDE,
           skip,
           take: maxLimit,
           orderBy: { createdAt: 'desc' }
@@ -135,7 +205,7 @@ export const BookingController = {
       ]);
 
       return sendApiSuccess(res, 200, {
-        bookings,
+        bookings: bookings.map(bookingListItem),
         pagination: offsetMeta(total, parseInt(page), maxLimit)
       });
     } catch (err) {
@@ -234,10 +304,11 @@ export const BookingController = {
 
       const io = req.app.get('socketio');
       if (io) {
-        // Broadcast the request to every eligible subscribed provider at once.
-        // Parallel: each notification is independent; serial round trips here
-        // made the request blow past the 30s timeout.
-        await Promise.all(
+        // Real-time pushes are off the customer's critical path. The socket
+        // emits happen within milliseconds, but the request does not wait for
+        // them — the response returns as soon as the booking transaction
+        // commits. Persistence is handled by the queue workers.
+        void Promise.allSettled(
           (result.providers || []).map((provider) =>
             notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider))
           )
@@ -245,6 +316,11 @@ export const BookingController = {
         io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id, status: 'PENDING' });
       }
       scheduleLeadExpiry(result.lead, io);
+
+      // Offered-count bookkeeping for every provider the request was broadcast
+      // to — drained asynchronously by the queue.
+      const offerTracking = trackLeadOffers((result.providers || []).map((p) => p.id));
+      if (offerTracking) await offerTracking;
 
       // Decoupled side-effects — emails, analytics and invoices are drained by
       // queue workers so the request returns before any slow work runs.
@@ -351,36 +427,23 @@ export const BookingController = {
         return handleCancellation(req, res, { booking, provider, requesterId, role, note, io });
       }
 
-      // ONGOING — provider starts work: record the start time + performance metric.
-      const newHistory = buildStatusHistory(booking.statusHistory, updatedStatus, note);
-      const updated = await prisma.booking.update({
-        where: { id },
-        data: {
-          status: updatedStatus,
-          startedAt: updatedStatus === 'ONGOING' ? new Date() : null,
-          statusHistory: newHistory
-        },
-        include: BOOKING_INCLUDE
+      // ONGOING — provider starts work. The transition (CONFIRMED → ONGOING) is
+      // enforced atomically inside startBookingWork; the controller never writes
+      // booking.status directly.
+      const started = await startBookingWork({
+        bookingId: id,
+        actorId: requesterId,
+        actorRole: role,
+        note: note || null
       });
+      const updated = await prisma.booking.findUnique({ where: { id }, include: BOOKING_INCLUDE });
 
-      if (updatedStatus === 'ONGOING') {
-        fireAndForget({ type: 'performance', payload: { action: 'jobStarted', providerId: booking.providerId } });
-      }
+      fireAndForget({ type: 'performance', payload: { action: 'jobStarted', providerId: booking.providerId } });
 
-      await prisma.bookingEvent.create({
-        data: {
-          bookingId: id,
-          actorId: requesterId,
-          actorRole: role,
-          action: `STATUS_${updatedStatus}`,
-          note: note || null
-        }
-      });
-
-      await notifyBookingStatusChanged(io, booking, updatedStatus, provider?.userId);
+      await notifyBookingStatusChanged(io, booking, 'ONGOING', provider?.userId);
       if (io) {
-        io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: updated.id, status: updatedStatus });
-        if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: updated.id, status: updatedStatus });
+        io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: updated.id, status: 'ONGOING' });
+        if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: updated.id, status: 'ONGOING' });
       }
 
       return sendApiSuccess(res, 200, updated);
@@ -689,6 +752,13 @@ async function handleCompletion(req, res, { booking, provider, io }) {
 
 async function handleCancellation(req, res, { booking, provider, requesterId, role, note, io }) {
   try {
+    // Idempotency: a booking that is already cancelled is a no-op. A second
+    // click/retry returns the current row instead of re-running side effects.
+    if (normalizeBookingStatus(booking.status) === 'CANCELLED') {
+      const current = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+      return sendApiSuccess(res, 200, current);
+    }
+
     const providerId = booking.providerId;
     const actorRole = role === 'provider' ? 'PROVIDER' : role === 'admin' ? 'ADMIN' : 'CUSTOMER';
     const lead = await prisma.lead.findUnique({ where: { bookingId: booking.id } });
@@ -735,9 +805,15 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
         redistribution = await redistributeLead({
           leadId: lead.id,
           reason: 'PROVIDER_CANCELLED',
-          details: { cancelledBy: 'provider', reason: note || null }
+          details: { cancelledBy: 'provider', reason: note || null },
+          expectedProviderId: providerId
         });
         updated = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+      }
+
+      if (redistribution?.alreadyHandled) {
+        // A concurrent cancel already re-pointed this lead — nothing left to do.
+        return sendApiSuccess(res, 200, updated);
       }
 
       if (!updated) {
@@ -779,15 +855,21 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
         data: { status: 'REJECTED', lastRejectReason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED' }
       });
     }
-    await prisma.cancellationReason.create({
-      data: {
-        bookingId: booking.id,
-        leadId: lead?.id || null,
-        actor: actorRole,
-        actorId: requesterId,
-        reason: note || (actorRole === 'CUSTOMER' ? 'Customer cancelled the booking' : 'Admin cancelled the booking')
-      }
+    const existingReason = await prisma.cancellationReason.findFirst({
+      where: { bookingId: booking.id, actor: actorRole },
+      select: { id: true }
     });
+    if (!existingReason) {
+      await prisma.cancellationReason.create({
+        data: {
+          bookingId: booking.id,
+          leadId: lead?.id || null,
+          actor: actorRole,
+          actorId: requesterId,
+          reason: note || (actorRole === 'CUSTOMER' ? 'Customer cancelled the booking' : 'Admin cancelled the booking')
+        }
+      });
+    }
 
     const updated = await cancelBookingPlain(booking, requesterId, role, note);
     await notifyBookingStatusChanged(io, booking, 'CANCELLED', provider?.userId);
@@ -807,16 +889,19 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
 
 async function cancelBookingPlain(booking, requesterId, role, note) {
   const newHistory = buildStatusHistory(booking.statusHistory, 'CANCELLED', note);
-  const updated = await prisma.booking.update({
-    where: { id: booking.id },
+  const transitioned = await prisma.booking.updateMany({
+    where: { id: booking.id, status: { not: 'CANCELLED' } },
     data: {
       status: 'CANCELLED',
       statusHistory: newHistory,
       cancelledBy: requesterId,
       cancelledReason: note || null
-    },
-    include: BOOKING_INCLUDE
+    }
   });
+  if (transitioned.count === 0) {
+    // Already cancelled — idempotent no-op. Never duplicate the event/analytics.
+    return prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
+  }
   await prisma.bookingEvent.create({
     data: {
       bookingId: booking.id,
@@ -827,5 +912,5 @@ async function cancelBookingPlain(booking, requesterId, role, note) {
     }
   });
   fireAndForget({ type: 'analytics', payload: { bookingsCancelled: 1 } });
-  return updated;
+  return prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
 }

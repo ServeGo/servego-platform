@@ -142,8 +142,26 @@ export const UserController = {
             providerId: true,
             createdAt: true,
             updatedAt: true,
-            customerProfile: true,
-            providerProfile: true
+            // Admin tables render profile scalars only. Don't pull the large
+            // JSON array columns (specialties, serviceAreas, timeSlots,
+            // availableDays) for every user on the page.
+            customerProfile: {
+              select: { id: true, address: true, pincode: true, createdAt: true }
+            },
+            providerProfile: {
+              select: {
+                id: true,
+                category: true,
+                rating: true,
+                reviewCount: true,
+                accountStatus: true,
+                isVerified: true,
+                verificationLevel: true,
+                providerLevel: true,
+                profileComplete: true,
+                createdAt: true
+              }
+            }
           },
           skip,
           take: Math.min(100, Math.max(1, parseInt(limit))),

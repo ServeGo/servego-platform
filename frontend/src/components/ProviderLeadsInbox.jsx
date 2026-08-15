@@ -16,8 +16,10 @@ import {
   Navigation,
   UserCheck
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useRealtime, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { getErrorInfo } from '../utils/errorMessages';
+import SkeletonLoader from './SkeletonLoader';
 
 const LEAD_STATUS_LABELS = {
   NEW: 'New',
@@ -82,7 +84,8 @@ function formatCountdown(ms) {
 }
 
 export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) {
-  const { socketRef } = useApp();
+  const { socketRef } = useRealtime();
+  const { mergeBooking, removeBooking } = useData();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -90,7 +93,16 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [actionErrorAction, setActionErrorAction] = useState(null);
   const [viewedIds, setViewedIds] = useState(() => new Set());
+
+  // Rule 19: resolve friendly copy + optional recovery action from the backend
+  // code instead of echoing a raw message.
+  const showActionError = (payload, fallback) => {
+    const info = getErrorInfo(payload, fallback);
+    setActionError(info.message);
+    setActionErrorAction(info.action);
+  };
 
   const fetchLeads = useCallback(async (silent = false) => {
     if (!providerId) return;
@@ -101,10 +113,10 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
         setLeads(Array.isArray(res.data?.leads) ? res.data.leads : []);
         setError('');
       } else {
-        setError(res.data?.message || res.data?.error || 'Failed to load leads.');
+        setError(getErrorInfo(res.data, 'Failed to load leads.').message);
       }
     } catch (e) {
-      setError('Network error while loading leads.');
+      setError(getErrorInfo(e, 'Failed to load leads.').message);
     } finally {
       setLoading(false);
     }
@@ -114,24 +126,88 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     fetchLeads();
   }, [fetchLeads]);
 
-  // Real-time: refresh whenever a lead/booking event arrives on the shared socket.
+  // Real-time: upsert/patch lead cards from the granular socket payloads instead
+  // of refetching the whole inbox. The 30s poll below is the reconciliation net.
   useEffect(() => {
     const socket = socketRef?.current;
     if (!socket) return undefined;
-    const events = [
-      'newLead',
-      'leadExpired',
-      'leadAccepted',
-      'leadRejected',
-      'bookingUpdated',
-      'bookingStatusChanged',
-      'booking:cancelled',
-      'notification'
-    ];
-    const handler = () => fetchLeads(true);
-    events.forEach((ev) => socket.on(ev, handler));
-    return () => events.forEach((ev) => socket.off(ev, handler));
-  }, [socketRef, fetchLeads]);
+
+    // `buildLeadPayload` (backend) → shape compatible with a `GET /leads` row.
+    const toLead = (payload) => {
+      if (!payload?.leadId) return null;
+      return {
+        id: payload.leadId,
+        bookingId: payload.bookingId ?? payload.booking?.id ?? null,
+        serviceCategory: payload.serviceCategory ?? null,
+        status: payload.status ?? 'NEW',
+        distanceKm: payload.distanceKm ?? null,
+        notes: payload.notes ?? null,
+        expiryTime: payload.expiryTime ?? null,
+        transferCount: payload.transferCount ?? 0,
+        createdAt: payload.createdAt ?? new Date().toISOString(),
+        customer: payload.customer || null,
+        booking: payload.booking || null
+      };
+    };
+
+    // New / transferred offer (newLead) — show it immediately.
+    const handleNewLead = (payload) => {
+      const lead = toLead(payload);
+      if (!lead) return;
+      setLeads(prev => {
+        const idx = prev.findIndex(l => l.id === lead.id);
+        if (idx === -1) return [lead, ...prev];
+        const next = [...prev];
+        next[idx] = lead;
+        return next;
+      });
+    };
+
+    // Offer is no longer current (accepted by another provider / reassigned
+    // away) — the backend drops these from GET /leads, so drop them here too.
+    const handleOfferClosed = (payload) => {
+      const bookingId = payload?.bookingId ?? payload?.booking?.id;
+      if (!bookingId) return;
+      setLeads(prev => prev.filter(l => l.bookingId !== bookingId));
+    };
+
+    // Lead reached a terminal state (EXPIRED, etc.) — merge the payload fields.
+    const handleLeadState = (payload) => {
+      const lead = toLead(payload);
+      if (!lead?.id) return;
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...lead } : l));
+    };
+
+    // The embedded booking changed status (CONFIRMED/ONGOING/CANCELLED…) —
+    // patch it in place, and if this provider accepted (booking → CONFIRMED)
+    // move the actionable lead to the Active Duty tab.
+    const handleBookingStatus = (payload) => {
+      const bookingId = payload?.bookingId;
+      const status = payload?.status || payload?.booking?.status;
+      if (!bookingId || !status) return;
+      setLeads(prev => prev.map(l => {
+        if (l.bookingId !== bookingId) return l;
+        const leadStatus = (l.status === 'NEW' || l.status === 'VIEWED') &&
+          (status === 'CONFIRMED' || status === 'ONGOING')
+          ? 'ACCEPTED'
+          : l.status;
+        return { ...l, status: leadStatus, booking: { ...(l.booking || {}), status } };
+      }));
+    };
+
+    const handlers = {
+      newLead: handleNewLead,
+      leadExpired: handleLeadState,
+      leadCancelled: handleOfferClosed,
+      leadReassigned: handleOfferClosed,
+      bookingUpdated: handleBookingStatus,
+      bookingStatusChanged: handleBookingStatus,
+      'booking:cancelled': handleBookingStatus,
+      'booking:statusChanged': handleBookingStatus
+    };
+    Object.entries(handlers).forEach(([event, handler]) => socket.on(event, handler));
+    return () => Object.entries(handlers).forEach(([event, handler]) => socket.off(event, handler));
+  }, [socketRef]);
 
   // Poll fallback every 30s (identical cadence to the app's booking poll).
   useEffect(() => {
@@ -218,12 +294,19 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     try {
       const res = await api.patch(`/leads/${lead.id}/accept`, {});
       if (res.ok) {
-        await fetchLeads(true);
+        // The accept response is the canonical CONFIRMED booking — merge it into
+        // the jobs list (replaces the PENDING row or prepends for a new one).
+        setLeads(prev => prev.map(l =>
+          l.id === lead.id
+            ? { ...l, status: 'ACCEPTED', booking: { ...(l.booking || {}), status: 'CONFIRMED' } }
+            : l
+        ));
+        if (res.data?.id) mergeBooking(res.data);
       } else {
-        setActionError(res.data?.message || res.data?.error || 'Could not accept the lead.');
+        showActionError(res.data, 'Could not accept the lead.');
       }
     } catch (e) {
-      setActionError('Network error while accepting the lead.');
+      showActionError(e, 'Could not accept the lead.');
     } finally {
       setBusyId(null);
     }
@@ -236,12 +319,17 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     try {
       const res = await api.patch(`/leads/${lead.id}/reject`, { reason: 'PROVIDER_DECLINED' });
       if (res.ok) {
-        await fetchLeads(true);
+        // The declined offer leaves this provider's inbox (their offer is closed).
+        setLeads(prev => prev.filter(l => l.id !== lead.id));
+        // If the request was re-pointed to the next provider, drop the stale
+        // PENDING row from the jobs list. When it settled the booking:cancelled
+        // socket event marks the booking CANCELLED in place.
+        if (lead.bookingId && res.data?.status === 'PENDING') removeBooking(lead.bookingId);
       } else {
-        setActionError(res.data?.message || res.data?.error || 'Could not decline the lead.');
+        showActionError(res.data, 'Could not decline the lead.');
       }
     } catch (e) {
-      setActionError('Network error while declining the lead.');
+      showActionError(e, 'Could not decline the lead.');
     } finally {
       setBusyId(null);
     }
@@ -249,32 +337,56 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
 
   const handleStartWork = async (lead) => {
     if (!lead.booking?.id) return;
-    const result = await updateBookingStatus(lead.booking.id, 'ongoing', 'Work started.');
-    if (result && !result.error) await fetchLeads(true);
-    else setActionError(result?.error || 'Could not start work.');
+    setBusyId(lead.id);
+    setActionError('');
+    try {
+      const result = await updateBookingStatus(lead.booking.id, 'ongoing', 'Work started.');
+      if (result && !result.error) {
+        setLeads(prev => prev.map(l => l.bookingId === lead.bookingId
+          ? { ...l, booking: { ...(l.booking || {}), status: 'ONGOING' } }
+          : l
+        ));
+      } else showActionError(result, 'Could not start work.');
+    } catch (e) {
+      showActionError(e, 'Could not start work.');
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const handleComplete = async (lead) => {
     if (!lead.booking?.id) return;
     const code = window.prompt('Ask the customer for their 4-digit verification code to complete the job:');
     if (!code) return;
-    const result = await updateBookingStatus(lead.booking.id, 'completed', 'Completed.', code.replace(/\D/g, '').slice(0, 4));
-    if (result && !result.error) await fetchLeads(true);
-    else setActionError(result?.error || 'Could not complete the job.');
+    setBusyId(lead.id);
+    setActionError('');
+    try {
+      const result = await updateBookingStatus(lead.booking.id, 'completed', 'Completed.', code.replace(/\D/g, '').slice(0, 4));
+      if (result && !result.error) {
+        setLeads(prev => prev.map(l => l.bookingId === lead.bookingId
+          ? { ...l, booking: { ...(l.booking || {}), status: 'COMPLETED' } }
+          : l
+        ));
+      } else showActionError(result, 'Could not complete the job.');
+    } catch (e) {
+      showActionError(e, 'Could not complete the job.');
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
     <div className="space-y-4">
       <div className="bg-white border border-slate-200 rounded-3xl p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
+        <div className="flex flex-col gap-4">
           <div>
             <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight text-left">Lead Inbox</h3>
             <p className="text-xs text-slate-500 font-semibold mt-1">
               Review requests fast — leads expire and pass to the next provider when you decline or wait too long.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            <div className="flex gap-2 bg-slate-50 border border-slate-200 p-1 rounded-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:justify-between">
+            <div className="flex flex-wrap gap-1.5 lg:flex-nowrap lg:gap-2 bg-slate-50 border border-slate-200 p-1 rounded-2xl">
               {[
                 { id: 'actionable', label: 'Action Required' },
                 { id: 'active', label: 'Active Duty' },
@@ -284,7 +396,7 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
                 <button
                   key={t.id}
                   onClick={() => setFilter(t.id)}
-                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all ${
+                  className={`px-3 lg:px-4 py-2 text-xs font-black rounded-xl transition-all ${
                     filter === t.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
                   }`}
                 >
@@ -298,7 +410,7 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by client, category, address, ID..."
-                className="w-full sm:w-64 bg-slate-50 border border-slate-200 focus:border-teal-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
+                className="w-full sm:w-64 lg:w-80 bg-slate-50 border border-slate-200 focus:border-teal-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
               />
               <button
                 onClick={() => fetchLeads()}
@@ -321,13 +433,23 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
       {actionError && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-2xl px-4 py-3">
           <AlertTriangle className="w-4 h-4 shrink-0" /> {actionError}
+          {actionErrorAction && (
+            <button
+              onClick={() => {
+                setActionError('');
+                setActionErrorAction(null);
+                fetchLeads(true);
+              }}
+              className="ml-1 underline font-black hover:text-amber-900"
+            >
+              {actionErrorAction}
+            </button>
+          )}
         </div>
       )}
 
       {loading && filtered.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-400 text-xs font-semibold">
-          Loading your leads...
-        </div>
+        <SkeletonLoader type="list" count={4} />
       ) : filtered.length === 0 ? (
         <EmptyInbox filter={filter} />
       ) : (
@@ -491,16 +613,18 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
         ) : bookingStatus === 'CONFIRMED' ? (
           <button
             onClick={onStartWork}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+            disabled={busy}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
           >
-            <Wrench className="w-3.5 h-3.5" /> Start Work
+            <Wrench className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Start Work'}
           </button>
         ) : bookingStatus === 'ONGOING' ? (
           <button
             onClick={onComplete}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+            disabled={busy}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
           >
-            <ShieldCheck className="w-3.5 h-3.5" /> Mark Completed (verify code)
+            <ShieldCheck className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Mark Completed (verify code)'}
           </button>
         ) : (
           <span className="text-[10px] text-slate-400 font-semibold inline-flex items-center gap-1">
@@ -515,11 +639,13 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
 /**
  * Streams the provider's device GPS to the customer in real time for a
  * confirmed/ongoing booking. Uses the live socket when connected (fast path)
- * and falls back to the REST endpoint automatically. The browser's
- * `watchPosition` cadence is already bounded by the browser + server throttle.
+ * and falls back to the REST endpoint automatically. GPS ticks are throttled
+ * client-side in `shareProviderLocation` (time + movement gates) before they
+ * reach the network; the server applies its own minimum interval as a second
+ * gate.
  */
 function ProviderLocationShare({ bookingId }) {
-  const { shareProviderLocation } = useApp();
+  const { shareProviderLocation } = useRealtime();
   const [sharing, setSharing] = useState(false);
   const [statusText, setStatusText] = useState('Share Live Location');
   const [tone, setTone] = useState('slate');
@@ -593,7 +719,7 @@ function ProviderLocationShare({ bookingId }) {
  * sees the phase update live on their tracking screen.
  */
 function ProviderDispatchControls({ booking }) {
-  const { getBookingLocation, setProviderDispatchPhase } = useApp();
+  const { getBookingLocation, setProviderDispatchPhase } = useRealtime();
   const [busy, setBusy] = useState(false);
 
   const live = getBookingLocation(booking.id);

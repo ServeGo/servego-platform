@@ -1,10 +1,10 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useData } from '../context/AppContext';
 import CategoryIcon from './CategoryIcon';
 
 export default function CategoryGrid({ categories, providers, onCategoryClick, onSeeAll }) {
-  const { services: backendServices } = useApp();
+  const { services: backendServices } = useData();
 
   // Prefer the live backend catalog used by the Services page. If the parent
   // does not provide a list yet, fall back to the app context data fetched from /services.

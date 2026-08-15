@@ -5,6 +5,7 @@ import {
 } from '../services/adminConfigService.js';
 import { listAllLeads, getLeadWithHistory } from '../services/leadService.js';
 import { invalidateLevelCache } from '../services/providerLevelService.js';
+import { getAllPlans, invalidatePlansCache } from '../services/subscriptionService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
 function errorResponse(res, err, fallback) {
@@ -42,7 +43,7 @@ export const AdminBusinessController = {
   // --- Subscription plans ---
   getPlans: async (req, res) => {
     try {
-      const plans = await prisma.subscriptionPlan.findMany({ orderBy: { level: 'asc' } });
+      const plans = await getAllPlans();
       return sendApiSuccess(res, 200, plans);
     } catch (err) {
       return errorResponse(res, err, 'Failed to load subscription plans.');
@@ -67,6 +68,7 @@ export const AdminBusinessController = {
           active: active == null ? true : Boolean(active)
         }
       });
+      invalidatePlansCache();
       return sendApiSuccess(res, 201, plan);
     } catch (err) {
       if (err.code === 'P2002') {
@@ -96,6 +98,7 @@ export const AdminBusinessController = {
           ...(active != null ? { active: Boolean(active) } : {})
         }
       });
+      invalidatePlansCache();
       return sendApiSuccess(res, 200, plan);
     } catch (err) {
       if (err.code === 'P2002') {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Search, ArrowRight, ShieldCheck, Clock, Star, UserCheck } from 'lucide-react';
+import { MapPin, Search, ArrowRight, ShieldCheck, RadioTower, Star, LifeBuoy } from 'lucide-react';
 import { HYDERABAD_NEIGHBORHOODS } from '../data';
 
 export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setInputQuery, onQuickSearch }) {
@@ -19,7 +19,9 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
         </h1>
         
         <p className="mt-5 text-slate-300 text-sm sm:text-base max-w-2xl font-medium leading-relaxed">
-          ServeGo connects customers with verified local professionals for repairs, maintenance, cleaning, and specialist services—powered by real-time booking, smart lead matching, and admin-backed support.
+          Search the catalog and share your location — ServeGo broadcasts your request to every eligible
+          specialist in your area, and the first to accept gets the job. Verified providers, live tracking,
+          and admin-backed support.
         </p>
 
         <div className="mt-8 w-full max-w-3xl rounded-[24px] border border-slate-200/80 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/20 backdrop-blur">
@@ -67,9 +69,9 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
 
         <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
           <TrustIndicator icon={<ShieldCheck className="w-4 h-4" />} title="Verified Providers" desc="Profile-approved experts" />
-          <TrustIndicator icon={<Clock className="w-4 h-4" />} title="Fast Bookings" desc="Quick lead response" />
-          <TrustIndicator icon={<Star className="w-4 h-4" />} title="Rated Professionals" desc="Quality you can trust" colorClass="text-emerald-400" bgColorClass="bg-emerald-500/20" />
-          <TrustIndicator icon={<UserCheck className="w-4 h-4" />} title="Secure Support" desc="Admin-backed assistance" colorClass="text-rose-400" bgColorClass="bg-rose-500/20" />
+          <TrustIndicator icon={<RadioTower className="w-4 h-4" />} title="Broadcast Booking" desc="Offered to every eligible specialist" />
+          <TrustIndicator icon={<Star className="w-4 h-4" />} title="Rated Professionals" desc="Reviews after every completed job" colorClass="text-emerald-400" bgColorClass="bg-emerald-500/20" />
+          <TrustIndicator icon={<LifeBuoy className="w-4 h-4" />} title="Admin Support" desc="Tickets & platform oversight" colorClass="text-rose-400" bgColorClass="bg-rose-500/20" />
         </div>
       </div>
     </section>

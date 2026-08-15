@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 
 import { ShieldAlert } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 
 // Components
 import ProviderHeader from '../components/ProviderHeader';
@@ -19,12 +20,18 @@ import ProviderWalletAmbassador from '../components/ProviderWalletAmbassador';
 
 export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
 
+  const { currentUser } = useAuth();
   const {
-    currentUser, providers, bookings, services, tickets,
+    providers, bookings, services, tickets,
+    myProviderSummary,
     updateBookingStatus, submitSupportTicket
-  } = useApp();
+  } = useData();
 
   const activeProvider = useMemo(() => {
+    // Prefer the purpose-specific dashboard summary; fall back to the providers
+    // list while it loads or if it fails, so the dashboard never flashes empty.
+    if (myProviderSummary) return myProviderSummary;
+
     const providerIdCandidate = currentUser?.providerId;
     const providerUserIdCandidate = currentUser?.id;
 
@@ -32,7 +39,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     const byUserId = providerUserIdCandidate ? providers.find(p => p.userId === providerUserIdCandidate) : null;
 
     return byProviderId || byUserId || null;
-  }, [providers, currentUser]);
+  }, [providers, currentUser, myProviderSummary]);
 
   // Single fetch for provider's approved services — shared by ProviderHeader + ProviderServicesPanel
   const [approvedServices, setApprovedServices] = useState([]);
@@ -54,9 +61,31 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     }
   }, [activeProvider?.id]);
 
+  // Progressive loading. The header and the lead inbox (the default tab) render
+  // from context + self-fetch the moment the page paints — that's the immediate
+  // tier. A short moment later the "then" tier warms the next-most-likely
+  // destinations in the background: approved services (header chips + Services
+  // tab) and the Performance / Subscription endpoints (cached in requestCache
+  // so opening those tabs resolves instantly). Services management, wallet,
+  // support and profile stay strictly tab-click (they self-fetch or read
+  // context when opened).
   useEffect(() => {
-    fetchProviderApprovedServices();
-  }, [fetchProviderApprovedServices]);
+    if (!activeProvider?.id) return undefined;
+    const warm = (key, fn) => cachedRequest(key, fn).catch(() => {});
+    const timer = setTimeout(() => {
+      fetchProviderApprovedServices();
+      warm('provider-performance/me', () => api.get('/provider-performance/me'));
+      warm('level-rules', () => api.get('/level-rules'));
+      warm('promotions/me', () => api.get('/promotions/me'));
+      warm('subscriptions/plans', () => api.get('/subscriptions/plans'));
+      warm('subscriptions/me', () => api.get('/subscriptions/me'));
+      warm('subscriptions/remaining', () => api.get('/subscriptions/remaining'));
+      warm('subscriptions/transactions', () => api.get('/subscriptions/transactions'));
+      warm('platform-fee/status', () => api.get('/platform-fee/status'));
+      warm('platform-fee/history', () => api.get('/platform-fee/history'));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeProvider?.id, fetchProviderApprovedServices]);
 
   const [internalActiveTab, setInternalActiveTab] = useState('leads');
   const activeTab = activeTabProp || internalActiveTab;
@@ -98,7 +127,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const isPending = currentUser?.status === 'pending' || !activeProvider?.isVerified;
 
   return (
-    <div id="provider-dashboard-page" className="bg-slate-50 min-h-screen py-10 px-4">
+    <div id="provider-dashboard-page" className="bg-slate-50 min-h-screen py-8 px-4 pb-24 md:py-10 md:pb-10">
       <div className="max-w-6xl mx-auto">
 
         {isPending && <PendingBanner />}
@@ -185,10 +214,20 @@ function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
   ];
 
   return (
-    <div className="flex flex-wrap gap-1 bg-white border border-slate-200 p-1.5 rounded-2xl mb-8 w-full sm:w-fit">
-      {tabs.map(t => (
-        <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-black transition-all ${activeTab === t.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{t.label}</button>
-      ))}
+    <div className="sticky top-16 z-20 -mx-4 mb-8 bg-slate-50/95 backdrop-blur px-4 pb-1 md:mx-0 md:px-0 md:bg-transparent md:backdrop-blur-none md:pb-0">
+      <div className="flex gap-1 bg-white border border-slate-200 p-1.5 rounded-2xl overflow-x-auto hide-scrollbar flex-nowrap w-full sm:w-fit">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 rounded-xl text-xs font-black transition-all ${
+              activeTab === t.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

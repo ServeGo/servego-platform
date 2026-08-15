@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { User, Briefcase, Mail, Lock, Phone, ShieldAlert, Sparkles, Eye, EyeOff } from 'lucide-react';
 
@@ -18,7 +18,7 @@ export function Signup({ onNavigate }) {
 
   const partnerApplied = getQueryParam('partnerApplied');
   const partnerMessage = decodeURIComponent(getQueryParam('partnerMessage') || '');
-  const { registerUser } = useApp();
+  const { registerUser } = useAuth();
 
 
   const [signupType, setSignupType] = useState('customer');

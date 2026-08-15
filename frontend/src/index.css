@@ -75,3 +75,19 @@
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: invert(0.8);
 }
+
+/* Notification toast entry animation */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.toast-in {
+  animation: toast-in 0.22s ease-out;
+}
+

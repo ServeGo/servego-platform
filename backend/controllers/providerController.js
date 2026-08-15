@@ -4,6 +4,24 @@ import { canPerformAction } from '../utils/permissions.js';
 import { writeAuditLog } from '../services/auditLogService.js';
 import { getRoutePlan } from '../services/providerRouteService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { providerDashboardSummary, providerDetails, providerListItem } from '../utils/serializers.js';
+
+// User columns needed to build provider DTOs. Contact fields are fetched once
+// and only ever emitted by the serializers for admins / the profile owner.
+const PROVIDER_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  avatar: true,
+  role: true,
+  status: true,
+  referralCode: true,
+  referralsCount: true,
+  referralBonusEarned: true,
+  referralDiscountBalance: true,
+  createdAt: true
+};
 
 export const ProviderController = {
   registerOwnProviderService: async (req, res) => {
@@ -91,6 +109,26 @@ export const ProviderController = {
     if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
     req.params.id = provider.id;
     return ProviderController.getProviderServices(req, res);
+  },
+
+  // Provider's own dashboard contract: profile + contact + availability + the
+  // review audit, via the purpose-specific ProviderDashboardSummary DTO.
+  getMyDashboardSummary: async (req, res) => {
+    try {
+      const provider = await prisma.provider.findUnique({
+        where: { userId: req.user.id },
+        include: {
+          user: { select: PROVIDER_USER_SELECT },
+          reviews: true,
+          badges: true,
+          availabilitySlots: true
+        }
+      });
+      if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
+      return sendApiSuccess(res, 200, providerDashboardSummary(provider));
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load provider dashboard summary', err.message);
+    }
   },
 
   registerProviderService: async (req, res) => {
@@ -207,24 +245,56 @@ export const ProviderController = {
   getAll: async (req, res) => {
     try {
       const isAdmin = req.user?.role === 'admin';
+      const isProvider = req.user?.role === 'provider';
       const publicProviderWhere = { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' } };
-      const providers = await prisma.provider.findMany({
-        // Providers retain access to their own profile even while it awaits
-        // verification or an admin account-status decision.
-        where: isAdmin ? {} : req.user?.role === 'provider' ? { OR: [publicProviderWhere, { userId: req.user.id }] } : publicProviderWhere,
-          include: {
-            user: {
-              // Public provider cards do not need contact details. Admins keep
-              // those fields for account management.
-              select: isAdmin
-                ? { id: true, name: true, email: true, phone: true, avatar: true }
-                : { id: true, name: true, avatar: true }
-            },
-            reviews: true,
-            badges: true
-          }
+
+      // Providers retain access to their own profile even while it awaits
+      // verification or an admin account-status decision. Resolve the owner's
+      // provider row so the serializer can attach their private review audit.
+      let ownProviderId = null;
+      if (isProvider) {
+        const own = await prisma.provider.findUnique({
+          where: { userId: req.user.id },
+          select: { id: true }
         });
-      return sendApiSuccess(res, 200, providers);
+        ownProviderId = own?.id || null;
+      }
+
+      const providers = await prisma.provider.findMany({
+        where: isAdmin ? {} : isProvider ? { OR: [publicProviderWhere, { userId: req.user.id }] } : publicProviderWhere,
+        include: {
+          // Public rows only need id/name/avatar for the card; contact fields
+          // are fetched for admins and the owner (whose row serializer emits them).
+          user: {
+            select: isAdmin || isProvider ? PROVIDER_USER_SELECT : { id: true, name: true, avatar: true }
+          },
+          badges: true
+        }
+      });
+
+      // The provider's own dashboard renders the review audit from this list
+      // row. Reviews for every other row are dropped (the card only uses the
+      // rating/reviewCount scalars), so load them only for the owner.
+      if (isProvider && ownProviderId) {
+        const own = providers.find((p) => p.id === ownProviderId);
+        if (own) {
+          own.reviews = await prisma.review.findMany({
+            where: { providerId: ownProviderId },
+            orderBy: { date: 'desc' }
+          });
+        }
+      }
+
+      return sendApiSuccess(
+        res,
+        200,
+        providers.map((provider) =>
+          providerListItem(provider, {
+            includeContact: isAdmin || provider.userId === req.user.id,
+            isOwnRow: isProvider && provider.userId === req.user.id
+          })
+        )
+      );
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch service partners', err.message);
     }
@@ -237,9 +307,7 @@ export const ProviderController = {
       const provider = await prisma.provider.findUnique({
         where: { id },
         include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true, avatar: true }
-          },
+          user: { select: PROVIDER_USER_SELECT },
           reviews: true,
           badges: true,
           availabilitySlots: true
@@ -252,11 +320,11 @@ export const ProviderController = {
       if (!isAdmin && !isOwner && (!provider.isVerified || provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE')) {
         return sendApiError(res, 404, 'NOT_FOUND', 'Service provider not found');
       }
-      if (!isAdmin && !isOwner && provider.user) {
-        delete provider.user.email;
-        delete provider.user.phone;
-      }
-      return sendApiSuccess(res, 200, provider);
+      return sendApiSuccess(
+        res,
+        200,
+        providerDetails(provider, { includeContact: isAdmin || isOwner })
+      );
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve provider details', err.message);
     }

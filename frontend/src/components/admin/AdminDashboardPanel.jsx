@@ -16,7 +16,7 @@ export default function AdminDashboardPanel({
 }) {
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">System Administrator Console</h2>
           <p className="text-slate-500 text-xs">Real-time status monitoring, escrow checks, and service dispatch operations.</p>
@@ -31,7 +31,7 @@ export default function AdminDashboardPanel({
         <div className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-2xs">
           <div>
             <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-1">Gross Escrow Vol.</span>
-            <span className="text-lg sm:text-2xl font-black text-slate-950 block">₹{totalVolume}</span>
+            <span className="text-lg sm:text-2xl font-black text-slate-950 block break-all">₹{totalVolume}</span>
             <span className="text-[10px] text-teal-600 font-bold block mt-1">Platform comm{platformCommission}%</span>
           </div>
           <div className="p-3 bg-teal-50 text-teal-700 rounded-xl shrink-0">
@@ -42,7 +42,7 @@ export default function AdminDashboardPanel({
         <div className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-2xs">
           <div>
             <span className="text-[9px] text-slate-400 font-extrabold uppercase block tracking-wider mb-1">Admin Net Payout</span>
-            <span className="text-lg sm:text-2xl font-black text-teal-700 block">₹{administrativeEarnings}</span>
+            <span className="text-lg sm:text-2xl font-black text-teal-700 block break-all">₹{administrativeEarnings}</span>
             <span className="text-[10px] text-slate-400 block mt-1">Accumulated commission settings</span>
           </div>
           <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl shrink-0">

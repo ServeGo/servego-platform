@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { ReputationBadgeStrip, VerificationLevelPill } from './ProviderReputation';
 import { Star, Loader2 } from 'lucide-react';
 
@@ -12,7 +12,7 @@ function ServiceChip({ name }) {
 }
 
 export default function ProviderHeader({ provider, completedJobs = 0, totalJobs = 0, approvedServices = [], loadingServices = false }) {
-  const { currentUser } = useApp();
+  const { currentUser } = useAuth();
 
   const approvedNames = useMemo(
     () => approvedServices.map(s => s.name).filter(Boolean),

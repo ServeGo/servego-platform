@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AppContext';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export function ResetPassword({ onNavigate }) {
-  const { resetPassword } = useApp();
+  const { resetPassword } = useAuth();
 
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');

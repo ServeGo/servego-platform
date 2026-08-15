@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 import { AchievementList, VerificationLevelPill } from './ProviderReputation';
 
 export default function ProviderProfileView() {
-  const { currentUser, providers, logout, updateProviderAvailability, updateProviderProfile, updateProviderDispatchLocation, updateProviderAvailabilityStatus, fetchProviderRoutePlan } = useApp();
+  const { currentUser, logout } = useAuth();
+  const { providers, myProviderSummary, updateProviderAvailability, updateProviderProfile, updateProviderDispatchLocation, updateProviderAvailabilityStatus, fetchProviderRoutePlan } = useData();
 
-  // Resolve active provider from context — no separate API call needed
+  // Resolve active provider from the dashboard summary (purpose-specific), with
+  // a fallback to the providers list — no separate API call needed per view.
   const activeProvider = useMemo(() => {
+    if (myProviderSummary) return myProviderSummary;
+
     const providerIdCandidate = currentUser?.providerId;
     const providerUserIdCandidate = currentUser?.id;
 
@@ -14,7 +18,7 @@ export default function ProviderProfileView() {
     const byUserId = providerUserIdCandidate ? providers.find(p => p.userId === providerUserIdCandidate) : null;
 
     return byProviderId || byUserId || null;
-  }, [currentUser, providers]);
+  }, [currentUser, providers, myProviderSummary]);
 
   const provider = activeProvider;
   const loading = !provider;

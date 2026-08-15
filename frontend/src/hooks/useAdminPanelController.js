@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAuth, useData } from '../context/AppContext';
 import { CITIES } from '../data';
 import { isOpenTicket } from '../utils/normalizeAdminData';
 
@@ -7,6 +7,7 @@ import { isOpenTicket } from '../utils/normalizeAdminData';
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
 
 export function useAdminPanelController() {
+  const { currentUser } = useAuth();
   const {
     providers,
     bookings,
@@ -15,7 +16,6 @@ export function useAdminPanelController() {
     verifyProvider,
     updateBookingStatus,
     users,
-    currentUser,
     services,
     createService,
     updateService,
@@ -25,7 +25,7 @@ export function useAdminPanelController() {
     fetchProviderServiceRequests,
     approveProviderServiceRequest,
     denyProviderServiceRequest,
-  } = useApp();
+  } = useData();
 
   const isAdmin = currentUser?.role === 'admin';
 

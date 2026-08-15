@@ -2,8 +2,18 @@ import prisma from '../prisma/client.js';
 import { rankedServiceMatches } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
+import { createTtlCache } from '../utils/ttlCache.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
+
+// The public services catalog (with active specialist counts) is read-heavy and
+// rarely changes. Cache it briefly; every write below invalidates it.
+const CATALOG_CACHE_TTL_MS = 30 * 1000;
+const catalogCache = createTtlCache(CATALOG_CACHE_TTL_MS);
+
+function invalidateCatalogCache() {
+  catalogCache.invalidate('catalog');
+}
 
 export const ServiceController = {
   getCategoryBySlug: async (req, res) => {
@@ -57,6 +67,10 @@ export const ServiceController = {
       if (String(req.query?.query || '').trim() || String(req.query?.location || '').trim() || String(req.query?.category || '').trim()) {
         return ServiceController.search(req, res);
       }
+
+      const cached = catalogCache.get('catalog');
+      if (cached !== undefined) return sendApiSuccess(res, 200, cached);
+
       const services = await prisma.service.findMany({ where: { isHidden: false } });
 
       // Derive active specialist count per service: providers with an approved
@@ -75,6 +89,7 @@ export const ServiceController = {
       const countMap = Object.fromEntries(counts.map(c => [c.serviceId, c._count.providerId]));
 
       const result = services.map(s => ({ ...s, activeSpecialistCount: countMap[s.id] || 0 }));
+      catalogCache.set('catalog', result);
       return sendApiSuccess(res, 200, result);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch services', err.message);
@@ -170,6 +185,8 @@ export const ServiceController = {
         }
       });
 
+      invalidateCatalogCache();
+
       return sendApiSuccess(res, 201, created);
     } catch (err) {
       if (err.code === 'P2002') {
@@ -198,6 +215,7 @@ export const ServiceController = {
         return sendApiError(res, 400, 'CONFIRMATION_REQUIRED', 'Set confirm=true after verifying this category is safe to delete.');
       }
       await prisma.service.delete({ where: { id } });
+      invalidateCatalogCache();
       return sendApiSuccess(res, 200, { message: 'Service deleted successfully' });
     } catch (err) {
       if (err.code === 'P2002') {
@@ -231,6 +249,7 @@ export const ServiceController = {
         }
       });
 
+      invalidateCatalogCache();
 
       return sendApiSuccess(res, 200, { service: updated });
     } catch (err) {
@@ -256,6 +275,8 @@ export const ServiceController = {
           isHidden: isHidden === true || isHidden === 'true'
         }
       });
+
+      invalidateCatalogCache();
 
       return sendApiSuccess(res, 200, { service: updated });
     } catch (err) {

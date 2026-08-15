@@ -44,6 +44,8 @@ apiRouter.patch('/users/:id/profile', requireAuth, validate(updateUserProfileVal
 // --- Service Providers (Partners) ---
 apiRouter.get('/providers', optionalAuth, ProviderController.getAll);
 apiRouter.get('/providers/by-approved-service', ProviderServiceDiscoveryController.getApprovedProvidersByServiceName);
+// Must be declared before `/providers/:id` so Express does not match `me` as an id.
+apiRouter.get('/providers/me/summary', requireAuth, requireRole('provider'), ProviderController.getMyDashboardSummary);
 apiRouter.get('/providers/:id', optionalAuth, ProviderController.getById);
 apiRouter.get('/providers/:id/services', optionalAuth, ProviderController.getProviderServices);
 

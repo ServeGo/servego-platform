@@ -43,14 +43,44 @@ const purge = async () => {
   for (const email of [
     TEST_EMAIL,
     'pagination-provider@test.local',
-    'pagination-booking-provider@test.local'
+    'pagination-booking-provider@test.local',
+    'pagination-admin@test.local',
+    'pagination-status-provider@test.local'
   ]) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) continue;
+    // Delete in FK-safe order so an aborted earlier run can never leave
+    // RESTRICT-bound rows behind (e.g. platformFeeAccount, wallet, lead).
+    await prisma.walletWithdrawalRequest.deleteMany({ where: { userId: user.id } });
+    await prisma.walletTransaction.deleteMany({ where: { userId: user.id } });
+    await prisma.wallet.deleteMany({ where: { userId: user.id } });
+    await prisma.platformFeePayment.deleteMany({ where: { userId: user.id } });
+    await prisma.platformFeeAccount.deleteMany({ where: { userId: user.id } });
+    await prisma.subscriptionTransaction.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.providerSubscription.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.leadAssignmentHistory.deleteMany({ where: { lead: { customerId: user.id } } });
+    await prisma.leadTransferHistory.deleteMany({ where: { lead: { customerId: user.id } } });
+    await prisma.cancellationReason.deleteMany({ where: { lead: { customerId: user.id } } });
+    await prisma.cancellationReason.deleteMany({ where: { booking: { customerId: user.id } } });
+    await prisma.bookingLocationUpdate.deleteMany({ where: { booking: { customerId: user.id } } });
+    await prisma.bookingEvent.deleteMany({ where: { booking: { customerId: user.id } } });
+    await prisma.lead.deleteMany({ where: { customerId: user.id } });
+    await prisma.booking.deleteMany({ where: { customerId: user.id } });
+    await prisma.permanentServiceRequest.deleteMany({ where: { customerId: user.id } });
+    await prisma.savedPro.deleteMany({ where: { customerId: user.id } });
+    await prisma.customer.deleteMany({ where: { userId: user.id } });
+    await prisma.authEvent.deleteMany({ where: { userId: user.id } });
+    await prisma.providerServiceRequest.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.providerService.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.providerBadge.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.availabilitySlot.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.promotionHistory.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.providerLevelHistory.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.rankingMetrics.deleteMany({ where: { provider: { userId: user.id } } });
+    await prisma.providerPerformance.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.notification.deleteMany({ where: { userId: user.id } });
     await prisma.ticket.deleteMany({ where: { OR: [{ userId: user.id }, { requesterEmail: email }] } });
     await prisma.review.deleteMany({ where: { reviewerId: user.id } });
-    await prisma.booking.deleteMany({ where: { customerId: user.id } });
     await prisma.provider.deleteMany({ where: { userId: user.id } });
     await prisma.user.delete({ where: { id: user.id } });
   }
@@ -192,6 +222,58 @@ dbTest('bookingController.getAll cursor mode pages without overlap', async () =>
   await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
   await prisma.provider.delete({ where: { id: provider.id } });
   await prisma.user.delete({ where: { id: providerUser.id } });
+});
+
+dbTest('bookingController.getAll statuses filter + admin name search', async () => {
+  const user = await seedUser();
+  const admin = await prisma.user.create({
+    data: { email: 'pagination-admin@test.local', name: 'Pagination Admin', password: 'x', phone: '0000000005', role: 'admin' }
+  });
+  const providerUser = await prisma.user.create({
+    data: { email: 'pagination-status-provider@test.local', name: 'Status Provider', password: 'x', phone: '0000000006', role: 'provider' }
+  });
+  const provider = await prisma.provider.create({ data: { userId: providerUser.id, category: 'Test' } });
+
+  const mk = (status) => prisma.booking.create({
+    data: {
+      customerId: user.id,
+      providerId: provider.id,
+      serviceCategory: 'Test',
+      locationAddress: 'addr',
+      city: 'Hyderabad',
+      status
+    }
+  });
+
+  const ids = [];
+  ids.push((await mk('PENDING')).id);
+  ids.push((await mk('CONFIRMED')).id);
+  ids.push((await mk('ONGOING')).id);
+
+  const customerReq = (query) => call(BookingController.getAll, {
+    user: { id: user.id, role: 'customer' },
+    query
+  });
+
+  const grouped = await customerReq({ limit: '10', statuses: 'CONFIRMED,ONGOING' });
+  assert.equal(grouped.bookings.length, 2);
+  assert.ok(grouped.bookings.every(b => ['CONFIRMED', 'ONGOING'].includes(b.status)),
+    'statuses must filter to exactly the requested statuses');
+
+  const pending = await customerReq({ limit: '10', status: 'pending' });
+  assert.equal(pending.bookings.length, 1);
+  assert.equal(pending.bookings[0].status, 'PENDING', 'lowercase status must resolve to the stored enum value');
+
+  const byName = await call(BookingController.getAll, {
+    user: { id: admin.id, role: 'admin' },
+    query: { limit: '10', adminSearch: 'Pagination Tester' }
+  });
+  assert.equal(byName.bookings.length, 3, 'adminSearch must match the customer name, not just the booking id');
+
+  await prisma.booking.deleteMany({ where: { id: { in: ids } } });
+  await prisma.provider.delete({ where: { id: provider.id } });
+  await prisma.user.delete({ where: { id: providerUser.id } });
+  await prisma.user.delete({ where: { id: admin.id } });
 });
 
 dbTest('notificationController cursor mode pages without overlap', async () => {

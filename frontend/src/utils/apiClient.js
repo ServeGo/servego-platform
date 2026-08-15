@@ -6,6 +6,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 const API_BASES = [API_BASE_URL];
 
+// Rule 19: stable, actionable copy for transport-level failures (used instead
+// of raw `fetch`/network error strings so users never see a bare exception).
+export const NETWORK_ERROR_MESSAGE =
+  'Could not reach the server. Check your connection and try again.';
+
 
 
 // Retry configuration
@@ -135,16 +140,18 @@ async function apiRequest(endpoint, options = {}) {
   let lastResponse = null;
   let tokenRefreshed = false;
 
+  // A caller-supplied AbortController signal (e.g. live-search cancellation)
+  // wins over the built-in timeout so an in-flight request can be aborted
+  // immediately on the next keystroke.
+  const { timeout, signal: externalSignal } = options;
+  const signal = externalSignal || (timeout ? AbortSignal.timeout(timeout) : undefined);
+
   for (const baseUrl of API_BASES) {
     const url = `${baseUrl}${endpoint}`;
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       try {
         const headers = createHeaders(options.headers, options.body);
-        const fetchOptions = {
-          ...options,
-          headers,
-          signal: options.timeout ? AbortSignal.timeout(options.timeout) : undefined
-        };
+        const fetchOptions = { ...options, headers, signal };
         const response = await fetch(url, fetchOptions);
       
       // Handle 401 Unauthorized with token refresh
@@ -185,21 +192,24 @@ async function apiRequest(endpoint, options = {}) {
         return { ok: response.ok, status: response.status, data, headers: response.headers };
       } catch (err) {
         lastError = err;
+        // A cancelled request must never be retried or delayed.
+        if (err?.name === 'AbortError') break;
         if (attempt < config.maxRetries) {
           await sleep(config.retryDelay * Math.pow(2, attempt));
           continue;
         }
       }
     }
+    if (lastError?.name === 'AbortError') break;
   }
 
   if (lastResponse) {
-    return { ok: false, status: lastResponse.status, data: { error: 'Both Render and localhost backends are unavailable.' }, headers: lastResponse.headers };
+    return { ok: false, status: lastResponse.status, data: { error: NETWORK_ERROR_MESSAGE }, headers: lastResponse.headers };
   }
   return {
     ok: false,
     status: 0,
-    data: { error: lastError?.message || 'Request failed after retries' },
+    data: { error: NETWORK_ERROR_MESSAGE },
     error: lastError
   };
 }
