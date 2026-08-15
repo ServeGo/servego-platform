@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Search, ArrowRight, ShieldCheck, RadioTower, Star, LifeBuoy } from 'lucide-react';
+import { MapPin, Search, ArrowRight, ShieldCheck, RadioTower, Star, LifeBuoy, Download } from 'lucide-react';
 import { HYDERABAD_NEIGHBORHOODS } from '../data';
 
 export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setInputQuery, onQuickSearch }) {
@@ -67,7 +67,16 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
           </form>
         </div>
 
-        <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
+        <a
+          href="/apk/servego.apk"
+          download="servego.apk"
+          className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 transition-all hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        >
+          <Download className="w-4 h-4" />
+          Download Android App
+        </a>
+
+        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
           <TrustIndicator icon={<ShieldCheck className="w-4 h-4" />} title="Verified Providers" desc="Profile-approved experts" />
           <TrustIndicator icon={<RadioTower className="w-4 h-4" />} title="Broadcast Booking" desc="Offered to every eligible specialist" />
           <TrustIndicator icon={<Star className="w-4 h-4" />} title="Rated Professionals" desc="Reviews after every completed job" colorClass="text-emerald-400" bgColorClass="bg-emerald-500/20" />
