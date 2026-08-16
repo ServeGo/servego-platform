@@ -57,6 +57,7 @@ export default function BookingCard({
   const { getBookingLocation } = useRealtime();
   const { showToast } = useToast();
   const liveLocation = getBookingLocation(booking.id);
+  const timeline = Array.isArray(booking.statusHistory) ? booking.statusHistory : [];
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-5 sm:p-6 text-left">
@@ -148,22 +149,26 @@ export default function BookingCard({
       {/* Timeline */}
       <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 mb-4">
         <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-3 block">Tracking Timeline</span>
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch">
-          {booking.statusHistory?.map((hist, idx) => (
-            <div key={idx} className="flex-1 relative flex sm:flex-col gap-2 items-start text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center text-[10px] shrink-0 border border-indigo-200">
-                  {idx + 1}
+        {timeline.length === 0 ? (
+          <p className="text-xs text-slate-400 italic py-3 text-center">No tracking events available for this booking yet.</p>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch">
+            {timeline.map((hist, idx) => (
+              <div key={idx} className="flex-1 relative flex sm:flex-col gap-2 items-start text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center text-[10px] shrink-0 border border-indigo-200">
+                    {idx + 1}
+                  </div>
+                  <span className="font-bold text-slate-800 uppercase tracking-tight text-[10px]">{hist.status}</span>
                 </div>
-                <span className="font-bold text-slate-800 uppercase tracking-tight text-[10px]">{hist.status}</span>
+                <div className="pl-7 sm:pl-0 sm:mt-1 font-semibold">
+                  <p className="text-slate-600 text-[10px] leading-tight mt-0.5">{hist.note}</p>
+                  <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{formatTimelineTime(hist.timestamp)}</span>
+                </div>
               </div>
-              <div className="pl-7 sm:pl-0 sm:mt-1 font-semibold">
-                <p className="text-slate-600 text-[10px] leading-tight mt-0.5">{hist.note}</p>
-                <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(hist.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Verification Code */}
@@ -237,8 +242,16 @@ export default function BookingCard({
   );
 }
 
-function StatusBadge({ status }) {
-  const styles = {
+function formatTimelineTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `${day} · ${time}`;
+}
+
+function StatusBadge({ status }) {  const styles = {
     pending: 'bg-amber-100 text-amber-800 border-amber-200',
     confirmed: 'bg-sky-100 text-sky-800 border-sky-200',
     en_route: 'bg-amber-500 text-slate-900 border-amber-400 animate-pulse',

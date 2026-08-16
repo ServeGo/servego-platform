@@ -7,6 +7,79 @@
 
 const lc = (value) => (value ?? '').toString().trim().toLowerCase();
 
+const eventToStatus = (action) => {
+  const a = (action || '').toString().toUpperCase();
+  if (a.includes('CANCELL')) return 'cancelled';
+  if (a.includes('COMPLETE') || a.includes('FINISH')) return 'completed';
+  if (a.includes('ONGOING') || a.includes('START') || a.includes('WORK')) return 'ongoing';
+  if (a.includes('CONFIRM') || a.includes('ACCEPT') || a.includes('ASSIGN')) return 'confirmed';
+  if (a.includes('CREATE') || a === 'CREATED') return 'pending';
+  return null;
+};
+
+const terminalNote = (status) => {
+  if (status === 'completed') return 'Booking completed';
+  if (status === 'cancelled') return 'Booking cancelled';
+  return `Status changed to ${status}`;
+};
+
+/**
+ * Build a complete, chronologically-ordered tracking timeline for a booking.
+ * Prefers the curated `statusHistory`, falls back to the `events` audit trail,
+ * and finally derives a minimal timeline from the row scalars — so a completed
+ * (or cancelled) job always shows its journey even when history was never
+ * written for it.
+ */
+export function buildStatusTimeline(booking) {
+  if (!booking) return [];
+
+  const fromHistory = (Array.isArray(booking.statusHistory) ? booking.statusHistory : [])
+    .map((h) => ({
+      status: lc(h.status),
+      note: h.note || '',
+      timestamp: h.timestamp || booking.createdAt || null,
+    }))
+    .filter((h) => h.status && h.timestamp);
+
+  if (fromHistory.length === 0) {
+    const fromEvents = (Array.isArray(booking.events) ? booking.events : [])
+      .map((e) => ({
+        status: eventToStatus(e.action),
+        note: e.note || '',
+        timestamp: e.timestamp || e.createdAt || null,
+      }))
+      .filter((e) => e.status && e.timestamp);
+    if (fromEvents.length > 0) return fromEvents;
+  }
+
+  // No history/events at all: derive a minimal terminal timeline.
+  if (fromHistory.length === 0) {
+    const status = lc(booking.status);
+    const derived = [{ status: 'pending', note: 'Booking created', timestamp: booking.createdAt || null }];
+    if (status && status !== 'pending') {
+      derived.push({
+        status,
+        note: terminalNote(status),
+        timestamp: booking.updatedAt || booking.createdAt || null,
+      });
+    }
+    return derived.filter((d) => d.timestamp);
+  }
+
+  // Guarantee the terminal state is present even if its push was missed.
+  const terminal = lc(booking.status);
+  const last = fromHistory[fromHistory.length - 1];
+  if (['completed', 'cancelled'].includes(terminal) && last?.status !== terminal) {
+    fromHistory.push({
+      status: terminal,
+      note: terminalNote(terminal),
+      timestamp: booking.updatedAt || last?.timestamp || booking.createdAt || null,
+    });
+  }
+
+  return fromHistory;
+}
+
 /**
  * Canonical booking shape consumed by the customer dashboard.
  * - status -> lowercase
@@ -35,12 +108,7 @@ export function normalizeBooking(booking) {
     customerEmail: booking.customerEmail || booking.customer?.email || '',
     bookingDateLabel: formatDate(booking.createdAt || booking.bookingDate),
     messages: Array.isArray(booking.messages) ? booking.messages : [],
-    statusHistory: Array.isArray(booking.statusHistory)
-      ? booking.statusHistory.map((h) => ({
-          ...h,
-          status: lc(h.status),
-        }))
-      : [],
+    statusHistory: buildStatusTimeline(booking),
   };
 }
 

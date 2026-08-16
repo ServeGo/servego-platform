@@ -192,8 +192,18 @@ export const AdminDashboardController = {
       const requestIds = [...new Set(
         logs.filter(l => l.targetType === 'ProviderServiceRequest').map(l => l.targetId)
       )];
+      const bookingIds = [...new Set(
+        logs.filter(l => l.targetType === 'Booking').map(l => l.targetId)
+      )];
+      const userIds = [...new Set([
+        ...logs.filter(l => ['User', 'Customer'].includes(l.targetType)).map(l => l.targetId),
+        ...logs.filter(l => l.actorRole === 'ADMIN' && l.actorId).map(l => l.actorId)
+      ])];
+      const withdrawalIds = [...new Set(
+        logs.filter(l => l.targetType === 'WalletWithdrawal').map(l => l.targetId)
+      )];
 
-      const [providers, requests] = await Promise.all([
+      const [providers, requests, bookings, users, withdrawals] = await Promise.all([
         providerIds.length ? prisma.provider.findMany({
           where: { id: { in: providerIds } },
           select: { id: true, user: { select: { name: true } } }
@@ -201,6 +211,23 @@ export const AdminDashboardController = {
         requestIds.length ? prisma.providerServiceRequest.findMany({
           where: { id: { in: requestIds } },
           select: { id: true, provider: { select: { user: { select: { name: true } } } } }
+        }) : [],
+        bookingIds.length ? prisma.booking.findMany({
+          where: { id: { in: bookingIds } },
+          select: {
+            id: true,
+            serviceCategory: true,
+            customer: { select: { name: true } },
+            provider: { select: { user: { select: { name: true } } } }
+          }
+        }) : [],
+        userIds.length ? prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, email: true }
+        }) : [],
+        withdrawalIds.length ? prisma.walletWithdrawalRequest.findMany({
+          where: { id: { in: withdrawalIds } },
+          select: { id: true, user: { select: { name: true } } }
         }) : []
       ]);
 
@@ -210,13 +237,32 @@ export const AdminDashboardController = {
       const requestNameMap = {};
       for (const req of requests) requestNameMap[req.id] = req.provider?.user?.name || '';
 
-      const enriched = logs.map(log => ({
-        ...log,
-        targetName:
-          providerNameMap[log.targetId]
-          || requestNameMap[log.targetId]
-          || ''
-      }));
+      const bookingNameMap = {};
+      for (const b of bookings) {
+        bookingNameMap[b.id] = `${b.serviceCategory || 'Booking'} · ${b.customer?.name || ''} → ${b.provider?.user?.name || ''}`.trim();
+      }
+
+      const userMap = {};
+      for (const u of users) userMap[u.id] = { name: u.name || '', email: u.email || '' };
+
+      const withdrawalNameMap = {};
+      for (const w of withdrawals) withdrawalNameMap[w.id] = w.user?.name || '';
+
+      const enriched = logs.map(log => {
+        const actor = userMap[log.actorId];
+        return {
+          ...log,
+          actorName: actor?.name || '',
+          actorEmail: actor?.email || '',
+          targetName:
+            providerNameMap[log.targetId]
+            || requestNameMap[log.targetId]
+            || bookingNameMap[log.targetId]
+            || withdrawalNameMap[log.targetId]
+            || (['User', 'Customer'].includes(log.targetType) ? userMap[log.targetId]?.name || log.targetId : '')
+            || ''
+        };
+      });
 
       sendApiSuccess(res, 200, {
         logs: enriched,
@@ -234,9 +280,21 @@ export const AdminDashboardController = {
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
       const skip = (page - 1) * limit;
+      const { search } = req.query;
+      const where = search
+        ? {
+            OR: [
+              { user: { name: { contains: String(search), mode: 'insensitive' } } },
+              { user: { email: { contains: String(search), mode: 'insensitive' } } },
+              { user: { phone: { contains: String(search) } } },
+              { category: { contains: String(search), mode: 'insensitive' } }
+            ]
+          }
+        : {};
 
       const [providers, total] = await Promise.all([
         prisma.provider.findMany({
+          where,
           include: {
             user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
             // providerListItem renders the review audit only on the owner's own
@@ -247,7 +305,7 @@ export const AdminDashboardController = {
           take: limit,
           orderBy: { createdAt: 'desc' }
         }),
-        prisma.provider.count()
+        prisma.provider.count({ where })
       ]);
 
       sendApiSuccess(res, 200, {

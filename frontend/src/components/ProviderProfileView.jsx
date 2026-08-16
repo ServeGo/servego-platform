@@ -4,7 +4,7 @@ import { AchievementList, VerificationLevelPill } from './ProviderReputation';
 
 export default function ProviderProfileView() {
   const { currentUser, logout } = useAuth();
-  const { providers, myProviderSummary, updateProviderAvailability, updateProviderProfile, updateProviderDispatchLocation, updateProviderAvailabilityStatus, fetchProviderRoutePlan } = useData();
+  const { providers, myProviderSummary, updateProviderProfile, updateProviderDispatchLocation, updateProviderAvailabilityStatus, fetchProviderRoutePlan } = useData();
 
   // Resolve active provider from the dashboard summary (purpose-specific), with
   // a fallback to the providers list — no separate API call needed per view.
@@ -36,9 +36,6 @@ export default function ProviderProfileView() {
   const [specialtiesText, setSpecialtiesText] = useState('');
   const [serviceAreasText, setServiceAreasText] = useState('');
 
-  const [availableDaysText, setAvailableDaysText] = useState('');
-  const [timeSlotsText, setTimeSlotsText] = useState('');
-
   // Live tracking / route planner
   const [online, setOnline] = useState(true);
   const [accepting, setAccepting] = useState(true);
@@ -66,9 +63,6 @@ export default function ProviderProfileView() {
     setServiceAreasText(
       Array.isArray(provider.serviceAreas) ? provider.serviceAreas.join(', ') : provider.serviceAreas || ''
     );
-
-    setAvailableDaysText(Array.isArray(provider.availableDays) ? provider.availableDays.join(', ') : provider.availableDays || '');
-    setTimeSlotsText(Array.isArray(provider.timeSlots) ? provider.timeSlots.join(', ') : provider.timeSlots || '');
 
     setOnline(provider.isOnline !== undefined ? Boolean(provider.isOnline) : true);
     setAccepting(provider.acceptingBookings !== undefined ? Boolean(provider.acceptingBookings) : true);
@@ -120,10 +114,7 @@ export default function ProviderProfileView() {
     try {
       const nextSpecialties = parseCommaList(specialtiesText);
       const nextAreas = parseCommaList(serviceAreasText);
-      const nextDays = parseCommaList(availableDaysText);
-      const nextSlots = parseCommaList(timeSlotsText);
 
-      await updateProviderAvailability(provider.id, nextDays, nextSlots);
       await updateProviderProfile(provider.id, {
         bio: bio || '',
         phone: phone || '',
@@ -346,25 +337,6 @@ export default function ProviderProfileView() {
           <Field label="Referral Code" value={provider.referralCode || user.referralCode || '—'} mono />
           <Field label="Joined Date" value={user.joinedDate || provider.createdAt || '—'} mono />
         </div>
-      </Section>
-
-      <Section title="Availability">
-        {editMode ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Available Days" value={availableDaysText} onChange={setAvailableDaysText} placeholder="Comma separated: Mon, Tue, Sat" />
-              <InputField label="Time Slots" value={timeSlotsText} onChange={setTimeSlotsText} placeholder="Comma separated: 9:00-12:00, 4:00-8:00" />
-            </div>
-            <div className="text-xs text-slate-500 font-semibold bg-slate-50 border border-slate-200 rounded-2xl p-3">
-              Tip: Use comma-separated values.
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Available Days" value={Array.isArray(provider.availableDays) ? provider.availableDays.join(', ') : provider.availableDays} />
-            <Field label="Time Slots" value={Array.isArray(provider.timeSlots) ? provider.timeSlots.join(', ') : provider.timeSlots} />
-          </div>
-        )}
       </Section>
 
       <Section title="Live Tracking & Route Planner">

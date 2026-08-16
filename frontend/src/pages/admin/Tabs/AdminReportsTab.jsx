@@ -25,12 +25,19 @@ const PROVIDER_EXPORT_COLUMNS = [
 
 const AUDIT_EXPORT_COLUMNS = [
   { header: 'Actor Role', key: 'actorRole' },
+  { header: 'Actor Name', key: 'actorName' },
   { header: 'Action', key: 'action' },
   { header: 'Target', key: 'targetName' },
   { header: 'Old Value', key: 'oldValue' },
   { header: 'New Value', key: 'newValue' },
   { header: 'Date', key: 'dateLabel' }
 ];
+
+const actionLabel = (action) => {
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action];
+  if (action?.startsWith('UPDATE_CONFIG_')) return 'Config Updated';
+  return action || '';
+};
 
 const fmtValue = (v) => {
   if (!v || typeof v !== 'object') return v || '—';
@@ -46,6 +53,23 @@ const ACTION_LABELS = {
   DENY_SERVICE_REQUEST: 'Service Denied',
   VERIFY_PROVIDER: 'Verified',
   UNVERIFY_PROVIDER: 'Unverified',
+  CANCEL_BOOKING_OVERRIDE: 'Booking Override Cancelled',
+  PROCESS_WITHDRAWAL_APPROVED: 'Withdrawal Approved',
+  PROCESS_WITHDRAWAL_REJECTED: 'Withdrawal Rejected',
+  PROCESS_WITHDRAWAL_PAID: 'Payout Marked Paid',
+  WALLET_CREDIT: 'Wallet Credit',
+  APPROVE_PERMANENT_REQUEST: 'Permanent Request Approved',
+  REJECT_PERMANENT_REQUEST: 'Permanent Request Rejected',
+  UPDATE_CONFIG: 'Config Updated',
+  UPDATE_CONFIG_PLATFORM_FEE_ENABLED: 'Platform Fee Config',
+  UPDATE_CONFIG_PLATFORM_FEE_AMOUNT: 'Platform Fee Amount Config',
+  UPDATE_CONFIG_PLATFORM_FEE_GRACE_DAYS: 'Fee Grace Config',
+  UPDATE_CONFIG_CUSTOMER_PLATFORM_FEE_ENABLED: 'Customer Fee Config',
+  UPDATE_CONFIG_CUSTOMER_PLATFORM_FEE_AMOUNT: 'Customer Fee Amount Config',
+  UPDATE_CONFIG_CANCELLATION_PENALTY_SCORE: 'Penalty Score Config',
+  CREATE_SUBSCRIPTION_PLAN: 'Plan Created',
+  UPDATE_SUBSCRIPTION_PLAN: 'Plan Updated',
+  UPDATE_LEVEL_RULE: 'Level Rule Updated',
 };
 
 const actionColor = (action) => {
@@ -111,7 +135,8 @@ export default function AdminReportsTab() {
     if (!res.ok) return { rows: [], total: 0 };
     const rows = (res.data?.logs || []).map((log) => ({
       actorRole: log.actorRole || '',
-      action: ACTION_LABELS[log.action] || log.action || '',
+      actorName: log.actorName || '',
+      action: actionLabel(log.action),
       targetName: log.targetName || '',
       oldValue: fmtValue(log.oldValue),
       newValue: fmtValue(log.newValue),
@@ -417,10 +442,11 @@ export default function AdminReportsTab() {
                       <tr key={log.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <span className="font-bold text-slate-800 capitalize">{log.actorRole || '—'}</span>
+                          {log.actorName && <span className="text-[10px] text-slate-400 block font-semibold">{log.actorName}</span>}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${actionColor(log.action)}`}>
-                            {ACTION_LABELS[log.action] || log.action}
+                            {actionLabel(log.action)}
                           </span>
                         </td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{log.targetName || '—'}</td>

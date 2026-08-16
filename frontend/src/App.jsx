@@ -38,11 +38,12 @@ import {
   LogOut,
   Briefcase,
   ShieldCheck,
-  Menu,
   Sparkles,
   ClipboardList,
   Wrench,
   Flag,
+  X,
+  ChevronUp,
 } from 'lucide-react';
 
 
@@ -131,6 +132,17 @@ export function MainLayout() {
   const [customerActiveTabExternal, setCustomerActiveTabExternal] = useState('bookings');
   const [providerActiveTabExternal, setProviderActiveTabExternal] = useState('leads');
   const [adminActiveTabExternal, setAdminActiveTabExternal] = useState('dashboard');
+  const [adminMoreOpen, setAdminMoreOpen] = useState(false);
+
+  // Admin mobile "More" sheet: close on Escape.
+  useEffect(() => {
+    if (!adminMoreOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setAdminMoreOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [adminMoreOpen]);
 
   // Public feature flags: maintenance mode + the single "what's new" announcement
   // (targeted to one audience — customers OR providers — at a time).
@@ -620,7 +632,7 @@ export function MainLayout() {
 
           <main className="flex-grow min-w-0 pb-24 md:pb-0">{renderContent()}</main>
 
-          <div className="md:hidden fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.10)]">
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.10)]">
             <div className="flex items-center justify-between gap-1">
               {[
                 { key: 'dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -634,6 +646,7 @@ export function MainLayout() {
                   <button
                     key={item.key}
                     onClick={() => {
+                      setAdminMoreOpen(false);
                       setAdminActiveTabExternal(item.key);
                       updateBrowserRoute('admin', null, item.key);
                     }}
@@ -648,51 +661,81 @@ export function MainLayout() {
               })}
 
               <button
-                onClick={() => {
-                  const menu = document.getElementById('admin-mobile-more-menu');
-                  if (menu) {
-                    menu.classList.toggle('hidden');
-                  }
-                }}
-                className="flex-1 flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[10px] font-black text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => setAdminMoreOpen((v) => !v)}
+                aria-expanded={adminMoreOpen}
+                className={`flex-1 flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[10px] font-black transition-all ${
+                  adminMoreOpen ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
               >
-                <Menu className="w-4 h-4 mb-1" />
+                <ChevronUp className="w-4 h-4 mb-1" />
                 <span>More</span>
               </button>
             </div>
           </div>
 
-          <div id="admin-mobile-more-menu" className="md:hidden fixed inset-x-0 bottom-20 z-40 mx-2 hidden">
-            <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-              {[
-                { key: 'customers', label: 'Customers', icon: Users },
-                { key: 'providers', label: 'Providers', icon: Briefcase },
-                { key: 'permanentServiceRequests', label: 'Permanent Hires', icon: ClipboardList },
-                { key: 'tickets', label: 'Tickets', icon: MessageSquare },
-                { key: 'servego', label: 'ServeGo', icon: Sparkles },
-                { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-                { key: 'reports', label: 'Reports', icon: FileText },
-                { key: 'settings', label: 'Settings', icon: Settings },
-                { key: 'featureFlags', label: 'Feature Flags', icon: Flag },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
+          {adminMoreOpen && (
+            <>
+              <div
+                className="md:hidden fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm"
+                onClick={() => setAdminMoreOpen(false)}
+                aria-hidden="true"
+              />
+              <div
+                role="dialog"
+                aria-label="More admin sections"
+                className="md:hidden fixed inset-x-2 bottom-24 z-[60] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
+              >
+                <div className="mx-auto w-10 h-1 rounded-full bg-slate-200 mb-2" />
+                <div className="flex items-center justify-between px-1 pb-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    All sections
+                  </span>
                   <button
-                    key={item.key}
-                    onClick={() => {
-                      setAdminActiveTabExternal(item.key);
-                      updateBrowserRoute('admin', null, item.key);
-                      document.getElementById('admin-mobile-more-menu')?.classList.add('hidden');
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    type="button"
+                    onClick={() => setAdminMoreOpen(false)}
+                    className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    aria-label="Close menu"
                   >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
+                    <X className="w-4 h-4" />
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'customers', label: 'Customers', icon: Users },
+                    { key: 'providers', label: 'Providers', icon: Briefcase },
+                    { key: 'permanentServiceRequests', label: 'Permanent Hires', icon: ClipboardList },
+                    { key: 'tickets', label: 'Tickets', icon: MessageSquare },
+                    { key: 'servego', label: 'ServeGo', icon: Sparkles },
+                    { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+                    { key: 'reports', label: 'Reports', icon: FileText },
+                    { key: 'settings', label: 'Settings', icon: Settings },
+                    { key: 'featureFlags', label: 'Feature Flags', icon: Flag },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    const isActive = adminActiveTabExternal === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => {
+                          setAdminMoreOpen(false);
+                          setAdminActiveTabExternal(item.key);
+                          updateBrowserRoute('admin', null, item.key);
+                        }}
+                        className={`flex flex-col items-center gap-1.5 rounded-2xl border px-2 py-3 text-[10px] font-extrabold transition-all ${
+                          isActive
+                            ? 'bg-teal-50 border-teal-200 text-teal-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <Icon className="w-4.5 h-4.5" />
+                        <span className="text-center leading-tight">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

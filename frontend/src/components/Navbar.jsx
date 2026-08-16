@@ -331,15 +331,6 @@ export default function Navbar({
                     <button
                       onClick={() => {
                         setUserDropdownOpen(false);
-                        setProviderActiveTab('profile');
-                      }}
-                      className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block"
-                    >
-                      Availability
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUserDropdownOpen(false);
                         setProviderActiveTab('support');
                       }}
                       className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block"

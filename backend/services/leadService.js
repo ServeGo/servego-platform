@@ -44,6 +44,10 @@ function haversineKm(lat1, lng1, lat2, lng2) {
  */
 export function buildLeadPayload(lead, booking = null, provider = null) {
   const customer = booking?.customer ?? lead?.customer ?? null;
+  // Rule: the customer's phone number is only shared with providers while the
+  // booking is live. Once it is cancelled the number is stripped from every
+  // payload so it can never be re-shown or leaked after cancellation.
+  const cancelled = booking?.status === 'CANCELLED';
   return {
     leadId: lead?.id,
     bookingId: booking?.id ?? lead?.bookingId,
@@ -56,7 +60,7 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
     transferCount: lead?.transferCount,
     createdAt: lead?.createdAt,
     customer: customer
-      ? { id: customer.id, name: customer.name, phone: customer.phone, avatar: customer.avatar }
+      ? { id: customer.id, name: customer.name, phone: cancelled ? null : customer.phone, avatar: customer.avatar }
       : null,
     booking: booking
       ? {
@@ -520,6 +524,85 @@ export async function createBookingWithLead({
 }
 
 /**
+ * 24-hour reminder — re-broadcast an unanswered lead to every currently
+ * eligible provider. Uses the same eligibility pass as the original broadcast,
+ * so providers who came online since then (or whose offer was withdrawn) get a
+ * fresh open offer and the lead re-appears in their inbox; providers already
+ * holding an open offer keep it and are simply re-notified. No-op when the lead
+ * is no longer awaiting a response.
+ *
+ * Returns { skipped, lead, booking, providers }.
+ */
+export async function reopenLeadBroadcast({ leadId, client = prisma }) {
+  const lead = await client.lead.findUnique({
+    where: { id: leadId },
+    include: {
+      customer: { select: { id: true, name: true, phone: true, avatar: true } },
+      booking: {
+        select: {
+          id: true,
+          status: true,
+          serviceCategory: true,
+          serviceLatitude: true,
+          serviceLongitude: true,
+          endLocation: true
+        }
+      }
+    }
+  });
+  if (!lead || !['NEW', 'VIEWED'].includes(lead.status)) return { skipped: true };
+  if (!lead.booking || lead.booking.status !== 'PENDING') return { skipped: true };
+
+  // Same coordinates as the original broadcast: service pin first, then the
+  // booking's end location.
+  const end = lead.booking.endLocation && typeof lead.booking.endLocation === 'object' ? lead.booking.endLocation : null;
+  const customerLat = lead.booking.serviceLatitude != null
+    ? Number(lead.booking.serviceLatitude)
+    : end?.latitude != null
+      ? Number(end.latitude)
+      : null;
+  const customerLng = lead.booking.serviceLongitude != null
+    ? Number(lead.booking.serviceLongitude)
+    : end?.longitude != null
+      ? Number(end.longitude)
+      : null;
+
+  const providers = await findEligibleProviders({
+    serviceCategory: lead.booking.serviceCategory,
+    serviceId: lead.serviceId,
+    excludeProviderIds: [],
+    customerLat,
+    customerLng,
+    client
+  });
+  if (!providers.length) return { skipped: true, lead, booking: lead.booking, providers: [] };
+
+  // Re-open the offer to every currently eligible provider. Providers with an
+  // open offer keep it; the rest get a fresh one.
+  const existing = await client.leadAssignmentHistory.findMany({
+    where: { leadId: lead.id, isCurrent: true },
+    select: { providerId: true }
+  });
+  const openProviderIds = new Set(existing.map((o) => o.providerId));
+  const fresh = providers.filter((p) => !openProviderIds.has(p.id));
+
+  if (fresh.length) {
+    const now = new Date();
+    await client.leadAssignmentHistory.createMany({
+      data: fresh.map((p) => ({
+        leadId: lead.id,
+        providerId: p.id,
+        status: 'NEW',
+        isCurrent: true,
+        assignedAt: now
+      }))
+    });
+  }
+
+  return { skipped: false, lead, booking: lead.booking, providers };
+}
+
+/**
  * Provider accepts a PENDING lead: PENDING → CONFIRMED (booking) and
  * NEW/VIEWED → ACCEPTED (lead), atomically and first-accept-wins. Any provider
  * with an open offer (`LeadAssignmentHistory.isCurrent`) may accept; everyone
@@ -953,13 +1036,27 @@ export async function rejectLead({ leadId, providerId, reason, client = prisma }
   });
 }
 
-/** Close every open broadcast offer for a lead (customer/admin cancelled, etc.). */
+/**
+ * Close every open broadcast offer for a lead (customer/admin cancelled, etc.).
+ * Returns the provider user ids that held an open offer so callers can notify
+ * them in realtime.
+ */
 export async function cancelOpenOffers({ leadId, reason = 'CANCELLED', client = prisma }) {
   return withClientTransaction(client, async (tx) => {
-    return tx.leadAssignmentHistory.updateMany({
+    const open = await tx.leadAssignmentHistory.findMany({
+      where: { leadId, isCurrent: true },
+      include: { provider: { include: { user: { select: { id: true } } } } },
+      select: { providerId: true, provider: { include: { user: { select: { id: true } } } } }
+    });
+    await tx.leadAssignmentHistory.updateMany({
       where: { leadId, isCurrent: true },
       data: { status: 'CANCELLED', isCurrent: false, actionAt: new Date(), reason }
     });
+    return {
+      count: open.length,
+      providerIds: [...new Set(open.map((o) => o.providerId).filter(Boolean))],
+      providerUserIds: [...new Set(open.map((o) => o.provider?.user?.id).filter(Boolean))]
+    };
   });
 }
 
@@ -986,7 +1083,7 @@ export async function markLeadViewed({ leadId, providerId, client = prisma }) {
 
 /** Ledger + booking view of a single lead. */
 export async function getLeadWithHistory(leadId, client = prisma) {
-  return client.lead.findUnique({
+  const lead = await client.lead.findUnique({
     where: { id: leadId },
     include: {
       customer: { select: { id: true, name: true, phone: true, avatar: true } },
@@ -1002,6 +1099,12 @@ export async function getLeadWithHistory(leadId, client = prisma) {
       cancellationReasons: true
     }
   });
+
+  // Cancelled booking → never expose the customer's phone to the provider.
+  if (lead?.booking?.status === 'CANCELLED' && lead.customer) {
+    lead.customer = { ...lead.customer, phone: null };
+  }
+  return lead;
 }
 
 /**
@@ -1009,7 +1112,7 @@ export async function getLeadWithHistory(leadId, client = prisma) {
  * Auto-cancelled offers (another provider accepted first) drop out of the inbox.
  */
 export async function listProviderLeads(providerId, client = prisma) {
-  return client.lead.findMany({
+  const leads = await client.lead.findMany({
     where: {
       OR: [{ providerId }, { assignmentHistory: { some: { providerId, isCurrent: true } } }]
     },
@@ -1029,6 +1132,15 @@ export async function listProviderLeads(providerId, client = prisma) {
       }
     },
     orderBy: { createdAt: 'desc' }
+  });
+
+  // Cancelled booking → strip the customer's phone before it leaves the API so
+  // a provider viewing a closed/cancelled lead never sees the number.
+  return leads.map((lead) => {
+    if (lead.booking?.status === 'CANCELLED' && lead.customer) {
+      lead.customer = { ...lead.customer, phone: null };
+    }
+    return lead;
   });
 }
 

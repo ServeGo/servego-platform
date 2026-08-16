@@ -6,6 +6,7 @@ import {
 import { listAllLeads, getLeadWithHistory } from '../services/leadService.js';
 import { invalidateLevelCache } from '../services/providerLevelService.js';
 import { getAllPlans, invalidatePlansCache } from '../services/subscriptionService.js';
+import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
 function errorResponse(res, err, fallback) {
@@ -34,6 +35,16 @@ export const AdminBusinessController = {
         return sendApiError(res, 400, 'MISSING_FIELDS', 'value is required.');
       }
       const row = await setConfig(key, value, req.user.id);
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: `UPDATE_CONFIG_${key}`,
+        targetType: 'AdminConfig',
+        targetId: key,
+        oldValue: null,
+        newValue: { value },
+        ip: req.ip
+      });
       return sendApiSuccess(res, 200, row);
     } catch (err) {
       return errorResponse(res, err, 'Failed to update admin config.');
@@ -69,6 +80,16 @@ export const AdminBusinessController = {
         }
       });
       invalidatePlansCache();
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: 'CREATE_SUBSCRIPTION_PLAN',
+        targetType: 'SubscriptionPlan',
+        targetId: plan.id,
+        oldValue: null,
+        newValue: { level: plan.level, name: plan.name, price: plan.price, leadCount: plan.leadCount, sector: plan.sector },
+        ip: req.ip
+      });
       return sendApiSuccess(res, 201, plan);
     } catch (err) {
       if (err.code === 'P2002') {
@@ -99,6 +120,16 @@ export const AdminBusinessController = {
         }
       });
       invalidatePlansCache();
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: 'UPDATE_SUBSCRIPTION_PLAN',
+        targetType: 'SubscriptionPlan',
+        targetId: id,
+        oldValue: { level: existing.level, name: existing.name, price: existing.price, leadCount: existing.leadCount, active: existing.active },
+        newValue: { level: plan.level, name: plan.name, price: plan.price, leadCount: plan.leadCount, active: plan.active },
+        ip: req.ip
+      });
       return sendApiSuccess(res, 200, plan);
     } catch (err) {
       if (err.code === 'P2002') {
@@ -286,6 +317,16 @@ export const AdminBusinessController = {
         }
       });
       invalidateLevelCache();
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: 'UPDATE_LEVEL_RULE',
+        targetType: 'ProviderLevelRule',
+        targetId: id,
+        oldValue: { minJobs: existing.minJobs, discountPercent: existing.discountPercent, active: existing.active },
+        newValue: { minJobs: rule.minJobs, discountPercent: rule.discountPercent, active: rule.active },
+        ip: req.ip
+      });
       return sendApiSuccess(res, 200, rule);
     } catch (err) {
       return errorResponse(res, err, 'Failed to update level rule.');

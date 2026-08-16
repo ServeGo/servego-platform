@@ -13,6 +13,7 @@ import {
   getOrCreateWallet
 } from '../services/walletService.js';
 import { createNotification } from '../services/notificationService.js';
+import { writeAuditLog } from '../services/auditLogService.js';
 import { getConfig } from '../services/adminConfigService.js';
 
 async function resolveProviderForUser(req, res) {
@@ -161,6 +162,17 @@ export const WalletController = {
         if (io) io.to(`user:${updated.userId}`).emit('wallet:updated', { withdrawalId: updated.id, status: updated.status });
       }
 
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: `PROCESS_WITHDRAWAL_${updated.status}`,
+        targetType: 'WalletWithdrawal',
+        targetId: updated.id,
+        oldValue: { status: updated.status === 'PAID' ? 'APPROVED' : 'PENDING' },
+        newValue: { status: updated.status, note: adminNote || null },
+        ip: req.ip
+      });
+
       return sendApiSuccess(res, 200, { withdrawalId: updated.id, status: updated.status });
     } catch (err) {
       const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'ALREADY_PROCESSED' || err.code === 'INVALID_ACTION' ? 400 : 500;
@@ -179,6 +191,17 @@ export const WalletController = {
         category,
         description,
         adminId: req.user.id
+      });
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: 'WALLET_CREDIT',
+        targetType: 'User',
+        targetId: userId,
+        oldValue: null,
+        newValue: { amount: Number(amount), category: category || 'PROMOTIONAL_CREDIT', description: description || null },
+        ip: req.ip
       });
 
       const io = req.app?.get('socketio');

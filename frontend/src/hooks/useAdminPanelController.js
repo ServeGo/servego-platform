@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useAuth, useData } from '../context/AppContext';
-import { CITIES } from '../data';
 import { isOpenTicket } from '../utils/normalizeAdminData';
 
 
@@ -31,11 +30,6 @@ export function useAdminPanelController() {
 
   const [activeTicketId, setActiveTicketId] = useState(null);
   const [ticketResponse, setTicketResponse] = useState('');
-
-  const [platformCommission, setPlatformCommission] = useState('20');
-  const [taxPercent, setTaxPercent] = useState('18');
-  const [activeRegionHQ, setActiveRegionHQ] = useState('Hyderabad');
-  const [isSavedSettings, setIsSavedSettings] = useState(false);
 
   // SERVICES admin form
   const [isAddingService, setIsAddingService] = useState(false);
@@ -73,16 +67,6 @@ export function useAdminPanelController() {
     return bookingList.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
   }, [bookings]);
 
-  const administrativeEarnings = useMemo(() => {
-    const bookingList = Array.isArray(bookings) ? bookings : [];
-    const factor = parseFloat(platformCommission) / 100;
-    return Math.round(
-      bookingList
-        .filter((b) => b.status === 'completed')
-        .reduce((sum, b) => sum + (Number(b.totalAmount) || 0) * factor, 0)
-    );
-  }, [bookings, platformCommission]);
-
   const pendingPartnersCount = useMemo(() => {
     return (Array.isArray(providerServiceRequests) ? providerServiceRequests : []).filter(r => r.status === 'PENDING').length;
   }, [providerServiceRequests]);
@@ -102,12 +86,6 @@ export function useAdminPanelController() {
 
   const handlePartnerApproval = (pId) => {
     verifyProvider(pId);
-  };
-
-  const saveCommissionSettings = (e) => {
-    e.preventDefault();
-    setIsSavedSettings(true);
-    setTimeout(() => setIsSavedSettings(false), 3000);
   };
 
   const partnerCountForService = (serviceName) => {
@@ -202,7 +180,6 @@ export function useAdminPanelController() {
 
     // dashboard stats
     totalVolume,
-    administrativeEarnings,
     pendingPartnersCount,
     activeTicketsCount,
 
@@ -242,17 +219,6 @@ export function useAdminPanelController() {
     hideService,
     updateService,
     createService,
-
-    // settings
-    platformCommission,
-    setPlatformCommission,
-    taxPercent,
-    setTaxPercent,
-    activeRegionHQ,
-    setActiveRegionHQ,
-    isSavedSettings,
-    saveCommissionSettings,
-    CITIES,
 
     // misc admin
     fetchProviderServiceRequests,
