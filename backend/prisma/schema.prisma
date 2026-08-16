@@ -696,9 +696,10 @@ model Lead {
 
   // Leads no longer auto-expire on a timer. `expiryTime` is the moment the
   // lead has waited the fixed 24-hour response window without being accepted;
-  // when it elapses the admin is alerted and `adminAlertedAt` is set
-  // (guards against duplicate alerts). The lead stays open until accepted,
-  // rejected by all eligible providers, or otherwise settled.
+  // when it elapses the request is re-broadcast to every currently eligible
+  // provider and `adminAlertedAt` is set (re-used as the reminder watermark
+  // that guards against duplicate re-broadcasts). The lead stays open until
+  // accepted, rejected by all eligible providers, or otherwise settled.
   adminAlertedAt    DateTime?
 
   booking            Booking?                @relation(fields: [bookingId], references: [id])

@@ -1,6 +1,6 @@
 import prisma from '../prisma/client.js';
-import { buildLeadPayload } from './leadService.js';
-import { notifyAdminLeadUnanswered } from './notificationService.js';
+import { buildLeadPayload, reopenLeadBroadcast } from './leadService.js';
+import { notifyLeadReminder } from './notificationService.js';
 
 const timers = new Map();
 
@@ -13,13 +13,13 @@ export function cancelLeadExpiry(leadId) {
 }
 
 /**
- * (Re)arm the per-lead admin-alert timer. Idempotent per lead id.
+ * (Re)arm the per-lead 24-hour reminder timer. Idempotent per lead id.
  *
  * Leads no longer expire. `expiryTime` is the moment the lead has waited the
  * fixed 24-hour response window (`leadTimeoutSeconds` = 86400) without any
- * provider accepting; when it elapses the admin is alerted and the lead stays
- * open (NEW/VIEWED) until a provider accepts, every eligible provider rejects,
- * or an admin handles it.
+ * provider accepting; when it elapses the request is re-broadcast to every
+ * currently eligible provider and the lead stays open (NEW/VIEWED) until a
+ * provider accepts, every eligible provider rejects, or an admin handles it.
  */
 export function scheduleLeadExpiry(lead, io) {
   cancelLeadExpiry(lead.id);
@@ -29,7 +29,7 @@ export function scheduleLeadExpiry(lead, io) {
   if (ms <= 0) {
     timers.delete(lead.id);
     handleLeadTimeout(lead.id, io).catch((err) =>
-      console.error(`[LeadAlert] Failed to alert admin for lead ${lead.id}:`, err.message)
+      console.error(`[LeadAlert] Failed to re-broadcast lead ${lead.id}:`, err.message)
     );
     return;
   }
@@ -37,7 +37,7 @@ export function scheduleLeadExpiry(lead, io) {
   const timer = setTimeout(() => {
     timers.delete(lead.id);
     handleLeadTimeout(lead.id, io).catch((err) =>
-      console.error(`[LeadAlert] Failed to alert admin for lead ${lead.id}:`, err.message)
+      console.error(`[LeadAlert] Failed to re-broadcast lead ${lead.id}:`, err.message)
     );
   }, ms);
 
@@ -45,30 +45,31 @@ export function scheduleLeadExpiry(lead, io) {
 }
 
 /**
- * The response window elapsed with no provider accepting. The lead is NOT
- * expired — it stays open — and the admin is notified to review it. The alert
- * fires once per lead (guarded by `adminAlertedAt`).
+ * The 24-hour response window elapsed with no provider accepting. The lead is
+ * NOT expired — it stays open — and the request is pushed again to every
+ * currently eligible provider ("a lead is awaiting"). The reminder fires once
+ * per lead (guarded by `adminAlertedAt`, re-used as the reminder watermark).
  */
 async function handleLeadTimeout(leadId, io) {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead || !['NEW', 'VIEWED'].includes(lead.status)) return;
   if (lead.adminAlertedAt) return;
 
+  // Mark first, then re-broadcast, so a concurrent timer/retry cannot double-send.
   await prisma.lead.update({
     where: { id: leadId },
     data: { adminAlertedAt: new Date(), expiryTime: null }
   });
 
-  const fresh = await prisma.lead.findUnique({
-    where: { id: leadId },
-    include: {
-      booking: { include: { customer: { select: { id: true, name: true, phone: true, avatar: true } } } },
-      provider: { include: { user: { select: { id: true, name: true } } } }
-    }
-  });
-  const payload = buildLeadPayload(fresh, fresh?.booking, fresh?.provider);
+  const result = await reopenLeadBroadcast({ leadId });
+  if (result.skipped || !result.providers?.length) return;
 
-  await notifyAdminLeadUnanswered(io, payload);
+  const payload = buildLeadPayload(result.lead, result.booking);
+  await Promise.allSettled(
+    result.providers.map((provider) =>
+      notifyLeadReminder(io, provider.user?.id, { ...payload, provider })
+    )
+  );
 }
 
 /**

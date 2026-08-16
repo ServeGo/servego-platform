@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { MapPin, LocateFixed, Search, Loader2, CheckCircle2 } from 'lucide-react';
+import { MapPin, LocateFixed, Search, Loader2, CheckCircle2, ExternalLink, Link2 } from 'lucide-react';
 
 // OpenStreetMap raster tiles (free, keyless) — same style as LiveTrackingMap.
 const OSM_STYLE = {
@@ -20,9 +20,64 @@ const OSM_STYLE = {
 const DEFAULT_CENTER = [78.4867, 17.385]; // Hyderabad
 const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
+const GOOGLE_MAPS_SEARCH = 'https://www.google.com/maps/search/?api=1&query=';
 
 const isFiniteCoord = (v) => v != null && Number.isFinite(Number(v));
 const isPin = (value) => isFiniteCoord(value?.latitude) && isFiniteCoord(value?.longitude);
+
+/** Google Maps short links (Share → Copy link) cannot be expanded in a browser. */
+const isGoogleShortLink = (text) =>
+  /(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)/i.test(String(text || ''));
+
+/**
+ * Extract a { lat, lng } pair from a Google Maps URL or a raw "lat, lng" string.
+ * Understands every common Maps URL shape:
+ *   - "17.385, 78.486" (raw coordinates)
+ *   - /place/Name/@17.385,78.486,15z/ (place / search / dir views)
+ *   - ?query=17.385,78.486 / ?q= / ?ll= / ?center= (search URLs)
+ *   - !3d17.385!4d78.486 (share-link data hash)
+ * Returns null when nothing usable is found.
+ */
+function parseCoordsFromText(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+
+  const toCoord = (latStr, lngStr) => {
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+      ? { lat, lng }
+      : null;
+  };
+
+  const rawCoord = s.match(/^([-+]?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*([-+]?\d{1,3}(?:\.\d+)?)$/);
+  if (rawCoord) {
+    const c = toCoord(rawCoord[1], rawCoord[2]);
+    if (c) return c;
+  }
+
+  const atMatch = s.match(/@([-+]?\d{1,2}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/);
+  if (atMatch) {
+    const c = toCoord(atMatch[1], atMatch[2]);
+    if (c) return c;
+  }
+
+  const qMatch =
+    s.match(/[?&](?:query|q|ll|center)=([-+]?\d{1,3}(?:\.\d+)?)%2C([-+]?\d{1,3}(?:\.\d+)?)/) ||
+    s.match(/[?&](?:query|q|ll|center)=([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/);
+  if (qMatch) {
+    const c = toCoord(qMatch[1], qMatch[2]);
+    if (c) return c;
+  }
+
+  const dMatch = s.match(/!3d([-+]?\d{1,3}(?:\.\d+)?)!4d([-+]?\d{1,3}(?:\.\d+)?)/);
+  if (dMatch) {
+    const c = toCoord(dMatch[1], dMatch[2]);
+    if (c) return c;
+  }
+
+  return null;
+}
 
 /**
  * Mandatory map location picker backed by MapLibre GL + OpenStreetMap.
@@ -50,6 +105,12 @@ export default function LocationPicker({ value, onChange, error, height = 'h-56'
   const [searching, setSearching] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [locating, setLocating] = useState(false);
+
+  // "Choose on Maps" → Google Maps in a new tab, then paste the shared link back.
+  const [mapsPasteOpen, setMapsPasteOpen] = useState(false);
+  const [mapsLink, setMapsLink] = useState('');
+  const [linkStatus, setLinkStatus] = useState(null);
+  const linkStatusTimerRef = useRef(null);
 
   const pinned = isPin(value);
 
@@ -108,6 +169,71 @@ export default function LocationPicker({ value, onChange, error, height = 'h-56'
       { enableHighAccuracy: true, timeout: 12000 }
     );
   }, [placePin]);
+
+  // Open Google Maps in a new tab centred on the current pin / address so the
+  // user can fine-tune the exact spot. The chosen location comes back through
+  // the paste field below (see applyMapsLink).
+  const openInGoogleMaps = useCallback(() => {
+    let query = 'Hyderabad';
+    if (isPin(value)) {
+      query = `${value.latitude},${value.longitude}`;
+    } else if (addressRef.current.trim()) {
+      query = addressRef.current.trim();
+    }
+    // Capacitor native app → system browser/Google Maps app; web → new tab.
+    const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
+    window.open(`${GOOGLE_MAPS_SEARCH}${encodeURIComponent(query)}`, target);
+    setMapsPasteOpen(true);
+    setLinkStatus({
+      tone: 'info',
+      text: 'Pick the exact spot in Google Maps, then tap Share → Copy link and paste it here.'
+    });
+  }, [value]);
+
+  const applyMapsLink = useCallback(
+    (raw) => {
+      const text = String(raw || '').trim();
+      if (linkStatusTimerRef.current) window.clearTimeout(linkStatusTimerRef.current);
+
+      if (!text) {
+        setLinkStatus(null);
+        return;
+      }
+
+      if (isGoogleShortLink(text)) {
+        setLinkStatus({
+          tone: 'amber',
+          text: 'That is a short link. Open it in the browser and copy the full link from the address bar — or paste the coordinates directly (e.g. 17.385, 78.486).'
+        });
+        return;
+      }
+
+      const coords = parseCoordsFromText(text);
+      if (!coords) {
+        const looksLikeUrl = /https?:\/\/|maps\.google|goo\.gl|www\./i.test(text) || text.length > 40;
+        if (looksLikeUrl) {
+          setLinkStatus({
+            tone: 'rose',
+            text: 'Could not read that. Make sure it is a Google Maps link that already has a location pinned.'
+          });
+        } else {
+          setLinkStatus(null);
+        }
+        return;
+      }
+
+      setMapsLink('');
+      setMapsPasteOpen(false);
+      setLinkStatus({
+        tone: 'emerald',
+        text: `Location applied — ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
+      });
+      placePin(coords.lat, coords.lng);
+
+      linkStatusTimerRef.current = window.setTimeout(() => setLinkStatus(null), 6000);
+    },
+    [placePin]
+  );
 
   // Search with debounce (Nominatim asks for max ~1 req/s).
   const runSearch = useCallback((q) => {
@@ -243,6 +369,54 @@ export default function LocationPicker({ value, onChange, error, height = 'h-56'
           </div>
         )}
       </div>
+
+      <div className="flex items-center justify-between gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2">
+        <p className="text-[10px] font-semibold text-slate-500 leading-tight">
+          {pinned
+            ? 'Prefer the exact spot? Fine-tune it on Google Maps.'
+            : "Can't find the exact spot? Choose it on Google Maps."}
+        </p>
+        <button
+          type="button"
+          onClick={openInGoogleMaps}
+          className="cursor-pointer shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold px-3 py-2 rounded-lg transition-colors"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Choose on Maps
+        </button>
+      </div>
+
+      {mapsPasteOpen && (
+        <div className="space-y-1.5">
+          <div className="relative">
+            <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={mapsLink}
+              onChange={(e) => {
+                setMapsLink(e.target.value);
+                applyMapsLink(e.target.value);
+              }}
+              placeholder="Paste Google Maps link or coordinates (e.g. 17.385, 78.486)"
+              autoFocus
+              className="w-full bg-white border border-indigo-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          {linkStatus && (
+            <p className={`text-[10px] font-bold px-1 ${
+              linkStatus.tone === 'emerald'
+                ? 'text-emerald-600'
+                : linkStatus.tone === 'amber'
+                  ? 'text-amber-600'
+                  : linkStatus.tone === 'rose'
+                    ? 'text-rose-600'
+                    : 'text-indigo-500'
+            }`}>
+              {linkStatus.text}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className={`relative w-full ${height} rounded-2xl overflow-hidden border-2 ${borderClass} transition-colors`}>
         <div ref={containerRef} className="absolute inset-0 w-full h-full" />

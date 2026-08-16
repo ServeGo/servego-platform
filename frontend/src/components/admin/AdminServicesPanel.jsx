@@ -19,7 +19,6 @@ export default function AdminServicesPanel({
   setEditServiceForm,
   services,
   providers,
-  platformCommission,
   hideService,
   deleteService,
   updateService,
@@ -33,7 +32,7 @@ export default function AdminServicesPanel({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Active Services & Hourly Rates</h2>
-          <p className="text-slate-500 text-xs">Configure base cost index listings, commissions, and regional specialist capacities.</p>
+          <p className="text-slate-500 text-xs">Configure base cost index listings and regional specialist capacities.</p>
         </div>
 
         {canManage && (
@@ -245,14 +244,10 @@ export default function AdminServicesPanel({
                 </div>
               )}
 
-              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 text-[11px] font-bold text-slate-500">
+              <div className="pt-3 border-t border-slate-100 text-[11px] font-bold text-slate-500">
                 <div>
                   <span className="block text-slate-400 text-[9px] uppercase font-bold">Listed Experts</span>
                   <span className="block text-slate-950 font-black mt-1 text-xs">{partnerCount} live partners</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 text-[9px] uppercase font-bold">Base Commission</span>
-                  <span className="block text-teal-700 font-black mt-1 text-xs">{platformCommission}% per job</span>
                 </div>
               </div>
             </div>

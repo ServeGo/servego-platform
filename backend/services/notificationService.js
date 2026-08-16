@@ -166,6 +166,22 @@ export async function notifyNewLead(io, providerUserId, leadPayload) {
   return notification;
 }
 
+/**
+ * 24-hour reminder — an unanswered lead is still waiting for a provider. Uses
+ * the same `newLead` event so the provider's inbox re-surfaces the request.
+ */
+export async function notifyLeadReminder(io, providerUserId, payload) {
+  return pushNotification(
+    io,
+    providerUserId,
+    'Request Still Awaiting',
+    'A service request is still waiting for a response. Accept it to confirm the booking.',
+    'LEAD',
+    'newLead',
+    payload
+  );
+}
+
 /** Provider accepted the lead — inform the customer. */
 export async function notifyLeadAccepted(io, customerId, payload) {
   return pushNotification(
@@ -225,6 +241,19 @@ export async function notifyLeadCancelled(io, providerUserId, payload) {
     providerUserId,
     'Request Taken',
     'This request has already been accepted by another provider.',
+    'LEAD',
+    'leadCancelled',
+    payload
+  );
+}
+
+/** A lead was cancelled by the customer/admin — the provider's open offer is closed. */
+export async function notifyLeadCancelledByCustomer(io, providerUserId, payload) {
+  return pushNotification(
+    io,
+    providerUserId,
+    'Request Cancelled',
+    'This service request was cancelled by the customer.',
     'LEAD',
     'leadCancelled',
     payload
@@ -448,11 +477,6 @@ export async function notifyAdminProviderPromoted(io, payload) {
 /** Admin — a customer submitted a permanent/contract service request. */
 export async function notifyAdminPermanentServiceRequest(io, payload) {
   return notifyAdmin(io, 'New Permanent Service Request', 'A customer submitted a permanent/contract service request for admin review.', { ...payload, type: 'PERMANENT_SERVICE_REQUEST' });
-}
-
-/** Admin — a booking request has waited the full response window with no provider accepting; it stays open pending admin review. */
-export async function notifyAdminLeadUnanswered(io, payload) {
-  return notifyAdmin(io, 'Unanswered Booking Request', 'A booking request has been waiting a long time without any provider accepting it. Please review and assign it manually.', { ...payload, type: 'LEAD_TIMEOUT_NO_PROVIDER' });
 }
 
 /** Customer — permanent/contract request received by admin. */

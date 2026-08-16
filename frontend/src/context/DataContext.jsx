@@ -19,17 +19,6 @@ const DataContext = createContext(undefined);
 export const DataProvider = ({ children }) => {
   const { currentUser } = useAuth();
 
-  const fetchProviderAvailability = useCallback(async (providerId, dateYYYYMMDD) => {
-    try {
-      const res = await api(`${API_BASE_URL}/providers/${providerId}/availability?date=${encodeURIComponent(dateYYYYMMDD)}`);
-      const data = await res.json();
-      if (!res.ok) return { error: getErrorMessage(data, 'Failed to fetch availability') };
-      return data;
-    } catch (err) {
-      return { error: getErrorMessage(err) };
-    }
-  }, []);
-
   // Database of users - purely for local dev fallback or admin view if needed
   const [users, setUsers] = useState([]);
 
@@ -618,28 +607,6 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const updateProviderAvailability = async (providerId, availableDays, timeSlots, availabilitySlots) => {
-    try {
-      const payload = { availableDays, timeSlots };
-      if (availabilitySlots !== undefined) payload.availabilitySlots = availabilitySlots;
-      const res = await api(`${API_BASE_URL}/providers/${providerId}/availability`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.id) {
-        setProviders(prev => prev.map(p => p.id === providerId ? data : p));
-        fetchMyProviderSummary();
-        return data;
-      }
-      throw new Error(data?.message || data?.error || 'Failed to save availability.');
-    } catch (err) {
-      console.error('Failed to update availability:', err);
-      throw err;
-    }
-  };
-
   const updateProviderProfile = async (providerId, profileData) => {
     try {
       const res = await api(`${API_BASE_URL}/providers/${providerId}/profile`, {
@@ -967,7 +934,6 @@ export const DataProvider = ({ children }) => {
       servicesLoading,
       providerServiceRequests,
       providerServiceItems,
-      fetchProviderAvailability,
       fetchProvidersByApprovedServiceName,
       fetchSavedPros,
       fetchProviders,
@@ -993,7 +959,6 @@ export const DataProvider = ({ children }) => {
       updateBookingStatus,
       submitReview,
       verifyProvider,
-      updateProviderAvailability,
       updateProviderProfile,
       updateProviderDispatchLocation,
       updateProviderAvailabilityStatus,

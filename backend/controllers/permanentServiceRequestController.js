@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { writeAuditLog } from '../services/auditLogService.js';
 import {
   notifyAdminPermanentServiceRequest,
   notifyPermanentServiceRequestApproved,
@@ -199,6 +200,17 @@ export const PermanentServiceRequestController = {
         await notifyPermanentServiceRequestRejected(existing.customerId, { requestId: id, status: 'REJECTED', adminNote: updated.adminNote });
         if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:rejected', { requestId: id, status: 'REJECTED' });
       }
+
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorRole: 'ADMIN',
+        action: nextStatus === 'APPROVED' ? 'APPROVE_PERMANENT_REQUEST' : 'REJECT_PERMANENT_REQUEST',
+        targetType: 'PermanentServiceRequest',
+        targetId: id,
+        oldValue: { status: 'PENDING', assignedProviderId: null },
+        newValue: { status: nextStatus, assignedProviderId: providerId || null, adminNote: updated.adminNote || null },
+        ip: req.ip
+      });
 
       return sendApiSuccess(res, 200, updated);
     } catch (err) {

@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   LocateFixed,
   Navigation,
-  UserCheck
+  UserCheck,
+  Phone
 } from 'lucide-react';
 import { useRealtime, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
@@ -508,6 +509,9 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
   const expiryMs = lead.expiryTime ? new Date(lead.expiryTime).getTime() - now : null;
   const expired = expiryMs != null && expiryMs <= 0;
   const bookingStatus = booking.status || 'PENDING';
+  // Rule: the customer's number is only shown while the booking is live.
+  // Once the customer cancels, the backend strips it and the UI never renders it.
+  const canShowPhone = bookingStatus !== 'CANCELLED';
 
   useEffect(() => {
     onOpen();
@@ -557,6 +561,14 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
           </h4>
           <p className="text-xs text-slate-500 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
             <User className="w-3.5 h-3.5" /> {lead.customer?.name || 'Customer'}
+            {canShowPhone && lead.customer?.phone && (
+              <a
+                href={`tel:${lead.customer.phone}`}
+                className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5 hover:bg-teal-100 hover:border-teal-300 transition-colors"
+              >
+                <Phone className="w-3 h-3" /> {lead.customer.phone}
+              </a>
+            )}
             {lead.distanceKm != null && (
               <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
                 <MapPin className="w-3 h-3" /> {Number(lead.distanceKm).toFixed(1)} km away
@@ -652,9 +664,15 @@ function ProviderLocationShare({ bookingId }) {
   const watchIdRef = useRef(null);
 
   useEffect(() => {
+    // Location sharing defaults to ON: this control only mounts for a
+    // CONFIRMED/ONGOING booking, i.e. the moment the offer was accepted — so
+    // the GPS watch starts immediately. The provider can still toggle it off.
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return undefined;
+    startSharing();
     return () => {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startSharing = () => {

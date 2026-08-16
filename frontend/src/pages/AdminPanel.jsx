@@ -15,9 +15,7 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     customersList,
 
     // dashboard stats
-    platformCommission,
     totalVolume,
-    administrativeEarnings,
     pendingPartnersCount,
     activeTicketsCount,
 
@@ -54,16 +52,6 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     editServiceId,
     partnerCountForService,
 
-    // settings
-    taxPercent,
-    activeRegionHQ,
-    isSavedSettings,
-    setPlatformCommission,
-    setTaxPercent,
-    setActiveRegionHQ,
-    saveCommissionSettings,
-    CITIES,
-
     // misc
     updateBookingStatus,
   } = useAdminPanelController();
@@ -98,9 +86,7 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     customersList,
 
     // dashboard
-    platformCommission,
     totalVolume,
-    administrativeEarnings,
     pendingPartnersCount,
     activeTicketsCount,
     bookings,
@@ -146,16 +132,6 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     setTicketResponse,
     setActiveTicketId,
     handleTicketResolveSubmit,
-
-    // settings
-    taxPercent,
-    activeRegionHQ,
-    isSavedSettings,
-    setPlatformCommission,
-    setTaxPercent,
-    setActiveRegionHQ,
-    saveCommissionSettings,
-    CITIES,
   };
 
   return (

@@ -18,6 +18,7 @@ import {
   notifyLeadRejected,
   notifyLeadTransferred,
   notifyLeadCancelled,
+  notifyLeadCancelledByCustomer,
   notifyNoProviderFound,
   notifyProviderCooldown,
   notifySubscriptionExpired,
@@ -27,6 +28,7 @@ import { enqueueJob, isQueueEnabled } from '../services/queue/queueService.js';
 import { bookingRequestEmail, bookingCompletedEmail } from '../services/emailService.js';
 import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
+import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { bookingListItem } from '../utils/serializers.js';
 import { parsePagination, offsetMeta, parseCursor, sliceCursorPage } from '../utils/pagination.js';
@@ -53,6 +55,10 @@ const BOOKING_INCLUDE = {
 // List rows only render the service label — don't pull full Service rows
 // (description, popularIssues JSON) onto every booking of the page. The full
 // shape stays on the single-booking `getById` path.
+//
+// `events` is included as a lean, ordered audit trail so the customer tracking
+// timeline can be rebuilt even for bookings whose `statusHistory` predates the
+// feature (a single LEFT JOIN, not an N+1).
 const BOOKING_LIST_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
   provider: {
@@ -61,6 +67,7 @@ const BOOKING_LIST_INCLUDE = {
     }
   },
   service: { select: { id: true, name: true } },
+  events: { orderBy: { createdAt: 'asc' }, select: { action: true, note: true, actorRole: true, createdAt: true } },
 };
 
 /**
@@ -844,12 +851,14 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
     }
 
     // Customer / Admin cancellation.
+    let affectedProviders = [];
     if (lead) {
       cancelLeadExpiry(lead.id);
-      await cancelOpenOffers({
+      const closed = await cancelOpenOffers({
         leadId: lead.id,
         reason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED'
       });
+      affectedProviders = closed?.providerUserIds || [];
       await prisma.lead.update({
         where: { id: lead.id },
         data: { status: 'REJECTED', lastRejectReason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED' }
@@ -876,6 +885,27 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
     if (io) {
       io.to(`user:${booking.customerId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
       if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
+      // Every provider still holding an open broadcast offer sees it closed in
+      // realtime — same pattern as `accept` notifying losing providers. The
+      // payload carries the CANCELLED booking, so the number stays stripped.
+      await Promise.all(
+        affectedProviders
+          .filter((uid) => uid !== provider?.userId)
+          .map((uid) => notifyLeadCancelledByCustomer(io, uid, buildLeadPayload(lead, updated)))
+      );
+    }
+    // Admin override cancellation must land in the audit trail.
+    if (actorRole === 'ADMIN') {
+      await writeAuditLog({
+        actorId: requesterId,
+        actorRole: 'ADMIN',
+        action: 'CANCEL_BOOKING_OVERRIDE',
+        targetType: 'Booking',
+        targetId: booking.id,
+        oldValue: { status: booking.status, providerId: booking.providerId || null },
+        newValue: { status: 'CANCELLED', reason: note || 'Admin cancelled the booking' },
+        ip: req.ip
+      });
     }
     return sendApiSuccess(res, 200, updated);
   } catch (err) {

@@ -218,7 +218,12 @@ export function bookingListItem(booking) {
       ...pick(provider, ['id', 'photo']),
       user: pick(providerUser, ['id', 'name', 'avatar'])
     },
-    service: pick(booking.service || {}, ['id', 'name'])
+    service: pick(booking.service || {}, ['id', 'name']),
+    // Lean ordered audit trail — lets the client rebuild a tracking timeline
+    // for bookings whose `statusHistory` was never written.
+    events: Array.isArray(booking.events)
+      ? booking.events.map((e) => ({ action: e.action, note: e.note || null, actorRole: e.actorRole || null, timestamp: e.createdAt }))
+      : []
   };
 }
 
