@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { MapPin, LocateFixed, Search, Loader2, CheckCircle2, ExternalLink, Link2 } from 'lucide-react';
+import { MapPin, LocateFixed, Search, Loader2, CheckCircle2 } from 'lucide-react';
 
 // OpenStreetMap raster tiles (free, keyless) — same style as LiveTrackingMap.
 const OSM_STYLE = {
@@ -20,222 +20,142 @@ const OSM_STYLE = {
 const DEFAULT_CENTER = [78.4867, 17.385]; // Hyderabad
 const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
-const GOOGLE_MAPS_SEARCH = 'https://www.google.com/maps/search/?api=1&query=';
 
 const isFiniteCoord = (v) => v != null && Number.isFinite(Number(v));
 const isPin = (value) => isFiniteCoord(value?.latitude) && isFiniteCoord(value?.longitude);
 
-/** Google Maps short links (Share → Copy link) cannot be expanded in a browser. */
-const isGoogleShortLink = (text) =>
-  /(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)/i.test(String(text || ''));
-
 /**
- * Extract a { lat, lng } pair from a Google Maps URL or a raw "lat, lng" string.
- * Understands every common Maps URL shape:
- *   - "17.385, 78.486" (raw coordinates)
- *   - /place/Name/@17.385,78.486,15z/ (place / search / dir views)
- *   - ?query=17.385,78.486 / ?q= / ?ll= / ?center= (search URLs)
- *   - !3d17.385!4d78.486 (share-link data hash)
- * Returns null when nothing usable is found.
- */
-function parseCoordsFromText(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return null;
-
-  const toCoord = (latStr, lngStr) => {
-    const lat = Number(latStr);
-    const lng = Number(lngStr);
-    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
-      ? { lat, lng }
-      : null;
-  };
-
-  const rawCoord = s.match(/^([-+]?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*([-+]?\d{1,3}(?:\.\d+)?)$/);
-  if (rawCoord) {
-    const c = toCoord(rawCoord[1], rawCoord[2]);
-    if (c) return c;
-  }
-
-  const atMatch = s.match(/@([-+]?\d{1,2}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/);
-  if (atMatch) {
-    const c = toCoord(atMatch[1], atMatch[2]);
-    if (c) return c;
-  }
-
-  const qMatch =
-    s.match(/[?&](?:query|q|ll|center)=([-+]?\d{1,3}(?:\.\d+)?)%2C([-+]?\d{1,3}(?:\.\d+)?)/) ||
-    s.match(/[?&](?:query|q|ll|center)=([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/);
-  if (qMatch) {
-    const c = toCoord(qMatch[1], qMatch[2]);
-    if (c) return c;
-  }
-
-  const dMatch = s.match(/!3d([-+]?\d{1,3}(?:\.\d+)?)!4d([-+]?\d{1,3}(?:\.\d+)?)/);
-  if (dMatch) {
-    const c = toCoord(dMatch[1], dMatch[2]);
-    if (c) return c;
-  }
-
-  return null;
-}
-
-/**
- * Mandatory map location picker backed by MapLibre GL + OpenStreetMap.
- *  - click anywhere on the map to drop the pin
- *  - search box (Nominatim) to jump to an address
- *  - "use my location" to center on the device GPS fix
- *  - the address text is reverse-geocoded from the pin but stays editable
+ * Uber/Rapido-style map location picker backed by MapLibre GL + OpenStreetMap.
+ *
+ *  - a FIXED pin at the centre of the map — the map moves, the pin stays
+ *  - drag the map to set the exact spot; the address is reverse-geocoded
+ *    live from the centre as you drag
+ *  - a pulsing blue dot shows the live device position (watchPosition)
+ *  - "Use my location" snaps to the GPS fix, search (Nominatim) jumps to a place
+ *  - "Confirm location" commits { latitude, longitude, address } to the parent
  *
  * Emits `onChange({ latitude, longitude, address })`. A location is only
- * "chosen" once both coordinates exist — callers should gate submit on that.
+ * "chosen" once confirmed — callers should gate submit on that.
  */
-export default function LocationPicker({ value, onChange, error, height = 'h-56' }) {
+export default function LocationPicker({ value = {}, onChange, error, height = 'h-64 sm:h-80' }) {
   const mapRef = useRef(null);
   const containerRef = useRef(null);
-  const markerRef = useRef(null);
+  const userDotRef = useRef(null);
   const geocodeSeqRef = useRef(0);
+  const geocodeTimerRef = useRef(null);
   const searchTimerRef = useRef(null);
+  const centerRef = useRef(isPin(value) ? { lat: Number(value.latitude), lng: Number(value.longitude) } : null);
+  // When re-opening a saved location, don't clobber the user's stored address
+  // (flat/landmark) with the generic street name until they interact with the map.
+  const preserveAddressRef = useRef(isPin(value));
 
   const [address, setAddress] = useState(value?.address || '');
-  const addressRef = useRef(value?.address || '');
-  useEffect(() => { addressRef.current = address; }, [address]);
+  const [confirmed, setConfirmed] = useState(isPin(value));
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [findingYou, setFindingYou] = useState(!isPin(value));
+  const [geoNotice, setGeoNotice] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
-  // "Choose on Maps" → Google Maps in a new tab, then paste the shared link back.
-  const [mapsPasteOpen, setMapsPasteOpen] = useState(false);
-  const [mapsLink, setMapsLink] = useState('');
-  const [linkStatus, setLinkStatus] = useState(null);
-  const linkStatusTimerRef = useRef(null);
+  const emitChange = useCallback((lat, lng, addr) => {
+    centerRef.current = { lat, lng };
+    setConfirmed(true);
+    if (onChange) onChange({ latitude: lat, longitude: lng, address: addr });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const pinned = isPin(value);
-
-  // Reverse-geocode a coordinate into a display address.
-  const reverseGeocode = useCallback(async (lat, lng) => {
+  // Single reverse-geocode call with stale-response guarding.
+  const reverseGeocodeOnce = useCallback(async (lat, lng) => {
     const seq = ++geocodeSeqRef.current;
     setGeocoding(true);
-    let resolved = '';
     try {
       const res = await fetch(`${NOMINATIM_REVERSE}?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=en`);
-      if (!res.ok) throw new Error('geocode failed');
-      const data = await res.json();
-      if (seq !== geocodeSeqRef.current) return;
-      resolved = data?.display_name || '';
+      const data = res.ok ? await res.json() : null;
+      if (seq !== geocodeSeqRef.current) return null;
+      return data?.display_name || '';
     } catch {
-      if (seq !== geocodeSeqRef.current) return;
+      return null;
     } finally {
       if (seq === geocodeSeqRef.current) setGeocoding(false);
     }
-    if (resolved) {
-      setAddress(resolved);
-      if (onChange) onChange({ latitude: lat, longitude: lng, address: resolved });
-    } else if (onChange) {
-      onChange({ latitude: lat, longitude: lng, address: addressRef.current });
-    }
-  }, [onChange]);
+  }, []);
 
-  // Drop the pin at lat/lng and recentre the view.
-  const placePin = useCallback((lat, lng) => {
+  // Debounced reverse-geocode of the current map centre that only updates the
+  // on-screen address preview (never emits) — quick drags can't spam Nominatim.
+  const refreshAddressPreview = useCallback(() => {
+    const c = centerRef.current || mapRef.current?.getCenter();
+    if (!c) return;
+    const seq = ++geocodeSeqRef.current;
+    setGeocoding(true);
+    window.clearTimeout(geocodeTimerRef.current);
+    geocodeTimerRef.current = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`${NOMINATIM_REVERSE}?format=jsonv2&lat=${c.lat}&lon=${c.lng}&accept-language=en`);
+        const data = res.ok ? await res.json() : null;
+        if (seq !== geocodeSeqRef.current) return;
+        if (!preserveAddressRef.current && data?.display_name) setAddress(data.display_name);
+      } catch {
+        // keep the previous address; geocoding is best-effort
+      } finally {
+        if (seq === geocodeSeqRef.current) setGeocoding(false);
+      }
+    }, 450);
+  }, []);
+
+  const flyToCenter = useCallback((lat, lng, zoom = 15) => {
     const map = mapRef.current;
     if (!map) return;
-    markerRef.current?.setLngLat([Number(lng), Number(lat)]);
-    map.easeTo({ center: [Number(lng), Number(lat)], zoom: Math.max(map.getZoom(), 15), duration: 700 });
-    void reverseGeocode(Number(lat), Number(lng));
-  }, [reverseGeocode]);
+    map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), zoom), duration: 900, essential: true });
+  }, []);
 
-  const handleMapClick = useCallback((e) => {
-    placePin(e.lngLat.lat, e.lngLat.lng);
-  }, [placePin]);
-
-  const handleUseMyLocation = useCallback(() => {
+  // Snap to the GPS fix, reverse-geocode it, then commit (Rapido/Uber flow).
+  const handleUseMyLocation = useCallback(async () => {
     if (!navigator.geolocation) {
-      setAddress((prev) => prev);
+      setGeoNotice('Location is not available on this device. Search for your area instead.');
       return;
     }
+    setGeoNotice('');
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        preserveAddressRef.current = false;
+        const addr = (await reverseGeocodeOnce(latitude, longitude)) || '';
         setLocating(false);
-        placePin(pos.coords.latitude, pos.coords.longitude);
+        centerRef.current = { lat: latitude, lng: longitude };
+        setAddress(addr);
+        flyToCenter(latitude, longitude);
+        emitChange(latitude, longitude, addr);
       },
       () => {
         setLocating(false);
-        setSuggestions([]);
+        setGeoNotice('Could not access your location. Allow location access or search for your area on the map.');
       },
-      { enableHighAccuracy: true, timeout: 12000 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 }
     );
-  }, [placePin]);
+  }, [emitChange, flyToCenter, reverseGeocodeOnce]);
 
-  // Open Google Maps in a new tab centred on the current pin / address so the
-  // user can fine-tune the exact spot. The chosen location comes back through
-  // the paste field below (see applyMapsLink).
-  const openInGoogleMaps = useCallback(() => {
-    let query = 'Hyderabad';
-    if (isPin(value)) {
-      query = `${value.latitude},${value.longitude}`;
-    } else if (addressRef.current.trim()) {
-      query = addressRef.current.trim();
-    }
-    // Capacitor native app → system browser/Google Maps app; web → new tab.
-    const target = window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank';
-    window.open(`${GOOGLE_MAPS_SEARCH}${encodeURIComponent(query)}`, target);
-    setMapsPasteOpen(true);
-    setLinkStatus({
-      tone: 'info',
-      text: 'Pick the exact spot in Google Maps, then tap Share → Copy link and paste it here.'
-    });
-  }, [value]);
-
-  const applyMapsLink = useCallback(
-    (raw) => {
-      const text = String(raw || '').trim();
-      if (linkStatusTimerRef.current) window.clearTimeout(linkStatusTimerRef.current);
-
-      if (!text) {
-        setLinkStatus(null);
-        return;
-      }
-
-      if (isGoogleShortLink(text)) {
-        setLinkStatus({
-          tone: 'amber',
-          text: 'That is a short link. Open it in the browser and copy the full link from the address bar — or paste the coordinates directly (e.g. 17.385, 78.486).'
-        });
-        return;
-      }
-
-      const coords = parseCoordsFromText(text);
-      if (!coords) {
-        const looksLikeUrl = /https?:\/\/|maps\.google|goo\.gl|www\./i.test(text) || text.length > 40;
-        if (looksLikeUrl) {
-          setLinkStatus({
-            tone: 'rose',
-            text: 'Could not read that. Make sure it is a Google Maps link that already has a location pinned.'
-          });
-        } else {
-          setLinkStatus(null);
-        }
-        return;
-      }
-
-      setMapsLink('');
-      setMapsPasteOpen(false);
-      setLinkStatus({
-        tone: 'emerald',
-        text: `Location applied — ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
-      });
-      placePin(coords.lat, coords.lng);
-
-      linkStatusTimerRef.current = window.setTimeout(() => setLinkStatus(null), 6000);
+  // Pick a search suggestion: snap the map there and commit immediately.
+  const pickSuggestion = useCallback(
+    (s) => {
+      preserveAddressRef.current = false;
+      setQuery(s.display_name || '');
+      setShowSuggestions(false);
+      const lat = Number(s.lat);
+      const lng = Number(s.lon);
+      centerRef.current = { lat, lng };
+      const addr = s.display_name || '';
+      setAddress(addr);
+      flyToCenter(lat, lng);
+      emitChange(lat, lng, addr);
     },
-    [placePin]
+    [emitChange, flyToCenter]
   );
 
-  // Search with debounce (Nominatim asks for max ~1 req/s).
   const runSearch = useCallback((q) => {
     setSearching(true);
     fetch(`${NOMINATIM_SEARCH}?format=jsonv2&limit=6&q=${encodeURIComponent(q)}&accept-language=en`)
@@ -260,82 +180,99 @@ export default function LocationPicker({ value, onChange, error, height = 'h-56'
     searchTimerRef.current = window.setTimeout(() => runSearch(q.trim()), 450);
   };
 
-  const pickSuggestion = (s) => {
-    setQuery(s.display_name || '');
-    setShowSuggestions(false);
-    placePin(Number(s.lat), Number(s.lon));
-  };
-
   const handleAddressEdit = (e) => {
     const next = e.target.value;
     setAddress(next);
-    if (onChange) {
-      onChange({
-        latitude: isFiniteCoord(value?.latitude) ? Number(value.latitude) : null,
-        longitude: isFiniteCoord(value?.longitude) ? Number(value.longitude) : null,
-        address: next
-      });
-    }
+    const c = centerRef.current;
+    if (c && onChange) onChange({ latitude: c.lat, longitude: c.lng, address: next });
   };
 
-  // Create the map once.
+  // Create the map once; centre on the saved spot, otherwise zoom out and ask
+  // the browser where the user is (real-time feel = start at THEIR location).
   useEffect(() => {
     const container = containerRef.current;
     if (!container || mapRef.current) return;
 
-    const lat = isFiniteCoord(value?.latitude) ? Number(value.latitude) : DEFAULT_CENTER[1];
-    const lng = isFiniteCoord(value?.longitude) ? Number(value.longitude) : DEFAULT_CENTER[0];
-
+    const saved = isPin(value);
     const map = new MapLibreMap({
       container,
       style: OSM_STYLE,
-      center: [lng, lat],
-      zoom: pinned ? 15 : 11,
+      center: saved ? [Number(value.longitude), Number(value.latitude)] : DEFAULT_CENTER,
+      zoom: saved ? 15 : 11,
       attributionControl: true
     });
     map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
-    map.on('click', handleMapClick);
 
-    const el = document.createElement('div');
-    el.innerHTML =
-      '<svg width="34" height="42" viewBox="0 0 34 42" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">' +
-      '<path d="M17 0C7.6 0 0 7.6 0 17c0 12.2 15.6 24.6 16.4 25.2.4.3.8.3 1.2 0C18.4 41.6 34 29.2 34 17 34 7.6 26.4 0 17 0z" fill="#4f46e5"/>' +
-      '<circle cx="17" cy="17" r="7" fill="#fff"/></svg>';
-    markerRef.current = new Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(map);
+    map.on('dragstart', () => {
+      preserveAddressRef.current = false;
+      setIsDragging(true);
+    });
+    map.on('dragend', () => setIsDragging(false));
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      centerRef.current = { lat: c.lat, lng: c.lng };
+      refreshAddressPreview();
+    });
+
+    // "You are here" blue dot, refreshed live via watchPosition.
+    const dotEl = document.createElement('div');
+    dotEl.className =
+      'w-4 h-4 rounded-full bg-indigo-600 border-[3px] border-white shadow-[0_0_0_6px_rgba(79,70,229,0.25)]';
+    const dot = new Marker({ element: dotEl }).setLngLat(DEFAULT_CENTER).addTo(map);
+    userDotRef.current = dot;
 
     mapRef.current = map;
+
+    let watcher = null;
+    if (saved) {
+      setFindingYou(false);
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          setFindingYou(false);
+          dot.setLngLat([longitude, latitude]);
+          map.flyTo({ center: [longitude, latitude], zoom: 15, duration: 1100, essential: true });
+        },
+        () => {
+          setFindingYou(false);
+          setGeoNotice('Could not access your location. Drag the map or search to set your spot.');
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
+      );
+      watcher = navigator.geolocation.watchPosition(
+        (pos) => dot.setLngLat([pos.coords.longitude, pos.coords.latitude]),
+        () => {}
+      );
+    } else {
+      setFindingYou(false);
+      setGeoNotice('Location is not available on this device. Search for your area instead.');
+    }
+
     return () => {
+      if (watcher != null) navigator.geolocation.clearWatch(watcher);
+      if (geocodeTimerRef.current) window.clearTimeout(geocodeTimerRef.current);
       map.remove();
       mapRef.current = null;
-      markerRef.current = null;
+      userDotRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep the marker in sync when the parent restores a saved location.
-  useEffect(() => {
-    if (!isPin(value)) return;
-    const map = mapRef.current;
-    const lat = Number(value.latitude);
-    const lng = Number(value.longitude);
-    markerRef.current?.setLngLat([lng, lat]);
-    if (map) map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), duration: 600 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value?.latitude, value?.longitude]);
+  }, []);
 
   const borderClass = error
     ? 'border-rose-400 ring-2 ring-rose-100'
-    : pinned
+    : confirmed
       ? 'border-emerald-300 ring-2 ring-emerald-100'
       : 'border-slate-300';
 
   return (
     <div className="space-y-2">
+      {/* "Where to?" search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
-          placeholder="Search for an address or area..."
+          placeholder="Search for your area or landmark..."
           value={query}
           onChange={handleQueryChange}
           onFocus={() => query.trim().length >= 3 && setShowSuggestions(true)}
@@ -370,105 +307,118 @@ export default function LocationPicker({ value, onChange, error, height = 'h-56'
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2">
-        <p className="text-[10px] font-semibold text-slate-500 leading-tight">
-          {pinned
-            ? 'Prefer the exact spot? Fine-tune it on Google Maps.'
-            : "Can't find the exact spot? Choose it on Google Maps."}
+      {geoNotice && (
+        <p className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+          {geoNotice}
         </p>
-        <button
-          type="button"
-          onClick={openInGoogleMaps}
-          className="cursor-pointer shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold px-3 py-2 rounded-lg transition-colors"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          Choose on Maps
-        </button>
-      </div>
-
-      {mapsPasteOpen && (
-        <div className="space-y-1.5">
-          <div className="relative">
-            <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={mapsLink}
-              onChange={(e) => {
-                setMapsLink(e.target.value);
-                applyMapsLink(e.target.value);
-              }}
-              placeholder="Paste Google Maps link or coordinates (e.g. 17.385, 78.486)"
-              autoFocus
-              className="w-full bg-white border border-indigo-200 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            />
-          </div>
-          {linkStatus && (
-            <p className={`text-[10px] font-bold px-1 ${
-              linkStatus.tone === 'emerald'
-                ? 'text-emerald-600'
-                : linkStatus.tone === 'amber'
-                  ? 'text-amber-600'
-                  : linkStatus.tone === 'rose'
-                    ? 'text-rose-600'
-                    : 'text-indigo-500'
-            }`}>
-              {linkStatus.text}
-            </p>
-          )}
-        </div>
       )}
 
+      {/* Map with fixed centre pin and live GPS dot */}
       <div className={`relative w-full ${height} rounded-2xl overflow-hidden border-2 ${borderClass} transition-colors`}>
         <div ref={containerRef} className="absolute inset-0 w-full h-full" />
 
-        <button
-          type="button"
-          onClick={handleUseMyLocation}
-          disabled={locating}
-          className="cursor-pointer absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-white/95 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+        {/* Fixed centre pin (Rapido/Uber style) — the map moves under it.
+            NOTE: Tailwind v4's translate-* sets the CSS `translate` property, which
+            stacks with inline `style.transform`. Keep centering in the inline
+            transform ONLY so the pin actually sits dead-centre. */}
+        <div
+          className="absolute left-1/2 top-1/2 z-10 pointer-events-none transition-transform duration-150"
+          style={{ translate: 'none', transform: `translate(-50%, -100%) translateY(${isDragging ? 18 : 0}px)` }}
         >
-          {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" /> : <LocateFixed className="w-3.5 h-3.5 text-indigo-500" />}
-          Use my location
-        </button>
+          <svg width="36" height="46" viewBox="0 0 36 46" style={{ filter: 'drop-shadow(0 3px 5px rgba(0,0,0,.35))', display: 'block' }}>
+            <path d="M18 0C8.1 0 0 8.1 0 18c0 13 16.6 26.3 17.3 26.9.4.3.9.3 1.3 0C19.4 44.3 36 31 36 18 36 8.1 27.9 0 18 0z" fill="#4f46e5" />
+            <circle cx="18" cy="18" r="7.5" fill="#fff" />
+          </svg>
+        </div>
 
-        {!pinned && (
-          <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center pointer-events-none">
-            <span className="bg-slate-900/85 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-slate-700">
-              <MapPin className="w-3 h-3 text-indigo-300" />
-              Click the map to pin your exact location
-            </span>
+        {findingYou ? (
+          <div className="absolute inset-0 z-20 bg-slate-900/50 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 text-white">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-300" />
+            <p className="text-xs font-bold">Finding your location...</p>
           </div>
-        )}
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              disabled={locating}
+              className="cursor-pointer absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-white/95 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+            >
+              {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" /> : <LocateFixed className="w-3.5 h-3.5 text-indigo-500" />}
+              Use my location
+            </button>
 
-        {pinned && geocoding && (
-          <div className="absolute left-3 bottom-3 z-10 bg-white/95 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-600 shadow-sm flex items-center gap-1.5">
-            <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
-            Getting address...
-          </div>
-        )}
-
-        {pinned && !geocoding && (
-          <div className="absolute left-3 bottom-3 z-10 bg-emerald-50/95 border border-emerald-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 shadow-sm flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            Location pinned
-          </div>
+            {!confirmed && !isDragging && (
+              <div className="absolute inset-x-0 bottom-3 z-10 flex justify-center pointer-events-none">
+                <span className="bg-slate-900/85 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-slate-700">
+                  <MapPin className="w-3 h-3 text-indigo-300" />
+                  Drag the map, then confirm the pin below
+                </span>
+              </div>
+            )}
+            {isDragging && (
+              <div className="absolute inset-x-0 top-2 z-10 flex justify-center px-16 pointer-events-none">
+                <span className="bg-indigo-600/95 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+                  Release to set the location
+                </span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <div>
-        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-          Address <span className="text-rose-500">*</span>
-        </label>
+      {/* Live address preview + confirm (Uber style) */}
+      <div
+        className={`rounded-2xl border p-3 transition-colors ${
+          confirmed ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'
+        }`}
+      >
+        <div className="flex items-start gap-2">
+          <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${confirmed ? 'text-emerald-600' : 'text-indigo-500'}`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              {confirmed ? 'Service location' : 'Picked location'}
+            </p>
+            <p className={`text-sm leading-snug mt-0.5 ${geocoding ? 'text-slate-400 italic' : 'text-slate-800 font-semibold'}`}>
+              {geocoding ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin text-indigo-500" /> Getting the address...
+                </span>
+              ) : address ? (
+                address
+              ) : (
+                'Move the map to choose your exact spot.'
+              )}
+            </p>
+          </div>
+          {confirmed ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-100 border border-emerald-200 rounded-full px-2.5 py-1">
+              <CheckCircle2 className="w-3 h-3" /> Set
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const c = centerRef.current;
+                if (c) emitChange(c.lat, c.lng, address);
+              }}
+              className="cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Confirm location
+            </button>
+          )}
+        </div>
+
         <textarea
           placeholder="Flat No, Apartment, Street name, Landmark, Pin"
           value={address}
           onChange={handleAddressEdit}
           rows={2}
           required
-          className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          className="mt-2 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
         <p className="text-[9px] text-slate-400 font-medium mt-1">
-          Auto-filled from the pin — refine it if needed (flat number, landmark).
+          Auto-filled from the map — refine it if needed (flat number, landmark).
         </p>
       </div>
     </div>

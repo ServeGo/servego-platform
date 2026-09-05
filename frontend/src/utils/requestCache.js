@@ -1,8 +1,8 @@
 /**
  * Tiny promise cache for progressive dashboard loading.
  *
- * The provider dashboard prefetches its "then" tier (Performance, Subscription,
- * approved services) in the background a moment after first paint. When the
+ * The provider dashboard prefetches its "then" tier (Performance, approved
+ * services) in the background a moment after first paint. When the
  * user opens one of those tabs the component's own fetch resolves from this
  * cache instantly instead of hitting the network again.
  *

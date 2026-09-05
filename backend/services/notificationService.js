@@ -123,6 +123,65 @@ export async function notifyServiceDenied(providerUserId, serviceName, reason) {
 }
 
 /**
+ * Notify the customer that a provider submitted a quotation for a CONFIRMED
+ * booking — prompt them to confirm or cancel it.
+ */
+export async function notifyQuotationReceived(io, booking, quotation, providerUserId) {
+  const notification = await createNotification(
+    booking.customerId,
+    'Quotation Received',
+    `Your provider has submitted a quotation of ₹${quotation.totalAmount}. Review it to confirm or cancel.`,
+    'BOOKING'
+  );
+  emitToUserRoom(io, booking.customerId, 'notification', notification);
+  if (io) {
+    if (io) io.to(`user:${booking.customerId}`).emit('quotation', {
+      bookingId: booking.id, quotation: { id: quotation.id, serviceFee: quotation.serviceFee, totalAmount: quotation.totalAmount, status: quotation.status }
+    });
+    if (providerUserId) {
+      io.to(`user:${providerUserId}`).emit('quotation', {
+        bookingId: booking.id, quotation: { id: quotation.id, totalAmount: quotation.totalAmount, status: quotation.status }
+      });
+    }
+  }
+}
+
+/**
+ * Notify the provider that their quotation was accepted and work can start.
+ */
+export async function notifyQuotationAccepted(io, booking, quotation, providerUserId) {
+  const notification = await createNotification(
+    providerUserId,
+    'Quotation Accepted',
+    `Your quotation of ₹${quotation.totalAmount} was accepted. You can now start work.`,
+    'BOOKING'
+  );
+  emitToUserRoom(io, providerUserId, 'notification', notification);
+  if (io && providerUserId) {
+    io.to(`user:${providerUserId}`).emit('quotation', {
+      bookingId: booking.id, quotation: { id: quotation.id, totalAmount: quotation.totalAmount, status: quotation.status }
+    });
+  }
+}
+
+/**
+ * Notify the provider that the customer declined their quotation (booking may
+ * be re-broadcast to other providers or cancelled outright).
+ */
+export async function notifyQuotationDeclined(io, booking, quotation, providerUserId, cancelBooking = false) {
+  const message = cancelBooking
+    ? `The customer declined your quotation of ₹${quotation.totalAmount}. The booking has been cancelled.`
+    : `The customer declined your quotation of ₹${quotation.totalAmount}. The request was sent to other providers.`;
+  const notification = await createNotification(providerUserId, 'Quotation Declined', message, 'BOOKING');
+  emitToUserRoom(io, providerUserId, 'notification', notification);
+  if (io && providerUserId) {
+    io.to(`user:${providerUserId}`).emit('quotation', {
+      bookingId: booking.id, quotation: { id: quotation.id, totalAmount: quotation.totalAmount, status: quotation.status }
+    });
+  }
+}
+
+/**
  * Notify about review publication
  */
 export async function notifyReviewPublished(userId) {
@@ -136,7 +195,7 @@ export async function notifyReviewPublished(userId) {
 }
 
 // ============================================================
-// ServeGo Business Model — Lead / Promotion / Subscription events
+// ServeGo Business Model — Lead / Promotion events
 // ============================================================
 
 /**
@@ -299,45 +358,6 @@ export async function notifyPromotion(io, providerUserId, payload) {
   );
 }
 
-/** Subscription purchased / upgraded successfully. */
-export async function notifySubscriptionPurchased(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Subscription Activated',
-    'Your subscription is active and new booking leads are enabled.',
-    'SUBSCRIPTION',
-    'subscription:purchased',
-    payload
-  );
-}
-
-/** Payment for a subscription was successful. */
-export async function notifyPaymentSuccessful(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Payment Successful',
-    'Your subscription payment was processed successfully.',
-    'PAYMENT',
-    'subscription:paymentSuccess',
-    payload
-  );
-}
-
-/** Invoice generated after a subscription payment. */
-export async function notifyInvoiceGenerated(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Invoice Generated',
-    'Your subscription invoice has been generated.',
-    'SUBSCRIPTION',
-    'subscription:invoiceGenerated',
-    payload
-  );
-}
-
 /** A provider has been assigned to the customer's request. */
 export async function notifyProviderAssigned(io, customerId, payload) {
   return pushNotification(
@@ -403,32 +423,6 @@ export async function notifyBookingCompleted(io, customerId, payload) {
   );
 }
 
-/** Subscription became inactive (remaining leads exhausted). */
-export async function notifySubscriptionExpired(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Subscription Expired',
-    'You have used all your booking leads. Purchase the next subscription level to keep receiving requests.',
-    'SUBSCRIPTION',
-    'subscription:expired',
-    payload
-  );
-}
-
-/** Remaining leads are running low. */
-export async function notifyRemainingLeadsLow(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Leads Running Low',
-    'You are running out of booking leads. Purchase the next subscription level to avoid interruptions.',
-    'SUBSCRIPTION',
-    'subscription:lowLeads',
-    payload
-  );
-}
-
 /** Provider cooldown triggered by repeated cancellations. */
 export async function notifyProviderCooldown(io, providerUserId, payload) {
   return pushNotification(
@@ -449,11 +443,6 @@ export async function notifyAdmin(io, title, message, payload) {
   return { title, message };
 }
 
-/** Admin — a subscription payment failed. */
-export async function notifyAdminPaymentFailed(io, payload) {
-  return notifyAdmin(io, 'Payment Failed', 'A provider subscription payment failed.', { ...payload, type: 'PAYMENT_FAILED' });
-}
-
 /** Admin — a provider was suspended/disabled. */
 export async function notifyAdminProviderSuspended(io, payload) {
   return notifyAdmin(io, 'Provider Suspended', 'A provider account was suspended.', { ...payload, type: 'PROVIDER_SUSPENDED' });
@@ -462,11 +451,6 @@ export async function notifyAdminProviderSuspended(io, payload) {
 /** Admin — a provider crossed the high-cancellation threshold. */
 export async function notifyAdminHighCancellation(io, payload) {
   return notifyAdmin(io, 'High Cancellation Provider', 'A provider reached the high cancellation threshold.', { ...payload, type: 'HIGH_CANCELLATION' });
-}
-
-/** Admin — a subscription was purchased. */
-export async function notifyAdminSubscriptionPurchased(io, payload) {
-  return notifyAdmin(io, 'Subscription Purchased', 'A provider purchased a subscription.', { ...payload, type: 'SUBSCRIPTION_PURCHASED' });
 }
 
 /** Admin — a provider was promoted. */
@@ -511,71 +495,6 @@ export async function notifyPermanentServiceRequestRejected(customerId, payload)
     'Your permanent/contract service request could not be approved. Please check the admin note for details.',
     'SERVICE',
     'permanentRequest:rejected',
-    payload
-  );
-}
-
-/** Provider — monthly platform fee is due soon; pay it to keep receiving leads. */
-export async function notifyProviderFeeDue(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Platform Fee Due',
-    `Your monthly platform fee of ₹${Math.round(Number(payload?.amount) || 0)} is due by ${new Date(payload?.dueAt).toLocaleDateString('en-IN')}. Pay it to keep receiving new service leads.`,
-    'PLATFORM_FEE',
-    'platformFee:due',
-    payload
-  );
-}
-
-/** Provider — platform fee overdue; lead distribution is paused until paid. */
-export async function notifyProviderFeeOverdue(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Platform Fee Overdue',
-    'Your platform fee payment is overdue. You will not receive new service leads until it is paid.',
-    'PLATFORM_FEE',
-    'platformFee:overdue',
-    payload
-  );
-}
-
-/** Provider — platform fee payment received and the billing window advanced. */
-export async function notifyProviderFeePaid(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Platform Fee Paid',
-    `Thank you! Your platform fee payment of ₹${Math.round(Number(payload?.amount) || 0)} was received. Your next payment is due by ${new Date(payload?.periodEnd).toLocaleDateString('en-IN')}.`,
-    'PLATFORM_FEE',
-    'platformFee:paid',
-    payload
-  );
-}
-
-/** Customer — monthly platform fee due soon (reminder only; access is never blocked). */
-export async function notifyCustomerFeeDue(io, customerUserId, payload) {
-  return pushNotification(
-    io,
-    customerUserId,
-    'Platform Fee Due',
-    `Your monthly platform fee of ₹${Math.round(Number(payload?.amount) || 0)} is due by ${new Date(payload?.dueAt).toLocaleDateString('en-IN')}. Please pay it to continue enjoying ServeGo.`,
-    'PLATFORM_FEE',
-    'platformFee:due',
-    payload
-  );
-}
-
-/** Customer — platform fee payment received. */
-export async function notifyCustomerFeePaid(io, customerUserId, payload) {
-  return pushNotification(
-    io,
-    customerUserId,
-    'Platform Fee Paid',
-    `Thank you! Your platform fee payment of ₹${Math.round(Number(payload?.amount) || 0)} was received.`,
-    'PLATFORM_FEE',
-    'platformFee:paid',
     payload
   );
 }

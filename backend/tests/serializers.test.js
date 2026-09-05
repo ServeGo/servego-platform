@@ -194,20 +194,18 @@ test('providerDashboardSummary is the owner contract with contact + audit', () =
   assert.equal(item.name, 'Arjun');
 });
 
-test('providerPerformanceSummary trims subscription and keeps metrics', () => {
+test('providerPerformanceSummary keeps level and metrics', () => {
   const provider = {
     id: 'prov_1',
     providerLevel: 'GOLD',
     jobsCompleted: 14,
-    serviceFee: 50,
-    subscription: { level: 'GOLD', plan: { id: 'plan_1', name: 'Gold Plan' } }
+    serviceFee: 50
   };
   const performance = { acceptanceRate: 0.8, responseRate: 0.9, cooldownUntil: null };
   const item = providerPerformanceSummary(provider, performance, ['BRONZE', 'SILVER', 'GOLD']);
 
   assert.equal(item.provider.providerLevel, 'GOLD');
   assert.equal(item.provider.jobsCompleted, 14);
-  assert.equal(item.provider.subscription, undefined);
   assert.deepEqual(item.performance, performance);
   assert.deepEqual(item.levelOrder, ['BRONZE', 'SILVER', 'GOLD']);
 });

@@ -6,13 +6,21 @@ function round2(value) {
 }
 
 export async function ensurePerformance(providerId, client = prisma) {
-  const existing = await client.providerPerformance.findUnique({ where: { providerId } });
-  if (existing) return existing;
-  return client.providerPerformance.upsert({
-    where: { providerId },
-    update: {},
-    create: { providerId }
-  });
+  await insertBaseRow(client, providerId);
+  return client.providerPerformance.findUniqueOrThrow({ where: { providerId } });
+}
+
+/**
+ * Create the base performance row for a provider without racing: `INSERT ...
+ * ON CONFLICT DO NOTHING` never raises P2002 on a duplicate and never aborts a
+ * surrounding interactive transaction, so concurrent first-time callers (the
+ * lead-offered queue job and the accept flow both creating the same row) settle
+ * safely instead of one of them crashing the transaction.
+ */
+async function insertBaseRow(client, providerId) {
+  await client.$executeRaw`INSERT INTO "ProviderPerformance" ("id", "providerId", "updatedAt")
+    VALUES (${crypto.randomUUID()}, ${providerId}, ${new Date()})
+    ON CONFLICT ("providerId") DO NOTHING`;
 }
 
 function recomputeRates(row) {
@@ -29,14 +37,10 @@ function recomputeRates(row) {
 }
 
 export async function recordLeadOffered(providerId, client = prisma) {
-  // Single round trip instead of ensurePerformance (find/upsert) + update so a
-  // broadcast to many providers does not multiply round trips on high-latency
-  // connections.
-  return client.providerPerformance.upsert({
-    where: { providerId },
-    update: { totalLeads: { increment: 1 } },
-    create: { providerId, totalLeads: 1 }
-  });
+  // Base row first (race-safe, never P2002), then a single increment update so
+  // a broadcast to many providers stays one statement per provider.
+  await insertBaseRow(client, providerId);
+  return client.providerPerformance.update({ where: { providerId }, data: { totalLeads: { increment: 1 } } });
 }
 
 export async function recordLeadAccepted(providerId, responseTimeMs, client = prisma) {
@@ -75,23 +79,17 @@ export async function recordLeadRejected(providerId, client = prisma) {
 }
 
 export async function recordLeadIgnored(providerId, client = prisma) {
-  // Single upsert: no rates depend on `ignoredLeads`, so there is no recompute
-  // step and no separate read-then-write pair.
-  return client.providerPerformance.upsert({
-    where: { providerId },
-    update: { ignoredLeads: { increment: 1 } },
-    create: { providerId, ignoredLeads: 1 }
-  });
+  // Base row race-safe, then a single increment — no rates depend on
+  // `ignoredLeads`, so there is no recompute step.
+  await insertBaseRow(client, providerId);
+  return client.providerPerformance.update({ where: { providerId }, data: { ignoredLeads: { increment: 1 } } });
 }
 
 export async function recordLeadExpired(providerId, client = prisma) {
-  // Single upsert: recomputeRates never reads `expiredLeads`, so the old
-  // read + update + recompute triple collapses to one round trip.
-  return client.providerPerformance.upsert({
-    where: { providerId },
-    update: { expiredLeads: { increment: 1 } },
-    create: { providerId, expiredLeads: 1 }
-  });
+  // Base row race-safe, then a single increment — recomputeRates never reads
+  // `expiredLeads`, so the read + update + recompute triple stays collapsed.
+  await insertBaseRow(client, providerId);
+  return client.providerPerformance.update({ where: { providerId }, data: { expiredLeads: { increment: 1 } } });
 }
 
 /**

@@ -4,7 +4,7 @@ import { jobHandlers, registerHandler } from './jobHandlers.js';
 /**
  * Durable job queue backed by PostgreSQL.
  *
- * Booking and subscription side-effects that used to run inline in the request
+ * Booking side-effects that used to run inline in the request
  * path (email delivery, notification persistence, analytics aggregation,
  * invoice generation, provider performance bookkeeping) are now enqueued as
  * `Job` rows and drained by workers. The queue gives:

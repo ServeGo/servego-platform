@@ -156,6 +156,14 @@ export const RealtimeProvider = ({ children }) => {
       };
       socket.on('provider:onTheWay', applyDispatchPhase);
       socket.on('provider:arrived', applyDispatchPhase);
+      // A quotation was submitted/revised for one of my bookings — pull the
+      // canonical record so the quotation panel (and its total) appears fresh
+      // without waiting for the 30s poll.
+      socket.on('quotation', (payload) => {
+        const bookingId = payload?.bookingId;
+        if (!bookingId) return;
+        refreshBooking(bookingId);
+      });
       // Refresh service catalog when a provider service is approved (active-specialist count changes)
       socket.on('serviceApproved', () => fetchServices());
       // Admin: refresh pending service requests when a new one arrives

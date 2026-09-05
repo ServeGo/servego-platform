@@ -7,7 +7,6 @@ const TOAST_ACCENTS = {
   BOOKING: 'border-indigo-200 bg-indigo-50/95',
   LEAD: 'border-amber-200 bg-amber-50/95',
   PAYMENT: 'border-emerald-200 bg-emerald-50/95',
-  PLATFORM_FEE: 'border-emerald-200 bg-emerald-50/95',
   PROMOTION: 'border-purple-200 bg-purple-50/95',
   ACCOUNT: 'border-rose-200 bg-rose-50/95',
 };

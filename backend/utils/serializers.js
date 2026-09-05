@@ -219,6 +219,19 @@ export function bookingListItem(booking) {
       user: pick(providerUser, ['id', 'name', 'avatar'])
     },
     service: pick(booking.service || {}, ['id', 'name']),
+    // The live (latest) quotation for the booking — drives the Start Work /
+    // Confirm quotation panels. Empty until a provider submits one.
+    quotation: Array.isArray(booking.quotations) && booking.quotations[0]
+      ? {
+          id: booking.quotations[0].id,
+          serviceFee: booking.quotations[0].serviceFee,
+          items: booking.quotations[0].items,
+          totalAmount: booking.quotations[0].totalAmount,
+          status: booking.quotations[0].status,
+          createdAt: booking.quotations[0].createdAt,
+          updatedAt: booking.quotations[0].updatedAt
+        }
+      : null,
     // Lean ordered audit trail — lets the client rebuild a tracking timeline
     // for bookings whose `statusHistory` was never written.
     events: Array.isArray(booking.events)
@@ -240,8 +253,7 @@ export function providerDashboardSummary(provider) {
 /**
  * ProviderPerformanceSummary — `GET /provider-performance/me`. Level + live
  * performance metrics for the provider's own dashboard. The DB select already
- * picks explicit columns; this trims the unused subscription ledger (with its
- * full plan row) that nothing on the client reads.
+ * picks explicit columns; this trims everything the client does not read.
  */
 export function providerPerformanceSummary(provider, performance, levelOrder) {
   return {

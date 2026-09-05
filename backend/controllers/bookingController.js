@@ -20,12 +20,9 @@ import {
   notifyLeadCancelled,
   notifyLeadCancelledByCustomer,
   notifyNoProviderFound,
-  notifyProviderCooldown,
-  notifySubscriptionExpired,
-  notifyRemainingLeadsLow
+  notifyProviderCooldown
 } from '../services/notificationService.js';
 import { enqueueJob, isQueueEnabled } from '../services/queue/queueService.js';
-import { bookingRequestEmail, bookingCompletedEmail } from '../services/emailService.js';
 import { buildStatusHistory, isValidBookingTransition, normalizeBookingStatus } from '../utils/workflow.js';
 import { canPerformAction } from '../utils/permissions.js';
 import { writeAuditLog } from '../services/auditLogService.js';
@@ -50,6 +47,7 @@ const BOOKING_INCLUDE = {
     }
   },
   service: true,
+  quotations: { orderBy: { createdAt: 'desc' }, take: 1 },
 };
 
 // List rows only render the service label — don't pull full Service rows
@@ -67,6 +65,7 @@ const BOOKING_LIST_INCLUDE = {
     }
   },
   service: { select: { id: true, name: true } },
+  quotations: { orderBy: { createdAt: 'desc' }, take: 1 },
   events: { orderBy: { createdAt: 'asc' }, select: { action: true, note: true, actorRole: true, createdAt: true } },
 };
 
@@ -329,19 +328,9 @@ export const BookingController = {
       const offerTracking = trackLeadOffers((result.providers || []).map((p) => p.id));
       if (offerTracking) await offerTracking;
 
-      // Decoupled side-effects — emails, analytics and invoices are drained by
-      // queue workers so the request returns before any slow work runs.
-      if (customer.email) {
-        fireAndForget({
-          type: 'email',
-          payload: bookingRequestEmail({
-            customerName: customer.name,
-            bookingId: result.booking.id,
-            serviceCategory: result.booking.serviceCategory,
-            amount: result.booking.amount
-          })
-        });
-      }
+      // Decoupled side-effects — analytics and invoices are drained by queue
+      // workers so the request returns before any slow work runs. No email is
+      // sent for bookings (the product communicates in-app / over socket only).
       fireAndForget({ type: 'analytics', payload: { bookingsCreated: 1, leadsCreated: 1 } });
       fireAndForget({ type: 'invoice', payload: { bookingId: result.booking.id } });
 
@@ -407,20 +396,8 @@ export const BookingController = {
 
       if (!canUpdate) return sendApiError(res, 403, 'FORBIDDEN', 'You are not allowed to perform this status transition.');
 
-      // Verification code check: ONGOING -> COMPLETED requires customer's 4-digit code.
-      if (currentStatus === 'ONGOING' && updatedStatus === 'COMPLETED') {
-        const { verificationCode } = req.body;
-        if (!verificationCode) {
-          return sendApiError(res, 400, 'MISSING_FIELDS', 'Verification code is required to complete the job. Ask the customer for their 4-digit code.');
-        }
-        const customerUser = await prisma.user.findUnique({
-          where: { id: booking.customerId },
-          select: { verificationCode: true }
-        });
-        if (!customerUser || String(verificationCode).trim() !== String(customerUser.verificationCode).trim()) {
-          return sendApiError(res, 400, 'INVALID_CODE', 'Invalid verification code. Please ask the customer for the correct 4-digit code.');
-        }
-      }
+      // Completion is now gated by the accepted quotation flow (customer
+      // confirms the quotation → work starts) instead of a verification code.
 
       const io = req.app.get('socketio');
 
@@ -710,14 +687,6 @@ async function handleCompletion(req, res, { booking, provider, io }) {
     if (result.promotion && provider?.userId && io) {
       io.to(`user:${provider.userId}`).emit('promotion', { promotion: result.promotion });
     }
-    if (provider?.userId) {
-      const subPayload = { remainingLeads: result.subscription.remainingLeads };
-      if (result.subscription.justExpired) {
-        await notifySubscriptionExpired(io, provider.userId, subPayload);
-      } else if (result.subscription.lowLeads) {
-        await notifyRemainingLeadsLow(io, provider.userId, subPayload);
-      }
-    }
 
     await notifyBookingStatusChanged(io, booking, 'COMPLETED', provider?.userId);
     if (io) {
@@ -725,8 +694,8 @@ async function handleCompletion(req, res, { booking, provider, io }) {
       if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'COMPLETED' });
     }
 
-    // Decoupled completion side-effects — analytics, final invoice snapshot and
-    // the receipt email all run in queue workers.
+    // Decoupled completion side-effects — analytics and final invoice snapshot
+    // run in queue workers. No receipt email: the product is in-app only.
     fireAndForget({
       type: 'analytics',
       payload: {
@@ -736,17 +705,6 @@ async function handleCompletion(req, res, { booking, provider, io }) {
       }
     });
     fireAndForget({ type: 'invoice', payload: { bookingId: booking.id } });
-    if (result.booking?.customer?.email) {
-      fireAndForget({
-        type: 'email',
-        payload: bookingCompletedEmail({
-          customerName: result.booking.customer.name,
-          bookingId: booking.id,
-          serviceCategory: booking.serviceCategory,
-          amount: result.booking.amount
-        })
-      });
-    }
 
     return sendApiSuccess(res, 200, result.booking);
   } catch (err) {

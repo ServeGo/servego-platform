@@ -9,6 +9,15 @@ const toMonthKey = (d) => {
   return `${y}-${m}`;
 };
 
+const toDayKey = (d) => {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const safeAvg = (nums) => {
   const arr = Array.isArray(nums) ? nums : [];
   if (!arr.length) return 0;
@@ -104,6 +113,7 @@ export const ProviderAnalyticsController = {
 
       const bookingTrendsByMonth = new Map();
       const revenueSeriesByMonth = new Map();
+      const earningsByDay = new Map();
 
       for (const b of bookings) {
         const key = toMonthKey(b.bookingDate || b.createdAt);
@@ -132,10 +142,19 @@ export const ProviderAnalyticsController = {
           revExisting.earnings += Number(b.providerPayout) || 0;
         }
         revenueSeriesByMonth.set(key, revExisting);
+
+        const dayKey = toDayKey(b.bookingDate || b.createdAt);
+        if (b.status === 'COMPLETED' && dayKey) {
+          const dayExisting = earningsByDay.get(dayKey) || { date: dayKey, bookings: 0, earnings: 0 };
+          dayExisting.bookings += 1;
+          dayExisting.earnings += Number(b.providerPayout) || 0;
+          earningsByDay.set(dayKey, dayExisting);
+        }
       }
 
       const bookingTrends = Array.from(bookingTrendsByMonth.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
       const revenueSeries = Array.from(revenueSeriesByMonth.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
+      const dailyEarnings = Array.from(earningsByDay.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
 
       const totalEarnings = bookings
         .filter((b) => b.status === 'COMPLETED')
@@ -157,6 +176,7 @@ export const ProviderAnalyticsController = {
         },
         monthlyEarnings: revenueSeries,
         bookingTrendsByMonth: bookingTrends,
+        dailyEarnings,
       });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load provider analytics', err.message);

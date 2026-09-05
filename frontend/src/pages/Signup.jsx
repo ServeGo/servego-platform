@@ -1,27 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AppContext';
-import { api } from '../utils/apiClient';
-import { User, Briefcase, Mail, Lock, Phone, ShieldAlert, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, Phone, Sparkles, Eye, EyeOff } from 'lucide-react';
 
 export function Signup({ onNavigate }) {
-  // Read partner application query params (set by BecomePartner page)
-  const getQueryParam = (key) => {
-    try {
-      const params = new URLSearchParams(
-        window.location.hash.includes('?') ? window.location.hash.split('?')[1] : window.location.search
-      );
-      return params.get(key);
-    } catch {
-      return null;
-    }
-  };
-
-  const partnerApplied = getQueryParam('partnerApplied');
-  const partnerMessage = decodeURIComponent(getQueryParam('partnerMessage') || '');
   const { registerUser } = useAuth();
-
-
-  const [signupType, setSignupType] = useState('customer');
 
   // Customer fields
   const [fullName, setFullName] = useState('');
@@ -29,11 +11,6 @@ export function Signup({ onNavigate }) {
   const [mobileNumber, setMobileNumber] = useState('');
   const [address, setAddress] = useState('');
   const [pincode, setPincode] = useState('');
-
-  // Provider fields
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState('');
-  const [photoUploading, setPhotoUploading] = useState(false);
 
   // Password fields
   const [password, setPassword] = useState('');
@@ -46,21 +23,6 @@ export function Signup({ onNavigate }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  // Partner application redirect notice
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const applied = params.get('partnerApplied');
-    if (applied === '1') {
-      setSignupType('provider');
-      const msg = params.get('partnerMessage');
-      const decoded = msg
-        ? decodeURIComponent(msg)
-        : 'successfully submitted. Please register your account to continue.';
-      setSuccessMsg(decoded);
-      setErrorMsg('');
-    }
-  }, []);
 
   const resetErrorsAndSuccess = () => {
     setErrorMsg('');
@@ -100,64 +62,25 @@ export function Signup({ onNavigate }) {
       return;
     }
 
-    if (signupType === 'customer') {
-      const customerError = validateCustomer();
-      if (customerError) {
-        setErrorMsg(customerError);
-        return;
-      }
+    const customerError = validateCustomer();
+    if (customerError) {
+      setErrorMsg(customerError);
+      return;
     }
 
     setIsLoading(true);
 
-    let photoUrl = null;
-    if (signupType === 'provider' && photoFile) {
-      setPhotoUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append('image', photoFile);
-        formData.append('folder', 'servego/providers');
-        const uploadRes = await api.postFormData('/images/upload', formData);
-        if (uploadRes.ok && uploadRes.data?.url) {
-          photoUrl = uploadRes.data.url;
-        } else {
-          setIsLoading(false);
-          setPhotoUploading(false);
-          setErrorMsg('Failed to upload photo. Please try again.');
-          return;
-        }
-      } catch {
-        setIsLoading(false);
-        setPhotoUploading(false);
-        setErrorMsg('Failed to upload photo. Please try again.');
-        return;
-      }
-      setPhotoUploading(false);
-    }
-
-    const payload =
-      signupType === 'customer'
-        ? {
-            name: fullName.trim(),
-            email: email.trim(),
-            phone: mobileNumber.trim(),
-            role: signupType,
-            password,
-            confirmPassword,
-            address: address.trim(),
-            pincode: pincode.trim(),
-            acceptedTerms
-          }
-        : {
-            name: fullName.trim(),
-            email: email.trim(),
-            phone: mobileNumber.trim(),
-            role: signupType,
-            password,
-            confirmPassword,
-            photo: photoUrl,
-            acceptedTerms
-          };
+    const payload = {
+      name: fullName.trim(),
+      email: email.trim(),
+      phone: mobileNumber.trim(),
+      role: 'customer',
+      password,
+      confirmPassword,
+      address: address.trim(),
+      pincode: pincode.trim(),
+      acceptedTerms
+    };
 
 
     const result = await registerUser(payload);
@@ -174,11 +97,7 @@ export function Signup({ onNavigate }) {
     );
 
     setTimeout(() => {
-      if (signupType === 'customer') {
-        onNavigate('dashboard-customer');
-      } else {
-        onNavigate('dashboard-provider');
-      }
+      onNavigate('dashboard-customer');
     }, 1500);
   };
 
@@ -191,13 +110,6 @@ export function Signup({ onNavigate }) {
           <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-800 text-xs font-semibold flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-500 block shrink-0" />
             <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {partnerApplied === '1' && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 block shrink-0 animate-ping" />
-            <span>{partnerMessage || 'Application submitted successfully. Please register your account.'}</span>
           </div>
         )}
 
@@ -219,41 +131,6 @@ export function Signup({ onNavigate }) {
           <p className="text-slate-500 text-xs mt-1.5 font-medium leading-relaxed">
             Join thousands of Hyderabad residents booking trusted local experts easily.
           </p>
-        </div>
-
-        {/* Signup Tab Selector */}
-        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mb-6">
-          <button
-            type="button"
-            onClick={() => {
-              setSignupType('customer');
-              setErrorMsg('');
-            }}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
-              signupType === 'customer'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-
-            <span>As Customer</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSignupType('provider');
-              setErrorMsg('');
-            }}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
-              signupType === 'provider'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5" />
-            <span>As Provider</span>
-          </button>
         </div>
 
         {/* Main form */}
@@ -309,9 +186,7 @@ export function Signup({ onNavigate }) {
             </div>
           </div>
 
-          {signupType === 'customer' && (
-            <>
-              <div>
+          <div>
                 <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1.5 font-sans">Address with pincode *</label>
                 <textarea
                   required
@@ -331,41 +206,7 @@ export function Signup({ onNavigate }) {
                     className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   />
                 </div>
-              </div>
-            </>
-          )}
-
-          {signupType === 'provider' && (
-            <div className="p-3 bg-slate-50 mb-2 rounded-xl border border-slate-200 space-y-3 animate-fade-in">
-              <div>
-                <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1 font-sans">photo (optional)</label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) {
-                      setPhotoFile(null);
-                      setPhotoPreview('');
-                      return;
-                    }
-                    setPhotoFile(file);
-                    setPhotoPreview(URL.createObjectURL(file));
-                  }}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
-                />
-                {photoPreview && (
-                  <img
-                    src={photoPreview}
-                    alt="provider"
-                    className="mt-3 w-16 h-16 rounded-lg object-cover border border-slate-200"
-                  />
-                )}
-              </div>
-
-
             </div>
-          )}
 
 
           <div>
@@ -428,7 +269,7 @@ export function Signup({ onNavigate }) {
             className="w-full bg-teal-700 hover:bg-teal-800 disabled:bg-slate-400 text-white font-bold py-3 px-4 rounded-xl text-xs tracking-wider transition-all uppercase flex items-center justify-center gap-2 shadow-xs mt-6 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
           >
             {isLoading ? (
-              <span>{photoUploading ? 'Uploading photo...' : 'Creating your account...'}</span>
+              <span>Creating your account...</span>
             ) : (
               <>
                 <span>Create Account</span>
@@ -436,14 +277,6 @@ export function Signup({ onNavigate }) {
               </>
             )}
           </button>
-
-          {signupType === 'provider' && (
-            <div className="text-[10px] font-semibold text-slate-400 text-center leading-relaxed mt-2.5 flex items-start gap-1 justify-center bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">
-
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-              <span>By registering, you confirm you have basic business eligibility under Hyderabad local guidelines.</span>
-            </div>
-          )}
 
           <div className="text-center mt-6 pt-5 border-t border-slate-100">
             <span className="text-slate-500 text-xs">Already have an account? </span>

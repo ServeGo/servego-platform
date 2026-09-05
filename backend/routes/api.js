@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { UserController } from '../controllers/userController.js';
 import { ProviderController } from '../controllers/providerController.js';
 import { BookingController } from '../controllers/bookingController.js';
+import { QuotationController } from '../controllers/quotationController.js';
 import { TicketController } from '../controllers/ticketController.js';
 import { NotificationController } from '../controllers/notificationController.js';
 import { ReviewController } from '../controllers/reviewController.js';
@@ -13,12 +14,9 @@ import { AdminProviderStatusController } from '../controllers/adminProviderStatu
 import { ReferralsController } from '../controllers/referralsController.js';
 import { ProviderServiceDiscoveryController } from '../controllers/providerServiceDiscoveryController.js';
 import { ProviderAnalyticsController } from '../controllers/providerAnalyticsController.js';
-import { SavedProController } from '../controllers/savedProController.js';
 import { ImageController } from '../controllers/imageController.js';
 import { LeadController } from '../controllers/leadController.js';
 import { PermanentServiceRequestController } from '../controllers/permanentServiceRequestController.js';
-import { SubscriptionController } from '../controllers/subscriptionController.js';
-import { PlatformFeeController } from '../controllers/platformFeeController.js';
 import { ProviderBusinessController } from '../controllers/providerBusinessController.js';
 import { AdminBusinessController } from '../controllers/adminBusinessController.js';
 import { WalletController } from '../controllers/walletController.js';
@@ -78,6 +76,10 @@ apiRouter.patch('/bookings/:id/accept', requireAuth, requireRole('provider'), Bo
 apiRouter.patch('/bookings/:id/decline', requireAuth, requireRole('provider'), BookingController.transition('CANCELLED'));
 apiRouter.patch('/bookings/:id/cancel', requireAuth, BookingController.transition('CANCELLED'));
 apiRouter.patch('/bookings/:id/complete', requireAuth, requireRole('provider'), BookingController.transition('COMPLETED'));
+apiRouter.post('/bookings/:id/quotation', requireAuth, requireRole('provider'), QuotationController.submit);
+apiRouter.get('/bookings/:id/quotation', requireAuth, QuotationController.getQuotation);
+apiRouter.post('/bookings/:id/quotation/confirm', requireAuth, requireRole('customer'), QuotationController.confirm);
+apiRouter.post('/bookings/:id/quotation/cancel', requireAuth, requireRole('customer'), QuotationController.cancel);
 apiRouter.post('/bookings/:id/messages', requireAuth, BookingController.addMessage);
 apiRouter.get('/bookings/:id/messages', requireAuth, BookingController.getMessages);
 
@@ -140,11 +142,6 @@ apiRouter.post('/admin/providers/reputation/refresh', requireAuth, requireRole('
 // --- Admin: Provider Account Status ---
 apiRouter.patch('/admin/providers/:id/status', requireAuth, requireRole('admin'), AdminProviderStatusController.setStatus);
 
-// --- Saved Pros ---
-apiRouter.get('/saved-pros', requireAuth, requireRole('customer'), SavedProController.getMine);
-apiRouter.post('/saved-pros', requireAuth, requireRole('customer'), SavedProController.save);
-apiRouter.delete('/saved-pros/:providerId', requireAuth, requireRole('customer'), SavedProController.unsave);
-
 // --- Image Upload (optionalAuth so providers can upload during signup) ---
 apiRouter.post('/images/upload', optionalAuth, uploadImage.single('image'), ImageController.upload);
 
@@ -163,29 +160,6 @@ apiRouter.get('/permanent-service-requests/:id', requireAuth, PermanentServiceRe
 apiRouter.patch('/permanent-service-requests/:id', requireAuth, requireRole('admin'), validate(updatePermanentServiceRequestValidation), PermanentServiceRequestController.update);
 apiRouter.post('/permanent-service-requests/:id/cancel', requireAuth, requireRole('customer'), PermanentServiceRequestController.cancel);
 
-// --- Subscriptions (provider) ---
-apiRouter.get('/subscriptions/plans', requireAuth, requireRole('provider'), SubscriptionController.getPlans);
-apiRouter.get('/subscriptions/me', requireAuth, requireRole('provider'), SubscriptionController.getCurrent);
-apiRouter.get('/subscriptions/remaining', requireAuth, requireRole('provider'), SubscriptionController.remaining);
-apiRouter.post('/subscriptions/purchase', requireAuth, requireRole('provider'), SubscriptionController.purchase);
-apiRouter.get('/subscriptions/transactions', requireAuth, requireRole('provider'), SubscriptionController.history);
-apiRouter.get('/subscriptions/transactions/:id', requireAuth, SubscriptionController.getTransaction);
-apiRouter.get('/subscriptions/payment/config', requireAuth, requireRole('provider'), SubscriptionController.gatewayConfig);
-apiRouter.post('/subscriptions/payment/verify', requireAuth, requireRole('provider'), SubscriptionController.verify);
-// Public webhook (raw body registered in server.js before the JSON parser).
-apiRouter.post('/subscriptions/payment/webhook', SubscriptionController.webhook);
-
-// --- Platform fee (monthly, providers pay / customers reminded) ---
-apiRouter.get('/platform-fee/status', requireAuth, PlatformFeeController.status);
-apiRouter.get('/platform-fee/history', requireAuth, PlatformFeeController.history);
-apiRouter.post('/platform-fee/order', requireAuth, PlatformFeeController.order);
-apiRouter.post('/platform-fee/verify', requireAuth, PlatformFeeController.verify);
-// Public webhook (raw body registered in server.js before the JSON parser).
-apiRouter.post('/platform-fee/webhook', PlatformFeeController.webhook);
-
-// --- Admin: platform fees ---
-apiRouter.get('/admin/platform-fees', requireAuth, requireRole('admin'), PlatformFeeController.adminList);
-
 // --- Provider levels / performance ---
 apiRouter.get('/provider-performance/me', requireAuth, requireRole('provider'), ProviderBusinessController.getMyPerformance);
 apiRouter.get('/level-rules', requireAuth, requireRole('provider'), ProviderBusinessController.getLevelRules);
@@ -198,10 +172,6 @@ apiRouter.get('/admin/configs', requireAuth, requireRole('admin'), AdminBusiness
 apiRouter.put('/admin/configs/:key', requireAuth, requireRole('admin'), AdminBusinessController.updateConfig);
 apiRouter.patch('/admin/configs/:key', requireAuth, requireRole('admin'), AdminBusinessController.updateConfig);
 
-apiRouter.get('/admin/subscription-plans', requireAuth, requireRole('admin'), AdminBusinessController.getPlans);
-apiRouter.post('/admin/subscription-plans', requireAuth, requireRole('admin'), AdminBusinessController.createPlan);
-apiRouter.patch('/admin/subscription-plans/:id', requireAuth, requireRole('admin'), AdminBusinessController.updatePlan);
-
 apiRouter.get('/admin/level-rules', requireAuth, requireRole('admin'), AdminBusinessController.getLevelRules);
 apiRouter.patch('/admin/level-rules/:id', requireAuth, requireRole('admin'), AdminBusinessController.updateLevelRule);
 
@@ -209,7 +179,6 @@ apiRouter.get('/admin/leads', requireAuth, requireRole('admin'), AdminBusinessCo
 apiRouter.get('/admin/leads/:id', requireAuth, requireRole('admin'), AdminBusinessController.getLeadById);
 apiRouter.get('/admin/providers/performance', requireAuth, requireRole('admin'), AdminBusinessController.getProviderPerformance);
 apiRouter.get('/admin/analytics/cancellations', requireAuth, requireRole('admin'), AdminBusinessController.getCancellationAnalytics);
-apiRouter.get('/admin/analytics/subscriptions', requireAuth, requireRole('admin'), AdminBusinessController.getSubscriptionAnalytics);
 apiRouter.get('/admin/analytics/promotions', requireAuth, requireRole('admin'), AdminBusinessController.getPromotionAnalytics);
 
 // --- Wallet (credits) ---

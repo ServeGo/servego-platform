@@ -8,24 +8,7 @@ export const PROVIDER_LEVEL_DEFAULTS = [
   { level: 'DIAMOND', minJobs: 60, discountPercent: 20, description: 'Reach Diamond after 60 completed jobs.' }
 ];
 
-export const SUBSCRIPTION_PLAN_DEFAULTS = [
-  { level: 0, name: 'Free Lead', price: 0, leadCount: 1, sector: 'GENERAL', isFree: true, description: 'One free booking lead granted on provider approval.' },
-  { level: 1, name: 'Subscription Level 1', price: 99, leadCount: 3, sector: 'PREMIUM', isFree: false, description: '3 booking leads + Premium sector access.' },
-  { level: 2, name: 'Subscription Level 2', price: 189, leadCount: 3, sector: 'PREMIUM', isFree: false, description: '3 booking leads + Premium sector access.' },
-  { level: 3, name: 'Subscription Level 3', price: 269, leadCount: 3, sector: 'PREMIUM', isFree: false, description: '3 booking leads + Premium sector access.' },
-  { level: 4, name: 'Subscription Level 4', price: 339, leadCount: 3, sector: 'PREMIUM', isFree: false, description: '3 booking leads + Premium sector access.' },
-  { level: 5, name: 'Subscription Level 5', price: 399, leadCount: 3, sector: 'PREMIUM', isFree: false, description: '3 booking leads + Premium sector access.' }
-];
-
 export const ADMIN_CONFIG_DEFAULTS = [
-  // Monthly platform fee (replaces per-booking commission). Providers must
-  // keep this paid to receive leads; customers are reminded but never blocked.
-  { key: 'platformFeeEnabled', value: true, description: 'Master switch for the monthly platform fee.' },
-  { key: 'platformFeeAmount', value: 99, description: 'Monthly platform fee (₹) charged to providers; overdue providers stop receiving leads.' },
-  { key: 'platformFeeGraceDays', value: 30, description: 'Days a provider gets after joining before the first platform fee payment is due.' },
-  { key: 'customerPlatformFeeEnabled', value: true, description: 'Master switch for the customer platform fee (reminders only, never blocks access).' },
-  { key: 'customerPlatformFeeAmount', value: 49, description: 'Monthly platform fee (₹) charged to customers; reminders only.' },
-
   // Cancellation penalty (penalty score model) — only providers who accept a
   // booking and then cancel are penalised.
   { key: 'cancellationPenaltyScore', value: 30, description: 'Penalty Score added per provider-initiated cancellation (accept-then-cancel only).' },
@@ -54,9 +37,8 @@ export const ADMIN_CONFIG_DEFAULTS = [
 ];
 
 export async function seedBusinessModelIfEmpty() {
-  const [rules, plans, configs] = await Promise.all([
+  const [rules, configs] = await Promise.all([
     prisma.providerLevelRule.count(),
-    prisma.subscriptionPlan.count(),
     prisma.adminConfig.count()
   ]);
 
@@ -66,14 +48,6 @@ export async function seedBusinessModelIfEmpty() {
       skipDuplicates: true
     });
     console.log(`✅ Seeded ${PROVIDER_LEVEL_DEFAULTS.length} provider level rules`);
-  }
-
-  if (plans === 0) {
-    await prisma.subscriptionPlan.createMany({
-      data: SUBSCRIPTION_PLAN_DEFAULTS,
-      skipDuplicates: true
-    });
-    console.log(`✅ Seeded ${SUBSCRIPTION_PLAN_DEFAULTS.length} subscription plans`);
   }
 
   // Idempotently add any new config keys while preserving admin-set values.
@@ -102,13 +76,21 @@ export async function seedBusinessModelIfEmpty() {
     'maxActiveLeadsPerProvider',
     'enableLeadPurchases',
     'allowLeadPurchaseBelowMinRating',
-    // Per-booking platform charges replaced by the monthly platform fee model.
+    // Per-booking platform charges replaced by the monthly platform fee model —
+    // which itself has now been removed entirely. Lead distribution is never
+    // gated on payment.
     'commissionPercent',
     'platformChargeType',
     'customerPlatformChargePercent',
     'providerPlatformChargePercent',
     'customerPlatformChargeFlat',
     'providerPlatformChargeFlat',
+    // Monthly platform fee removed — no billing, no lead gating.
+    'platformFeeEnabled',
+    'platformFeeAmount',
+    'platformFeeGraceDays',
+    'customerPlatformFeeEnabled',
+    'customerPlatformFeeAmount',
     // Lead expiry / redistribution caps removed — leads no longer expire and
     // the admin is alerted instead; redistribution is unlimited.
     'leadExpiryEnabled',
@@ -127,8 +109,8 @@ export async function seedBusinessModelIfEmpty() {
     'premiumCategories',
     'generalCategories',
     'rankingWeights',
-    // Free-lead / lead-count keys removed from admin config (free lead is fixed
-    // at 1 and lead counts come from the subscription plans).
+    // Free-lead / lead-count keys removed from admin config — subscriptions are
+    // removed; providers receive leads with no quota limits.
     'freeLeadCount',
     'leadCountPerSubscription',
     // Dead keys.
@@ -158,44 +140,6 @@ export async function seedBusinessModelIfEmpty() {
   if (removed.count > 0) {
     console.log(`🗑 Removed ${removed.count} obsolete admin config key(s)`);
   }
-
-  // Backfill subscriptions for providers that predate the business model.
-  const providers = await prisma.provider.findMany({
-    where: { subscription: { is: null } },
-    select: { id: true }
-  });
-  for (const provider of providers) {
-    await ensureProviderSubscription(provider.id);
-  }
-  if (providers.length) {
-    console.log(`✅ Initialized ${providers.length} provider subscription(s)`);
-  }
-}
-
-/**
- * Idempotently ensure a provider has its current ProviderSubscription row.
- * New providers start at Subscription Level 0 with their free lead.
- */
-export async function ensureProviderSubscription(providerId, client = prisma) {
-  const existing = await client.providerSubscription.findUnique({ where: { providerId } });
-  if (existing) return existing;
-
-  const freeLeadCount = 1;
-
-  return client.providerSubscription.create({
-    data: {
-      providerId,
-      level: 0,
-      status: 'ACTIVE',
-      remainingLeads: freeLeadCount,
-      leadCount: freeLeadCount,
-      completedJobsCurrentSubscription: 0,
-      sector: 'GENERAL',
-      freeLeadUsed: false,
-      paymentStatus: 'PAID',
-      activatedAt: new Date()
-    }
-  });
 }
 
 export function getProviderLevelForJobs(completedJobs) {

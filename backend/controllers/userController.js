@@ -195,8 +195,6 @@ export const UserController = {
         confirmPassword,
         address,
         pincode,
-        photo,
-        serviceInterested,
         acceptedTerms
       } = req.body;
 
@@ -219,15 +217,14 @@ export const UserController = {
         return sendApiError(res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters and include a lowercase letter and a number', passwordErrors);
       }
 
-      if (role === 'customer') {
-        if (!address || !pincode) {
-          return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter your address and pincode');
-        }
-        if (!/^[0-9]{5,6}$/.test(String(pincode))) {
-          return sendApiError(res, 400, 'INVALID_PINCODE', 'Please enter a valid 5-6 digit pincode');
-        }
-      } else if (role !== 'provider') {
-        return sendApiError(res, 400, 'INVALID_ROLE', 'Please select either Customer or Provider as your account type');
+      if (role !== 'customer') {
+        return sendApiError(res, 403, 'PUBLIC_PROVIDER_SIGNUP_DISABLED', 'Public provider registration is no longer available');
+      }
+      if (!address || !pincode) {
+        return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter your address and pincode');
+      }
+      if (!/^[0-9]{5,6}$/.test(String(pincode))) {
+        return sendApiError(res, 400, 'INVALID_PINCODE', 'Please enter a valid 5-6 digit pincode');
       }
 
       const normalizedEmail = String(email).trim().toLowerCase();
@@ -259,43 +256,14 @@ export const UserController = {
         }
       });
 
-      let customerProfile = null;
-      let providerProfile = null;
-
-      if (role === 'customer') {
-        customerProfile = await prisma.customer.create({
-          data: {
-            userId: newUser.id,
-            address: address?.trim(),
-            pincode: String(pincode).trim(),
-            preferences: []
-          }
-        });
-      }
-
-      if (role === 'provider') {
-        providerProfile = await prisma.provider.create({
-          data: {
-            userId: newUser.id,
-            category: 'General',
-            bio: 'Experienced specialist offering high-quality professional home servicing.',
-            specialties: ['Residential Services', 'Routine Maintenance'],
-            serviceAreas: ['Gachibowli', 'Madhapur', 'Kondapur', 'Jubilee Hills'],
-            photo: photo || null,
-            // Providers are deliberately hidden from public discovery until
-            // an administrator verifies their account.
-            isVerified: false,
-            isFeatured: false,
-            availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-            timeSlots: ['09:00 AM', '11:00 AM', '02:00 PM', '04:00 PM', '06:00 PM']
-          }
-        });
-
-        await prisma.user.update({
-          where: { id: newUser.id },
-          data: { providerId: providerProfile.id }
-        });
-      }
+      const customerProfile = await prisma.customer.create({
+        data: {
+          userId: newUser.id,
+          address: address.trim(),
+          pincode: String(pincode).trim(),
+          preferences: []
+        }
+      });
 
       await prisma.authEvent.create({
         data: {
@@ -320,9 +288,9 @@ export const UserController = {
         address: newUser.address,
         pincode: newUser.pincode,
         verificationCode: newUser.verificationCode,
-        providerId: role === 'provider' ? providerProfile?.id || null : null,
+        providerId: null,
         customerProfile: customerProfile,
-        providerProfile: providerProfile,
+        providerProfile: null,
         referralCode: newUser.referralCode,
         referredBy: newUser.referredBy,
         referralsCount: newUser.referralsCount,

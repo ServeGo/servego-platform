@@ -9,7 +9,6 @@ import {
   TrendingUp,
   Snowflake,
   AlertTriangle,
-  Award,
   RefreshCw,
   ShieldCheck,
   Percent,
@@ -76,7 +75,6 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const [data, setData] = useState(null);
   const [rules, setRules] = useState([]);
   const [promotions, setPromotions] = useState([]);
-  const [subHistory, setSubHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -89,16 +87,14 @@ export default function ProviderLevelAnalytics({ providerId }) {
     if (!providerId) return;
     setLoading(true);
     try {
-      const [perf, rulesRes, promos, subHistRes] = await Promise.all([
+      const [perf, rulesRes, promos] = await Promise.all([
         cachedRequest('provider-performance/me', () => api.get('/provider-performance/me'), { force }),
         cachedRequest('level-rules', () => api.get('/level-rules'), { force }),
-        cachedRequest('promotions/me', () => api.get('/promotions/me'), { force }),
-        cachedRequest('subscriptions/transactions', () => api.get('/subscriptions/transactions'), { force })
+        cachedRequest('promotions/me', () => api.get('/promotions/me'), { force })
       ]);
       if (perf.ok) setData(perf.data);
       if (rulesRes.ok) setRules(Array.isArray(rulesRes.data) ? rulesRes.data : []);
       if (promos.ok) setPromotions(Array.isArray(promos.data) ? promos.data : []);
-      if (subHistRes.ok) setSubHistory(Array.isArray(subHistRes.data) ? subHistRes.data : []);
       setError('');
     } catch (e) {
       setError('Failed to load performance data.');
@@ -172,16 +168,10 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const nextThreshold = nextRule ? Number(nextRule.minJobs) : null;
   const levelProgress = nextThreshold ? Math.min(100, Math.round((jobsCompleted / nextThreshold) * 100)) : 100;
 
-  // Subscription journey: baseline Level 0 (GENERAL free lead) + purchase history.
-  const hasLevelZeroPurchase = subHistory.some((t) => Number(t.levelPurchased) === 0);
-  const subJourney = [
-    ...(hasLevelZeroPurchase ? [] : [{ _base: true, levelPurchased: 0, planName: 'Free Lead' }]),
-    ...subHistory.slice().reverse()
-  ];
-
   const totals = analytics?.totals || {};
   const monthly = Array.isArray(analytics?.monthlyEarnings) ? analytics.monthlyEarnings : [];
   const trends = Array.isArray(analytics?.bookingTrendsByMonth) ? analytics.bookingTrendsByMonth : [];
+  const dailyEarnings = Array.isArray(analytics?.dailyEarnings) ? analytics.dailyEarnings : [];
 
   const revenueSeries = monthly.map((m) => ({ month: m.month, amount: m.earnings ?? 0 }));
   const revenueMax = Math.max(1, ...revenueSeries.map((d) => Number(d.amount) || 0));
@@ -431,6 +421,42 @@ export default function ProviderLevelAnalytics({ providerId }) {
           </div>
         </div>
 
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 mt-6">
+          <h4 className="font-extrabold text-slate-800 text-sm">Earnings by date</h4>
+          <p className="text-xs text-slate-500 font-semibold mt-1">
+            Net earnings on completed bookings for each service date in the selected range.
+          </p>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-xs font-bold">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-400 uppercase text-[10px]">
+                  <th className="py-2.5">Date</th>
+                  <th className="py-2.5">Bookings</th>
+                  <th className="py-2.5 text-right">Earnings</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {dailyEarnings.length ? (
+                  dailyEarnings.map((d) => (
+                    <tr key={d.date}>
+                      <td className="py-3 font-mono text-slate-900">{fmtDate(d.date)}</td>
+                      <td className="py-3">{d.bookings}</td>
+                      <td className="py-3 text-right font-black text-emerald-700">{fmtMoneyIn(d.earnings)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="py-6 text-center text-xs text-slate-400 font-semibold">
+                      No completed bookings in this range.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <p className="text-xs text-slate-500 italic font-semibold mt-6">
           Note: Earnings reflect provider payouts (service amount minus the admin-configured provider platform charge) on completed bookings.
         </p>
@@ -441,7 +467,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
         <div className="flex items-center gap-2 mb-4">
           <Crown className="w-4 h-4 text-amber-500" />
           <h4 className="text-sm font-extrabold text-slate-900">Your Levels</h4>
-          <span className="text-[10px] text-slate-400 font-semibold">— jobs-based and subscription levels are independent</span>
+          <span className="text-[10px] text-slate-400 font-semibold">— jobs-based, no subscription tiers</span>
         </div>
 
         <div className={`rounded-3xl p-6 text-white bg-gradient-to-br ${LEVEL_META[currentLevel]?.banner}`}>
@@ -485,32 +511,6 @@ export default function ProviderLevelAnalytics({ providerId }) {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Award className="w-4 h-4 text-indigo-500" />
-              <h4 className="text-sm font-extrabold text-slate-900">Subscription Journey</h4>
-            </div>
-            {subJourney.length === 0 ? (
-              <p className="text-slate-400 text-xs italic p-4 text-center">No subscription purchases yet.</p>
-            ) : (
-              <ol className="relative border-l border-slate-200 ml-2 space-y-4">
-                {subJourney.map((t, i) => (
-                  <li key={t.id || `base-${i}`} className="ml-4 relative">
-                    <span className={`absolute -left-[21px] top-0.5 w-2.5 h-2.5 rounded-full ring-4 ${t._base ? 'bg-slate-400 ring-slate-200' : 'bg-indigo-500 ring-indigo-100'}`} />
-                    <p className="text-xs font-black text-slate-900 uppercase">
-                      Level {t.levelPurchased}{t.planName ? ` · ${t.planName}` : ''}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                      {t._base
-                        ? 'Started with the free lead plan (GENERAL sector).'
-                        : `${fmtDate(t.purchasedAt)} · ${fmtMoneyIn(t.finalAmount)} paid${t.paymentStatus === 'PAID' ? '' : ` · ${t.paymentStatus.toLowerCase()}`}`}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <Star className="w-4 h-4 text-amber-500" />

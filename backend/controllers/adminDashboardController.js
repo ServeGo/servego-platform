@@ -131,25 +131,18 @@ export const AdminDashboardController = {
         }
       };
 
-      // Aggregate platform-charge volume. Booking-level payments were removed; the
-      // only money flows are provider subscriptions (Razorpay) and the
-      // admin-configured platform charge applied to every booking with separate
-      // customer/provider rates.
-      const [chargeAgg, subscriptionAgg] = await Promise.all([
-        prisma.booking.aggregate({
-          _sum: {
-            totalAmount: true,
-            customerPlatformCharge: true,
-            providerPlatformCharge: true,
-            providerPayout: true
-          },
-          where: { status: { not: 'CANCELLED' } }
-        }),
-        prisma.subscriptionTransaction.aggregate({
-          _sum: { finalAmount: true },
-          where: { paymentStatus: 'PAID' }
-        })
-      ]);
+      // Aggregate platform-charge volume. Booking-level payments were removed;
+      // the admin-configured platform charge is applied to every booking with
+      // separate customer/provider rates.
+      const chargeAgg = await prisma.booking.aggregate({
+        _sum: {
+          totalAmount: true,
+          customerPlatformCharge: true,
+          providerPlatformCharge: true,
+          providerPayout: true
+        },
+        where: { status: { not: 'CANCELLED' } }
+      });
 
       const customerCharges = chargeAgg?._sum?.customerPlatformCharge ?? 0;
       const providerCharges = chargeAgg?._sum?.providerPlatformCharge ?? 0;
@@ -158,7 +151,6 @@ export const AdminDashboardController = {
         grossPlatformVolume: Number(chargeAgg?._sum?.totalAmount ?? 0),
         platformEarnings: Number(customerCharges) + Number(providerCharges),
         providerPayouts: Number(chargeAgg?._sum?.providerPayout ?? 0),
-        subscriptionRevenue: Number(subscriptionAgg?._sum?.finalAmount ?? 0),
         vettingBacklogCount: pendingApprovals
       };
 

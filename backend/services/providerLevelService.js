@@ -40,7 +40,6 @@ export function invalidateLevelCache() {
 
 /**
  * The provider level is PERMANENT and based purely on lifetime completed jobs.
- * Subscription level never influences it.
  */
 export async function getProviderLevelForJobs(jobsCompleted, client = prisma) {
   const rules = await getRules(client);

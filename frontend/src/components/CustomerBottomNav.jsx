@@ -5,7 +5,7 @@ import { Home, CalendarCheck, Bell, User } from 'lucide-react';
  * Sticky bottom navigation for the Customer role on mobile (native-app feel).
  * Hidden from tablet/desktop (md+) where the top Navbar handles navigation.
  *
- * Items: Home, Bookings, Notifications, Profile.
+ * Items: Home (opens Services), Bookings, Notifications, Profile.
  * Bookings / Notifications / Profile deep-link into the customer dashboard tabs.
  */
 export default function CustomerBottomNav({
@@ -27,8 +27,8 @@ export default function CustomerBottomNav({
       id: 'home',
       label: 'Home',
       icon: Home,
-      isActive: currentPage === 'home',
-      onClick: () => onNavigate('home'),
+      isActive: currentPage === 'services' || currentPage === 'service-details',
+      onClick: () => onNavigate('services'),
     },
     {
       id: 'bookings',

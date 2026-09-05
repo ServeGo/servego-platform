@@ -70,6 +70,13 @@ const CODE_COPY = {
   CONFIRMATION_REQUIRED: { message: 'Please confirm the booking before starting work.', action: 'View booking' },
   ALREADY_REVIEWED: { message: 'You have already reviewed this booking.' },
 
+  // --- quotations (invoice-style bill the specialist sends after accept) ---
+  QUOTATION_NOT_FOUND: { message: 'No quotation was submitted for this booking.', action: 'View booking' },
+  QUOTATION_NOT_ALLOWED: { message: 'A quotation can only be submitted before work starts.', action: 'View booking' },
+  INVALID_QUOTATION: { message: 'The quotation needs at least one payable line item.', action: 'Try again' },
+  QUOTATION_EXISTS: { message: 'A quotation is already pending on this booking.', action: 'View booking' },
+  REASON_REQUIRED: { message: 'Please share a reason when asking for another specialist.', action: 'Tell us why' },
+
   // --- payment / wallet ---
   PAYMENT_ORDER_FAILED: { message: 'We could not start that payment. Please try again.' },
   PAYMENT_GATEWAY_UNAVAILABLE: { message: 'The payment provider is unavailable right now. Please try again shortly.' },
@@ -80,11 +87,6 @@ const CODE_COPY = {
   WALLET_BUSY: { message: 'Another withdrawal is already being processed. Please wait a moment.' },
   TRANSACTION_NOT_FOUND: { message: 'That transaction could not be found.' },
   WITHDRAWAL_MINIMUM: { message: 'The amount is below the minimum withdrawal limit.' },
-  PLATFORM_FEE_DISABLED: { message: 'Platform fees are not available right now.' },
-  PLATFORM_FEE_ZERO: { message: 'There is nothing to pay.' },
-
-  // --- subscriptions ---
-  SUBSCRIPTION_ACTIVE: { message: 'You already have an active subscription.' },
 
   // --- reviews / services ---
   INVALID_RATING: { message: 'Please pick a rating between 1 and 5.' },
@@ -110,9 +112,9 @@ const CODE_COPY = {
 const PREFIX_FALLBACK = {
   LEAD_: { message: 'This lead is no longer available.', action: 'Refresh leads' },
   BOOKING_: { message: 'Unable to update this booking.', action: 'View booking' },
+  QUOTATION_: { message: 'We could not process that quotation.', action: 'Refresh booking' },
   PAYMENT_: { message: 'We could not process that payment. Please try again.', action: 'Try again' },
   WALLET_: { message: 'We could not complete that wallet action. Please try again.', action: 'Try again' },
-  SUBSCRIPTION_: { message: 'We could not update your subscription. Please try again.' },
   AUTH_: { message: 'We could not complete that sign-in step. Please try again.' },
 };
 

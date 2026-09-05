@@ -50,14 +50,10 @@ const purge = async () => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) continue;
     // Delete in FK-safe order so an aborted earlier run can never leave
-    // RESTRICT-bound rows behind (e.g. platformFeeAccount, wallet, lead).
+    // RESTRICT-bound rows behind (e.g. wallet, lead).
     await prisma.walletWithdrawalRequest.deleteMany({ where: { userId: user.id } });
     await prisma.walletTransaction.deleteMany({ where: { userId: user.id } });
     await prisma.wallet.deleteMany({ where: { userId: user.id } });
-    await prisma.platformFeePayment.deleteMany({ where: { userId: user.id } });
-    await prisma.platformFeeAccount.deleteMany({ where: { userId: user.id } });
-    await prisma.subscriptionTransaction.deleteMany({ where: { provider: { userId: user.id } } });
-    await prisma.providerSubscription.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.leadAssignmentHistory.deleteMany({ where: { lead: { customerId: user.id } } });
     await prisma.leadTransferHistory.deleteMany({ where: { lead: { customerId: user.id } } });
     await prisma.cancellationReason.deleteMany({ where: { lead: { customerId: user.id } } });
@@ -67,7 +63,6 @@ const purge = async () => {
     await prisma.lead.deleteMany({ where: { customerId: user.id } });
     await prisma.booking.deleteMany({ where: { customerId: user.id } });
     await prisma.permanentServiceRequest.deleteMany({ where: { customerId: user.id } });
-    await prisma.savedPro.deleteMany({ where: { customerId: user.id } });
     await prisma.customer.deleteMany({ where: { userId: user.id } });
     await prisma.authEvent.deleteMany({ where: { userId: user.id } });
     await prisma.providerServiceRequest.deleteMany({ where: { provider: { userId: user.id } } });

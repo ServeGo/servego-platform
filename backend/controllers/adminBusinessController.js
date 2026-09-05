@@ -5,7 +5,6 @@ import {
 } from '../services/adminConfigService.js';
 import { listAllLeads, getLeadWithHistory } from '../services/leadService.js';
 import { invalidateLevelCache } from '../services/providerLevelService.js';
-import { getAllPlans, invalidatePlansCache } from '../services/subscriptionService.js';
 import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
@@ -48,94 +47,6 @@ export const AdminBusinessController = {
       return sendApiSuccess(res, 200, row);
     } catch (err) {
       return errorResponse(res, err, 'Failed to update admin config.');
-    }
-  },
-
-  // --- Subscription plans ---
-  getPlans: async (req, res) => {
-    try {
-      const plans = await getAllPlans();
-      return sendApiSuccess(res, 200, plans);
-    } catch (err) {
-      return errorResponse(res, err, 'Failed to load subscription plans.');
-    }
-  },
-
-  createPlan: async (req, res) => {
-    try {
-      const { level, name, price, leadCount, sector, isFree, description, active } = req.body;
-      if (level == null || !name) {
-        return sendApiError(res, 400, 'MISSING_FIELDS', 'level and name are required.');
-      }
-      const plan = await prisma.subscriptionPlan.create({
-        data: {
-          level: Number(level),
-          name: String(name),
-          price: price == null ? 0 : Number(price),
-          leadCount: leadCount == null ? 3 : Number(leadCount),
-          sector: sector || 'GENERAL',
-          isFree: Boolean(isFree),
-          description: description || null,
-          active: active == null ? true : Boolean(active)
-        }
-      });
-      invalidatePlansCache();
-      await writeAuditLog({
-        actorId: req.user.id,
-        actorRole: 'ADMIN',
-        action: 'CREATE_SUBSCRIPTION_PLAN',
-        targetType: 'SubscriptionPlan',
-        targetId: plan.id,
-        oldValue: null,
-        newValue: { level: plan.level, name: plan.name, price: plan.price, leadCount: plan.leadCount, sector: plan.sector },
-        ip: req.ip
-      });
-      return sendApiSuccess(res, 201, plan);
-    } catch (err) {
-      if (err.code === 'P2002') {
-        return sendApiError(res, 409, 'LEVEL_EXISTS', 'A plan with this level already exists.');
-      }
-      return errorResponse(res, err, 'Failed to create subscription plan.');
-    }
-  },
-
-  updatePlan: async (req, res) => {
-    try {
-      const { id } = req.params;
-      const existing = await prisma.subscriptionPlan.findUnique({ where: { id } });
-      if (!existing) return sendApiError(res, 404, 'NOT_FOUND', 'Plan not found.');
-
-      const { level, name, price, leadCount, sector, isFree, description, active } = req.body;
-      const plan = await prisma.subscriptionPlan.update({
-        where: { id },
-        data: {
-          ...(level != null ? { level: Number(level) } : {}),
-          ...(name != null ? { name: String(name) } : {}),
-          ...(price != null ? { price: Number(price) } : {}),
-          ...(leadCount != null ? { leadCount: Number(leadCount) } : {}),
-          ...(sector != null ? { sector } : {}),
-          ...(isFree != null ? { isFree: Boolean(isFree) } : {}),
-          ...(description !== undefined ? { description: description || null } : {}),
-          ...(active != null ? { active: Boolean(active) } : {})
-        }
-      });
-      invalidatePlansCache();
-      await writeAuditLog({
-        actorId: req.user.id,
-        actorRole: 'ADMIN',
-        action: 'UPDATE_SUBSCRIPTION_PLAN',
-        targetType: 'SubscriptionPlan',
-        targetId: id,
-        oldValue: { level: existing.level, name: existing.name, price: existing.price, leadCount: existing.leadCount, active: existing.active },
-        newValue: { level: plan.level, name: plan.name, price: plan.price, leadCount: plan.leadCount, active: plan.active },
-        ip: req.ip
-      });
-      return sendApiSuccess(res, 200, plan);
-    } catch (err) {
-      if (err.code === 'P2002') {
-        return sendApiError(res, 409, 'LEVEL_EXISTS', 'A plan with this level already exists.');
-      }
-      return errorResponse(res, err, 'Failed to update subscription plan.');
     }
   },
 
@@ -236,29 +147,6 @@ export const AdminBusinessController = {
       return sendApiSuccess(res, 200, { byActor, byReason, recent });
     } catch (err) {
       return errorResponse(res, err, 'Failed to load cancellation analytics.');
-    }
-  },
-
-  getSubscriptionAnalytics: async (req, res) => {
-    try {
-      const byPlan = await prisma.subscriptionTransaction.groupBy({
-        by: ['levelPurchased'],
-        _count: { _all: true },
-        _sum: { finalAmount: true },
-        orderBy: { levelPurchased: 'asc' }
-      });
-      const revenueTotals = await prisma.subscriptionTransaction.aggregate({
-        _sum: { finalAmount: true, discountAmount: true, price: true },
-        _count: { _all: true }
-      });
-      const recent = await prisma.subscriptionTransaction.findMany({
-        orderBy: { purchasedAt: 'desc' },
-        take: 20,
-        include: { provider: { include: { user: { select: { name: true, email: true } } } }, plan: true }
-      });
-      return sendApiSuccess(res, 200, { byPlan, revenueTotals, recent });
-    } catch (err) {
-      return errorResponse(res, err, 'Failed to load subscription analytics.');
     }
   },
 
