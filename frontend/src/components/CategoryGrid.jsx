@@ -25,9 +25,9 @@ export default function CategoryGrid({ categories, providers, onCategoryClick, o
     });
 
   return (
-    <section className="py-12 px-4 max-w-6xl mx-auto">
-      <div className="rounded-[32px] border border-slate-200 bg-white/80 p-6 sm:p-8 shadow-[0_25px_80px_-25px_rgba(15,23,42,0.2)] backdrop-blur">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
+    <section className="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+      <div>
+        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between">
           <div>
             <span className="text-teal-700 font-bold uppercase tracking-[0.25em] text-[11px]">Categories</span>
             <h2 className="text-2xl sm:text-3xl font-extrabold font-sans text-slate-900 mt-1 leading-none">What can we help you solve?</h2>

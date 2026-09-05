@@ -61,14 +61,7 @@ const ACTION_LABELS = {
   APPROVE_PERMANENT_REQUEST: 'Permanent Request Approved',
   REJECT_PERMANENT_REQUEST: 'Permanent Request Rejected',
   UPDATE_CONFIG: 'Config Updated',
-  UPDATE_CONFIG_PLATFORM_FEE_ENABLED: 'Platform Fee Config',
-  UPDATE_CONFIG_PLATFORM_FEE_AMOUNT: 'Platform Fee Amount Config',
-  UPDATE_CONFIG_PLATFORM_FEE_GRACE_DAYS: 'Fee Grace Config',
-  UPDATE_CONFIG_CUSTOMER_PLATFORM_FEE_ENABLED: 'Customer Fee Config',
-  UPDATE_CONFIG_CUSTOMER_PLATFORM_FEE_AMOUNT: 'Customer Fee Amount Config',
   UPDATE_CONFIG_CANCELLATION_PENALTY_SCORE: 'Penalty Score Config',
-  CREATE_SUBSCRIPTION_PLAN: 'Plan Created',
-  UPDATE_SUBSCRIPTION_PLAN: 'Plan Updated',
   UPDATE_LEVEL_RULE: 'Level Rule Updated',
 };
 

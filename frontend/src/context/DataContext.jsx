@@ -42,6 +42,11 @@ export const DataProvider = ({ children }) => {
   // exactly once. Bounded to the most recent 1000 ids.
   const seenNotificationIdsRef = useRef(new Set());
 
+  // In-flight booking status transitions (`bookingId:status`), so a physical
+  // double-click on a destructive action (cancel, complete, start work) cannot
+  // fan out a duplicate PATCH while the first one is still in the air.
+  const pendingStatusTransitions = useRef(new Set()).current;
+
   const dedupeNotifications = useCallback((incoming) => {
     const seen = seenNotificationIdsRef.current;
     const fresh = [];
@@ -71,13 +76,6 @@ export const DataProvider = ({ children }) => {
     return true;
   }, []);
 
-  const [favoriteProviders, setFavoriteProviders] = useState(() => {
-    const saved = localStorage.getItem('servego_favorites');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [savedProsData, setSavedProsData] = useState([]); // full provider objects from API
-
   const providersRef = useRef([]);
   const bookingsRef = useRef([]);
 
@@ -101,26 +99,6 @@ export const DataProvider = ({ children }) => {
       return [];
     }
   }, []);
-
-  // Sync favorites to local storage
-  useEffect(() => {
-    localStorage.setItem('servego_favorites', JSON.stringify(favoriteProviders));
-  }, [favoriteProviders]);
-
-  const fetchSavedPros = useCallback(async () => {
-    if (!currentUser?.id || currentUser?.role !== 'customer') return;
-    try {
-      const res = await api(`${API_BASE_URL}/saved-pros`);
-      const data = await res.json();
-      const list = Array.isArray(data?.savedPros) ? data.savedPros : Array.isArray(data) ? data : [];
-      if (res.ok) {
-        setSavedProsData(list);
-        setFavoriteProviders(list.map(sp => sp.providerId || sp.provider?.id).filter(Boolean));
-      }
-    } catch (err) {
-      console.error('Failed to fetch saved pros:', err);
-    }
-  }, [currentUser?.id, currentUser?.role]);
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -490,7 +468,6 @@ export const DataProvider = ({ children }) => {
       fetchNotifications();
       fetchBookings();
       fetchTickets();
-      if (currentUser?.role === 'customer') fetchSavedPros();
       if (currentUser?.role === 'provider') fetchMyProviderSummary();
     } else {
       setNotifications([]);
@@ -544,6 +521,19 @@ export const DataProvider = ({ children }) => {
   };
 
   const updateBookingStatus = async (bookingId, status, note, verificationCode) => {
+    const targetStatus = String(status || '').toLowerCase();
+    const existing = bookings.find(b => b.id === bookingId);
+
+    // Rule 18 — idempotency: a second click/retry on a booking that is already
+    // in the requested state is a benign no-op (no duplicate side effects).
+    if (existing && String(existing.status || '').toLowerCase() === targetStatus) {
+      return existing;
+    }
+
+    const inFlightKey = `${bookingId}:${targetStatus}`;
+    if (pendingStatusTransitions.has(inFlightKey)) return existing;
+    pendingStatusTransitions.add(inFlightKey);
+
     try {
       const res = await api(`${API_BASE_URL}/bookings/${bookingId}/status`, {
         method: 'PATCH',
@@ -556,12 +546,20 @@ export const DataProvider = ({ children }) => {
         setBookings(prev => prev.map(bk => bk.id === bookingId ? normalized : bk));
         return normalized;
       }
+      // NO_CHANGE means the transition raced with another client or this very
+      // booking already reached the target state server-side — treat it as
+      // success (the current row is correct), never a scary "already handled".
+      if (data?.code === 'NO_CHANGE' && existing) {
+        return existing;
+      }
       // Backend failures arrive as { success:false, code, message } — resolve a
       // friendly, actionable line instead of dropping the code (rule 19).
       return { error: getErrorMessage(data, 'Unable to update this booking.') };
     } catch (err) {
       console.error('Failed to update booking status:', err);
       return { error: getErrorMessage(err, 'Unable to update this booking.') };
+    } finally {
+      pendingStatusTransitions.delete(inFlightKey);
     }
   };
 
@@ -664,32 +662,6 @@ export const DataProvider = ({ children }) => {
   const fetchProviderRoutePlan = async () => {
     const res = await apiClient.get('/providers/me/route-plan');
     return res.ok && res.data ? res.data : { stops: [] };
-  };
-
-  const toggleFavoriteProvider = async (providerId) => {
-    const isSaved = favoriteProviders.includes(providerId);
-    // Optimistic update
-    setFavoriteProviders(prev =>
-      isSaved ? prev.filter(id => id !== providerId) : [...prev, providerId]
-    );
-    try {
-      if (isSaved) {
-        await api(`${API_BASE_URL}/saved-pros/${providerId}`, { method: 'DELETE' });
-      } else {
-        await api(`${API_BASE_URL}/saved-pros`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ providerId })
-        });
-      }
-      await fetchSavedPros();
-    } catch (err) {
-      console.error('Failed to toggle saved pro:', err);
-      // Revert optimistic update on error
-      setFavoriteProviders(prev =>
-        isSaved ? [...prev, providerId] : prev.filter(id => id !== providerId)
-      );
-    }
   };
 
   const submitSupportTicket = async (ticketData) => {
@@ -826,7 +798,7 @@ export const DataProvider = ({ children }) => {
       const res = await api(`${API_BASE_URL}/providers/${providerId}/analytics?range=${encodeURIComponent(range)}`);
       const data = await res.json();
       if (!res.ok) return null;
-      return data;
+      return data?.data || null;
     } catch {
       return null;
     }
@@ -928,14 +900,11 @@ export const DataProvider = ({ children }) => {
       bookings,
       notifications,
       tickets,
-      favoriteProviders,
-      savedProsData,
       services,
       servicesLoading,
       providerServiceRequests,
       providerServiceItems,
       fetchProvidersByApprovedServiceName,
-      fetchSavedPros,
       fetchProviders,
       fetchMyProviderSummary,
       fetchServices,
@@ -963,7 +932,6 @@ export const DataProvider = ({ children }) => {
       updateProviderDispatchLocation,
       updateProviderAvailabilityStatus,
       fetchProviderRoutePlan,
-      toggleFavoriteProvider,
       submitSupportTicket,
       respondToTicket,
       markNotificationAsRead,

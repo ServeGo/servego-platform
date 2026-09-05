@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import prisma from './client.js';
 import { seedServicesIfEmpty } from '../seeders/servicesSeed.js';
-import { seedBusinessModelIfEmpty, ensureProviderSubscription, getProviderLevelForJobs } from '../seeders/businessModelSeed.js';
+import { seedBusinessModelIfEmpty, getProviderLevelForJobs } from '../seeders/businessModelSeed.js';
 
 /*
  * Full demo seed for ServeGo.
@@ -28,8 +28,6 @@ const HYD_AREAS = ['Gachibowli', 'Madhapur', 'Kondapur', 'Jubilee Hills', 'Hitec
 
 async function clearDatabase() {
   // Delete in FK-safe order.
-  await prisma.subscriptionTransaction.deleteMany();
-  await prisma.providerSubscription.deleteMany();
   await prisma.promotionHistory.deleteMany();
   await prisma.providerLevelHistory.deleteMany();
   await prisma.providerPerformance.deleteMany();
@@ -39,12 +37,10 @@ async function clearDatabase() {
   await prisma.cancellationReason.deleteMany();
   await prisma.lead.deleteMany();
   await prisma.providerLevelRule.deleteMany();
-  await prisma.subscriptionPlan.deleteMany();
   await prisma.adminConfig.deleteMany();
   await prisma.review.deleteMany();
   await prisma.bookingEvent.deleteMany();
   await prisma.booking.deleteMany();
-  await prisma.savedPro.deleteMany();
   await prisma.availabilitySlot.deleteMany();
   await prisma.providerService.deleteMany();
   await prisma.providerServiceRequest.deleteMany();
@@ -132,8 +128,6 @@ async function createProvider({ name, email, phone, serviceName, serviceId, rati
       completedJobs: jobsCompleted,
     },
   });
-
-  await ensureProviderSubscription(provider.id);
 
   if (serviceApprovalStatus === 'APPROVED') {
     // An approved service link makes an active provider discoverable/bookable.

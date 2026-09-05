@@ -13,7 +13,6 @@ import { requestLogger, errorHandler, requestTimeout } from './middleware/loggin
 import { sendApiSuccess } from './utils/response.js';
 import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
-import { advanceFeeBilling } from './services/platformFeeService.js';
 import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
 import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
@@ -50,15 +49,12 @@ async function bootstrap() {
   app.use(generalRateLimiter);
 
   // Request parsing
-  // Razorpay webhooks must receive the RAW body (not JSON-parsed) so the
-  // signature can be verified against the exact bytes that were sent.
-  app.use('/api/v1/subscriptions/payment/webhook', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Logging & timeout
   app.use(requestLogger);
-  app.use(requestTimeout(30000));
+  app.use(requestTimeout(60000));
 
   // Normalize trailing slashes
   app.use((req, res, next) => {
@@ -276,15 +272,6 @@ async function bootstrap() {
     void scheduleAllLeadTimers(io).catch((err) => {
       console.error('Lead timer scheduling failed:', err.message);
     });
-    // Daily platform-fee billing sweep (mark overdue, send due reminders).
-    void advanceFeeBilling({ io }).catch((err) => {
-      console.error('Platform fee billing sweep failed:', err.message);
-    });
-    setInterval(() => {
-      void advanceFeeBilling({ io }).catch((err) => {
-        console.error('Platform fee billing sweep failed:', err.message);
-      });
-    }, 24 * 60 * 60 * 1000);
     // Recover any jobs a previous process left mid-flight, then drain the
     // async side-effect queue (email, analytics, invoices, performance).
     void recoverInterruptedJobs()

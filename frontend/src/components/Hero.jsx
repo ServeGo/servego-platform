@@ -30,52 +30,23 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
               <MapPin className="w-4 h-4 text-teal-700 mr-2 shrink-0" />
               <div className="text-left w-full">
                 <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Your Location</label>
-                <select 
-                  value={selectedArea}
-                  onChange={(e) => setArea(e.target.value)}
-                  className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
-                >
+                <select value={selectedArea} onChange={(e) => setArea(e.target.value)} className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1">
                   <option value="">All Hyderabad Area</option>
-                  {HYDERABAD_NEIGHBORHOODS.map(area => (
-                    <option key={area} value={area}>{area}</option>
-                  ))}
+                  {HYDERABAD_NEIGHBORHOODS.map(area => <option key={area} value={area}>{area}</option>)}
                 </select>
               </div>
             </div>
-
             <div className="relative flex-1 flex items-center bg-slate-100 rounded-2xl px-3 py-2 text-slate-800">
               <Search className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
               <div className="text-left w-full">
                 <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Find a Service</label>
-                <input 
-                  type="text"
-                  value={inputQuery}
-                  onChange={(e) => setInputQuery(e.target.value)}
-                  placeholder="Electrician, plumber, painter, cleaner..."
-                  className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
-                />
+                <input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Electrician, plumber, painter, cleaner..." className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1" />
               </div>
             </div>
-
-            <button 
-              type="submit" 
-              className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-2xl text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
-            >
-              <span>Search Services</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-2xl text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"><span>Search Services</span><ArrowRight className="w-3.5 h-3.5" /></button>
           </form>
         </div>
-
-        <a
-          href="/apk/servego.apk"
-          download="servego.apk"
-          className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 transition-all hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-        >
-          <Download className="w-4 h-4" />
-          Download Android App
-        </a>
-
+        <a href="/apk/servego.apk" download="servego.apk" className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 transition-all hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"><Download className="w-4 h-4" />Download Android App</a>
         <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
           <TrustIndicator icon={<ShieldCheck className="w-4 h-4" />} title="Verified Providers" desc="Profile-approved experts" />
           <TrustIndicator icon={<RadioTower className="w-4 h-4" />} title="Broadcast Booking" desc="Offered to every eligible specialist" />
@@ -88,15 +59,5 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
 }
 
 function TrustIndicator({ icon, title, desc, colorClass = "text-teal-400", bgColorClass = "bg-teal-500/20" }) {
-  return (
-    <div className="bg-white/8 border border-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center gap-2.5 hover:-translate-y-0.5 transition-transform">
-      <div className={`p-2 rounded-xl ${bgColorClass} ${colorClass}`}>
-        {icon}
-      </div>
-      <div>
-        <h4 className="font-bold text-white">{title}</h4>
-        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{desc}</p>
-      </div>
-    </div>
-  );
+  return <div className="bg-white/8 border border-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center gap-2.5 hover:-translate-y-0.5 transition-transform"><div className={`p-2 rounded-xl ${bgColorClass} ${colorClass}`}>{icon}</div><div><h4 className="font-bold text-white">{title}</h4><p className="text-[10px] text-slate-400 mt-0.5 font-medium">{desc}</p></div></div>;
 }

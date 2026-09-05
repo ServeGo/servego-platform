@@ -15,12 +15,15 @@ import {
   LocateFixed,
   Navigation,
   UserCheck,
-  Phone
+  Phone,
+  Send,
+  FileText
 } from 'lucide-react';
 import { useRealtime, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { getErrorInfo } from '../utils/errorMessages';
 import SkeletonLoader from './SkeletonLoader';
+import QuotationModal from './QuotationModal';
 
 const LEAD_STATUS_LABELS = {
   NEW: 'New',
@@ -96,6 +99,7 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   const [actionError, setActionError] = useState('');
   const [actionErrorAction, setActionErrorAction] = useState(null);
   const [viewedIds, setViewedIds] = useState(() => new Set());
+  const [quoteLead, setQuoteLead] = useState(null);
 
   // Rule 19: resolve friendly copy + optional recovery action from the backend
   // code instead of echoing a raw message.
@@ -336,33 +340,12 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     }
   };
 
-  const handleStartWork = async (lead) => {
-    if (!lead.booking?.id) return;
-    setBusyId(lead.id);
-    setActionError('');
-    try {
-      const result = await updateBookingStatus(lead.booking.id, 'ongoing', 'Work started.');
-      if (result && !result.error) {
-        setLeads(prev => prev.map(l => l.bookingId === lead.bookingId
-          ? { ...l, booking: { ...(l.booking || {}), status: 'ONGOING' } }
-          : l
-        ));
-      } else showActionError(result, 'Could not start work.');
-    } catch (e) {
-      showActionError(e, 'Could not start work.');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const handleComplete = async (lead) => {
     if (!lead.booking?.id) return;
-    const code = window.prompt('Ask the customer for their 4-digit verification code to complete the job:');
-    if (!code) return;
     setBusyId(lead.id);
     setActionError('');
     try {
-      const result = await updateBookingStatus(lead.booking.id, 'completed', 'Completed.', code.replace(/\D/g, '').slice(0, 4));
+      const result = await updateBookingStatus(lead.booking.id, 'completed', 'Completed.');
       if (result && !result.error) {
         setLeads(prev => prev.map(l => l.bookingId === lead.bookingId
           ? { ...l, booking: { ...(l.booking || {}), status: 'COMPLETED' } }
@@ -374,6 +357,19 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     } finally {
       setBusyId(null);
     }
+  };
+
+  const handleQuotationSubmitted = (result) => {
+    // `submitQuotation` returns the raw quotation row (with items + status
+    // SUBMITTED) plus a scalar-only booking — patch the card in place rather
+    // than trusting the partial booking shape.
+    const quotation = result?.quotation;
+    if (!quotation) return;
+    setLeads(prev => prev.map(l => {
+      if (!quoteLead || l.bookingId !== quoteLead.bookingId) return l;
+      return { ...l, booking: { ...(l.booking || {}), status: 'CONFIRMED', quotation } };
+    }));
+    setQuoteLead(null);
   };
 
   return (
@@ -463,13 +459,55 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
               onOpen={() => markViewed(lead)}
               onAccept={() => handleAccept(lead)}
               onReject={() => handleReject(lead)}
-              onStartWork={() => handleStartWork(lead)}
+              onQuote={() => setQuoteLead(lead)}
               onComplete={() => handleComplete(lead)}
             />
           ))}
         </div>
       )}
+
+      {quoteLead && (
+        <QuotationModal
+          booking={quoteLead.booking || {}}
+          existingQuotation={quoteLead.booking?.quotation || null}
+          onClose={() => setQuoteLead(null)}
+          onSubmitted={handleQuotationSubmitted}
+        />
+      )}
     </div>
+  );
+}
+
+function QuotationActionButtons({ quotation, busy, onQuote }) {
+  const submitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
+  const total = Number(quotation?.totalAmount) || 0;
+
+  if (submitted) {
+    return (
+      <>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-300 rounded-full px-3 py-2">
+          <Send className="w-3.5 h-3.5" />
+          Quotation {total > 0 ? `${fmtMoney(total)} ` : ''}sent — awaiting customer's decision
+        </span>
+        <button
+          onClick={onQuote}
+          disabled={busy}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <FileText className="w-3.5 h-3.5" /> Edit Quotation
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <button
+      onClick={onQuote}
+      disabled={busy}
+      className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+    >
+      <Send className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Submit Quotation'}
+    </button>
   );
 }
 
@@ -502,7 +540,7 @@ function EmptyInbox({ filter }) {
   );
 }
 
-function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onComplete }) {
+function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onComplete }) {
   const now = useNowTick(lead.status === 'NEW' || lead.status === 'VIEWED');
   const booking = lead.booking || {};
   const actionable = lead.status === 'NEW' || lead.status === 'VIEWED';
@@ -623,20 +661,14 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onStartWork, onC
             </button>
           </>
         ) : bookingStatus === 'CONFIRMED' ? (
-          <button
-            onClick={onStartWork}
-            disabled={busy}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Wrench className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Start Work'}
-          </button>
+          <QuotationActionButtons quotation={booking.quotation} busy={busy} onQuote={onQuote} />
         ) : bookingStatus === 'ONGOING' ? (
           <button
             onClick={onComplete}
             disabled={busy}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
           >
-            <ShieldCheck className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Mark Completed (verify code)'}
+            <ShieldCheck className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Mark Completed'}
           </button>
         ) : (
           <span className="text-[10px] text-slate-400 font-semibold inline-flex items-center gap-1">

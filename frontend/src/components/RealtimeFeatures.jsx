@@ -5,7 +5,7 @@ const FEATURES = [
   {
     icon: BellRing,
     title: 'Instant notifications',
-    desc: 'Booking and lead updates, payment and platform-fee status, and support responses — pushed to your inbox in real time.',
+    desc: 'Booking and lead updates, payment status, and support responses — pushed to your inbox in real time.',
   },
   {
     icon: MapPin,

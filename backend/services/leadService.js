@@ -1,5 +1,4 @@
 import prisma from '../prisma/client.js';
-import { getConfig } from './adminConfigService.js';
 import { levelRank, applyPromotion } from './providerLevelService.js';
 import {
   recordLeadOffered,
@@ -7,18 +6,38 @@ import {
   recordLeadRejected,
   recordJobCompleted
 } from './providerPerformanceService.js';
-import { consumeLeadOnCompletion, subscriptionIsActive } from './subscriptionService.js';
-import { isAccountOverdue } from './platformFeeService.js';
 import { refreshProviderReputation } from './providerReputationService.js';
-import { creditWallet } from './walletService.js';
+import { debitWalletAllowNegative } from './walletService.js';
+import { getCommissionTiers, computeCommission, round2 } from './quotationService.js';
 import { normalizeBookingStatus } from '../utils/workflow.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
-function withClientTransaction(client, fn) {
-  if (client === prisma) {
-    return prisma.$transaction(fn, { isolationLevel: 'Serializable', maxWait: 20000, timeout: 30000 });
+async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
+  if (client !== prisma) return fn(client);
+  // 60s aligns with the REQUEST_TIMEOUT middleware: Neon free-tier latency
+  // spikes exceed 30s, and a timed-out interactive transaction rolls back
+  // atomically so the caller can safely retry.
+  const run = () => prisma.$transaction(fn, { isolationLevel: 'Serializable', maxWait: 20000, timeout: 60000 });
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await run();
+    } catch (err) {
+      // Serialization / deadlock under SERIALIZABLE isolation: retry is safe
+      // because every workflow transition is compare-and-swap on status and the
+      // writes are idempotent (rule 18). Bounded retries avoid compounding load.
+      const code = err?.code;
+      const message = err?.message || '';
+      const isSerialization = code === 'P2034' || code === 'P2010' ||
+        /serialization failure|deadlock detected|could not serialize access/i.test(message);
+      if (isSerialization && attempt < maxRetries) {
+        attempt += 1;
+        await new Promise((res) => setTimeout(res, 150 * attempt));
+        continue;
+      }
+      throw err;
+    }
   }
-  return fn(client);
 }
 
 function serviceError(code, message) {
@@ -134,14 +153,14 @@ function rankProviders(providers, distanceMap) {
  * Find providers eligible for a new/transferred lead.
  *
  * Eligibility (rule 11): approved (account ACTIVE + verified), available (online
- * + accepting bookings), correct category + sector, effective subscription
- * ACTIVE with remaining leads (rule 3), inside the provider's service radius
- * (rule 6), not in cooldown, not busy with an active job. Returns providers
- * sorted by the ranking algorithm (rule 7).
+ * + accepting bookings), correct category + sector, inside the provider's
+ * service radius (rule 6), not in cooldown, not busy with an active job.
+ * Providers receive leads without any subscription or quota blockers (rule 3).
+ * Returns providers sorted by the ranking algorithm (rule 7).
  *
  * The pipeline is "progressively cheaper":
  *   1. PostgreSQL does the filtering — every hard eligibility rule (including
- *      cooldown, platform-fee arrears and the service radius) is a WHERE clause,
+ *      cooldown and the service radius) is a WHERE clause,
  *      so only a small candidate set is ever loaded into Node. The radius uses a
  *      cheap bounding box that is provably a superset of the true circle (the
  *      box is sized to the largest effective radius among candidates), so the
@@ -161,7 +180,6 @@ export async function findEligibleProviders({
   customerLng = null,
   client = prisma
 }) {
-  const platformFeeEnabled = await getConfig('platformFeeEnabled', true, client);
   const defaultKm = 50;
   const now = new Date();
   const hasCustomerCoords = customerLat != null && customerLng != null;
@@ -171,18 +189,16 @@ export async function findEligibleProviders({
     id: excludeProviderIds.length ? { notIn: excludeProviderIds } : undefined,
     isVerified: true,
     accountStatus: 'ACTIVE',
-    user: { status: 'ACTIVE' },
+    // Negative wallet balances block new leads until cleared.
+    user: {
+      status: 'ACTIVE',
+      OR: [
+        { wallet: { is: null } },
+        { wallet: { is: { balance: { gte: 0 } } } }
+      ]
+    },
     isOnline: true,
     acceptingBookings: true,
-    // Rule 3 — effective subscription active: remaining leads > 0, paid, and
-    // the subscription itself not failed/cancelled.
-    subscription: {
-      is: {
-        remainingLeads: { gt: 0 },
-        status: { notIn: ['FAILED', 'CANCELLED'] },
-        paymentStatus: 'PAID'
-      }
-    },
     // Not busy with an active job.
     bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
     ...(serviceId
@@ -213,28 +229,6 @@ export async function findEligibleProviders({
       }
     ]
   };
-
-  // Rule 10 — the monthly platform fee must be up to date. Pushed into SQL too;
-  // providers without an account yet (lazily created) are never overdue.
-  if (Boolean(platformFeeEnabled)) {
-    where.AND.push({
-      OR: [
-        { user: { platformFeeAccount: { is: null } } },
-        {
-          user: {
-            platformFeeAccount: {
-              is: {
-                OR: [
-                  { status: 'DISABLED' },
-                  { status: { not: 'OVERDUE' }, OR: [{ periodEnd: null }, { periodEnd: { gte: now } }] }
-                ]
-              }
-            }
-          }
-        }
-      ]
-    });
-  }
 
   // Rule 6 — service radius as a cheap bounding box. The box must be a superset
   // of the true circle, so it is sized to the largest effective radius among
@@ -277,12 +271,8 @@ export async function findEligibleProviders({
           id: true,
           name: true,
           avatar: true,
-          phone: true,
-          platformFeeAccount: { select: { status: true, periodEnd: true } }
+          phone: true
         }
-      },
-      subscription: {
-        select: { level: true, remainingLeads: true, sector: true, status: true, paymentStatus: true }
       },
       performance: {
         select: { cooldownUntil: true, acceptanceRate: true, cancellationRate: true, responseRate: true }
@@ -302,15 +292,6 @@ export async function findEligibleProviders({
   }
 
   const eligible = providers.filter((p) => {
-    // Rule 3 — effective subscription active (redundant guard; SQL enforces it).
-    if (!subscriptionIsActive(p.subscription, { provider: p, performance: p.performance })) {
-      return false;
-    }
-    // Rule 10 — platform fee up to date (redundant guard; SQL enforces it).
-    if (Boolean(platformFeeEnabled) && isAccountOverdue(p.user.platformFeeAccount)) {
-      return false;
-    }
-
     // Rule 6 — precise radius check on the SQL-shrunk candidate set.
     const km = distanceMap.get(p.id);
     if (hasCustomerCoords) {
@@ -328,7 +309,7 @@ export async function findEligibleProviders({
 async function diagnoseProvider(providerId, { serviceId = null, serviceCategory = null }, client) {
   const provider = await client.provider.findUnique({
     where: { id: providerId },
-    include: { subscription: true, performance: true, user: { select: { status: true, platformFeeAccount: true } } }
+    include: { performance: true, user: { select: { status: true } } }
   });
   if (!provider) return { code: 'PROVIDER_NOT_FOUND', message: 'Provider not found.' };
   if (!provider.isVerified) return { code: 'NOT_VERIFIED', message: 'This provider has not been verified yet and cannot accept bookings.' };
@@ -340,13 +321,6 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
   }
   if (provider.performance?.cooldownUntil && new Date(provider.performance.cooldownUntil) > new Date()) {
     return { code: 'PROVIDER_IN_COOLDOWN', message: 'This provider is temporarily paused due to repeated cancellations.' };
-  }
-  if (!subscriptionIsActive(provider.subscription, { provider, performance: provider.performance })) {
-    return { code: 'SUBSCRIPTION_INACTIVE', message: 'This provider has used all their booking leads and cannot receive new requests.' };
-  }
-  const platformFeeEnabled = await getConfig('platformFeeEnabled', true, client);
-  if (Boolean(platformFeeEnabled) && isAccountOverdue(provider.user?.platformFeeAccount)) {
-    return { code: 'PLATFORM_FEE_OVERDUE', message: 'This provider has an overdue platform fee and cannot receive new leads.' };
   }
   if (serviceId || serviceCategory) {
     const categoryMatches = serviceCategory
@@ -377,8 +351,8 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
  * Create a booking together with its first lead assignment, atomically.
  *
  * Temporary-service bookings broadcast the request to EVERY eligible provider
- * (approved, online, accepting bookings, inside the service radius, and with a
- * valid effective subscription) at the same time — first-accept-wins. The
+ * (approved, online, accepting bookings, inside the service radius — no
+ * subscription or quota gate) at the same time — first-accept-wins. The
  * booking is created against the top-ranked provider (`Booking.providerId` is
  * required) but every eligible provider receives an open offer via
  * `LeadAssignmentHistory` (`isCurrent: true`) and can accept it.
@@ -622,6 +596,19 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
       }
     }
 
+    // Idempotent retry: if a prior accept already committed (e.g. the response
+    // was lost to a timeout) and it was THIS provider who accepted it, return
+    // the current state instead of declaring a losing race.
+    const existing = await tx.booking.findUnique({ where: { id: bookingId } });
+    if (
+      existing &&
+      existing.providerId === providerId &&
+      normalizeBookingStatus(existing.status) === 'CONFIRMED' &&
+      (!lead || lead.providerId === providerId)
+    ) {
+      return { booking: existing, alreadyAccepted: true, cancelledProviders: [] };
+    }
+
     const updated = await tx.booking.updateMany({
       where: { id: bookingId, status: 'PENDING' },
       data: {
@@ -751,11 +738,18 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
       data: { bookingId, actorId: providerId, actorRole: 'provider', action: 'STATUS_COMPLETED', note: 'Booking completed' }
     });
 
-    // Per-booking platform charges were removed; the provider keeps the full
-    // booking amount (the monthly platform fee replaces commission).
+    // Per-booking platform charges take the form of a commission on the
+    // accepted quotation total (tiered, admin-configurable). The customer pays
+    // the provider DIRECTLY (cash/offline) — ServeGo is not part of that
+    // exchange — so the platform's 15% cut is charged as a wallet DEBIT to the
+    // provider. If the wallet has no cover the balance runs NEGATIVE: that
+    // outstanding amount must be cleared before the provider receives any new
+    // lead (see `findEligibleProviders` — negative wallets are excluded).
     const amount = Number(booking.amount) || 0;
-    const commission = 0;
-    const earnings = amount;
+    const tiers = await getCommissionTiers(tx);
+    const commission = computeCommission(amount, tiers);
+    const earnings = round2(Math.max(0, amount - commission));
+    const serviceLabel = booking.serviceCategory || 'Service';
 
     await tx.booking.update({
       where: { id: bookingId },
@@ -766,22 +760,36 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
     await recordJobCompleted(providerId, amount, commission, { jobDurationMs, client: tx });
     await refreshProviderReputation(providerId, tx);
     const promotion = await applyPromotion(providerId, tx);
-    const subscription = await consumeLeadOnCompletion(providerId, tx);
 
-    // Credit the provider's wallet with their net payout for this job.
-    if (earnings > 0) {
+    if (commission > 0) {
       const providerRow = await tx.provider.findUnique({ where: { id: providerId }, select: { userId: true } });
       if (providerRow?.userId) {
-        await creditWallet({
+        await debitWalletAllowNegative({
           userId: providerRow.userId,
-          amount: earnings,
-          category: 'BOOKING_EARNING',
+          amount: commission,
+          category: 'COMMISSION',
           referenceType: 'BOOKING',
           referenceId: bookingId,
-          description: `Earnings for completed ${booking.serviceCategory || 'service'} booking`,
+          description: `Platform commission (${commission} on ₹${amount}) charged on completed ${serviceLabel} booking`,
           client: tx
         });
       }
+    }
+
+    // Display-only customer ledger entry: a completed job records the amount the
+    // customer paid the provider directly. The customer wallet is a spend
+    // showcase (service + date + amount), NOT a gated account — the debit runs
+    // negative freely, exactly like the decline service fee.
+    if (amount > 0) {
+      await debitWalletAllowNegative({
+        userId: booking.customerId,
+        amount,
+        category: 'BOOKING_PAYMENT',
+        referenceType: 'BOOKING',
+        referenceId: bookingId,
+        description: `${serviceLabel} — ₹${amount} paid directly to the provider on completion`,
+        client: tx
+      });
     }
 
     let lead = null;
@@ -802,12 +810,7 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
       lead,
       earnings,
       commission,
-      promotion,
-      subscription: {
-        remainingLeads: subscription.remainingLeads,
-        justExpired: subscription.justExpired,
-        lowLeads: subscription.lowLeads
-      }
+      promotion
     };
   });
 }
@@ -1045,8 +1048,10 @@ export async function cancelOpenOffers({ leadId, reason = 'CANCELLED', client = 
   return withClientTransaction(client, async (tx) => {
     const open = await tx.leadAssignmentHistory.findMany({
       where: { leadId, isCurrent: true },
-      include: { provider: { include: { user: { select: { id: true } } } } },
-      select: { providerId: true, provider: { include: { user: { select: { id: true } } } } }
+      select: {
+        providerId: true,
+        provider: { select: { user: { select: { id: true } } } }
+      }
     });
     await tx.leadAssignmentHistory.updateMany({
       where: { leadId, isCurrent: true },
@@ -1127,7 +1132,8 @@ export async function listProviderLeads(providerId, client = prisma) {
           city: true,
           instructions: true,
           amount: true,
-          createdAt: true
+          createdAt: true,
+          quotations: { orderBy: { createdAt: 'desc' }, take: 1 }
         }
       }
     },
@@ -1168,7 +1174,9 @@ export async function listAllLeads({ status, page = 1, limit = 50, client = pris
       include: {
         customer: { select: { id: true, name: true, phone: true } },
         provider: { select: { id: true, providerLevel: true, user: { select: { name: true } } } },
-        booking: { select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true } }
+booking: {
+          select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true, quotations: { orderBy: { createdAt: 'desc' }, take: 1 } }
+        }
       },
       orderBy: { createdAt: 'desc' }
     }),

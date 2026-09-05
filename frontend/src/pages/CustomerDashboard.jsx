@@ -3,16 +3,14 @@ import { Loader2 } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { normalizeBooking } from '../utils/normalizeCustomerData';
+import { getErrorInfo } from '../utils/errorMessages';
 
 // Components
 import DashboardHeader from '../components/DashboardHeader';
 import BookingCard from '../components/BookingCard';
-import FavoritesView from '../components/FavoritesView';
 import TicketsView from '../components/TicketsView';
 import NotificationsView from '../components/NotificationsView';
 import ProfileView from '../components/ProfileView';
-import ReferralsView from '../components/ReferralsView';
-import SettingsView from '../components/SettingsView';
 import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
 import PermanentRequestsView from '../components/PermanentRequestsView';
@@ -21,10 +19,9 @@ import WalletView from '../components/WalletView';
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
   const { currentUser, applyReferralCode, updateUserProfile } = useAuth();
   const {
-    bookings, updateBookingStatus, submitReview,
-    providers, favoriteProviders, toggleFavoriteProvider, tickets, submitSupportTicket,
-    notifications, markNotificationAsRead, getCustomerLoyaltyTier, sendChatMessage,
-    savedProsData
+    bookings, updateBookingStatus, submitReview, refreshBooking,
+    tickets, submitSupportTicket,
+    notifications, markNotificationAsRead, getCustomerLoyaltyTier, sendChatMessage
   } = useData();
 
   const [internalActiveTab, setInternalActiveTab] = useState('bookings');
@@ -54,15 +51,40 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const [openChatBookingId, setOpenChatBookingId] = useState(null);
   const [chatInput, setChatInput] = useState('');
 
+  // Quotation actions — POST first, then re-pull the canonical booking so the
+  // card flips from the server's committed state (never optimistic; rule 16).
+  const performQuotationConfirm = useCallback(async (bookingId) => {
+    try {
+      const res = await api.post(`/bookings/${bookingId}/quotation/confirm`, {});
+      if (res.ok) {
+        await refreshBooking(bookingId);
+        return { ok: true };
+      }
+      const info = getErrorInfo(res.data, 'Could not confirm the quotation.');
+      return { ok: false, error: info.message };
+    } catch (e) {
+      const info = getErrorInfo(e, 'Could not confirm the quotation.');
+      return { ok: false, error: info.message };
+    }
+  }, [refreshBooking]);
+
+  const performQuotationCancel = useCallback(async (bookingId, anotherProvider, note = '') => {
+    try {
+      const res = await api.post(`/bookings/${bookingId}/quotation/cancel`, { anotherProvider, note });
+      if (res.ok) {
+        await refreshBooking(bookingId);
+        return { ok: true };
+      }
+      const info = getErrorInfo(res.data, 'Could not cancel the booking.');
+      return { ok: false, error: info.message };
+    } catch (e) {
+      const info = getErrorInfo(e, 'Could not cancel the booking.');
+      return { ok: false, error: info.message };
+    }
+  }, [refreshBooking]);
+
   // Memoized data
   const userBookings = useMemo(() => bookings.filter(b => b.customerId === currentUser?.id), [bookings, currentUser]);
-  const userFavorites = useMemo(() => {
-    // Use real SavedPro API data when available; fall back to provider list filtered by IDs
-    if (Array.isArray(savedProsData) && savedProsData.length > 0) {
-      return savedProsData.map(sp => sp.provider || providers.find(p => p.id === (sp.providerId || sp.provider?.id))).filter(Boolean);
-    }
-    return providers.filter(p => favoriteProviders.includes(p.id));
-  }, [savedProsData, providers, favoriteProviders]);
   const userTickets = useMemo(() => tickets.filter(t => t.email === currentUser?.email), [tickets, currentUser]);
   const userNotifications = useMemo(() => notifications.filter(n => n.userId === currentUser?.id), [notifications, currentUser]);
 
@@ -183,7 +205,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           setActiveTab={setActiveTab}
           counts={{
             bookings: userBookings.length,
-            favorites: userFavorites.length,
             tickets: userTickets.length,
             notifications: userNotifications.length,
             requests: permanentCount
@@ -196,21 +217,13 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             {userBookings.length === 0 ? (
               <EmptyBookings onNavigate={onNavigate} />
             ) : (
-              <BookingSubTabs bookings={userBookings} currentUser={currentUser} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
+              <BookingSubTabs bookings={userBookings} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
         )}
 
         {activeTab === 'requests' && (
           <PermanentRequestsView onNavigate={onNavigate} />
-        )}
-
-        {activeTab === 'favorites' && (
-          <FavoritesView 
-            favorites={userFavorites} 
-            onToggleFavorite={toggleFavoriteProvider} 
-            onNavigate={onNavigate} 
-          />
         )}
 
         {activeTab === 'tickets' && (
@@ -234,8 +247,8 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
         {activeTab === 'profile' && <ProfileView user={currentUser} onSave={handleSaveProfile} />}
 
-        {activeTab === 'referrals' && (
-          <ReferralsView 
+        {activeTab === 'wallet' && (
+          <WalletView
             user={currentUser}
             loyaltyTier={getCustomerLoyaltyTier(completedCount)}
             completedCount={completedCount}
@@ -252,10 +265,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             refSuccess={refSuccess}
           />
         )}
-
-        {activeTab === 'wallet' && <WalletView />}
-
-        {activeTab === 'settings' && <SettingsView />}
 
       </div>
     </div>
@@ -294,7 +303,7 @@ const TAB_STATUS_QUERY = {
 
 const TAB_PAGE_SIZE = 10;
 
-function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, onReview, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
+function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuotationConfirm, onQuotationCancel, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
   const [subTab, setSubTab] = useState('active');
   const [tabItems, setTabItems] = useState({});
   const [tabMeta, setTabMeta] = useState({});
@@ -335,6 +344,58 @@ function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, on
   useEffect(() => {
     if (!tabItems[subTab]) fetchPage({ tab: subTab });
   }, [subTab, tabItems, fetchPage]);
+
+  // Realtime/action/poll status patches land on `bookings` (DataContext), but the
+  // visible list is the paginated snapshot in `tabItems`. Overlay the fresh
+  // record for every id already shown so cards flip immediately (cancel,
+  // accept, complete — both self-initiated and socket-driven), and drop any
+  // booking whose status no longer belongs to the sub-tab it was under; its
+  // destination sub-tab snapshot is invalidated so it re-fetches on view.
+  useEffect(() => {
+    if (!bookings.length) return;
+    const freshById = new Map();
+    bookings.forEach((b) => { if (b?.id) freshById.set(b.id, b); });
+    const movedOut = new Map();
+    setTabItems(prev => {
+      let next = prev;
+      Object.keys(prev).forEach(tab => {
+        const statuses = (BOOKING_SUB_TABS.find(t => t.id === tab)?.statuses || []).map(s => String(s).toLowerCase());
+        const list = prev[tab] || [];
+        let changed = false;
+        for (const item of list) {
+          const fresh = freshById.get(item.id);
+          if (!fresh) continue;
+          const freshStatus = String(fresh.status || '').toLowerCase();
+          // Cross-tab move (e.g. cancel flips the booking to the Cancelled tab).
+          if (freshStatus && statuses.length && !statuses.includes(freshStatus)) {
+            movedOut.set(item.id, fresh);
+            changed = true;
+            continue;
+          }
+          const providerId = (b) => b?.provider?.id ?? b?.provider?.userId ?? null;
+          if (item.status === fresh.status && providerId(item) === providerId(fresh)) continue;
+          changed = true;
+        }
+        if (changed) {
+          const kept = list.filter(item => !movedOut.has(item.id));
+          if (next === prev) next = { ...prev };
+          next[tab] = kept.map(item => freshById.get(item.id) || item);
+        }
+      });
+      // A booking moved to another sub-tab → re-fetch that snapshot next time.
+      if (next !== prev) {
+        movedOut.forEach(fresh => {
+          const s = String(fresh.status || '').toLowerCase();
+          BOOKING_SUB_TABS.forEach(t => {
+            if (t.id !== subTab && t.statuses.some(x => String(x).toLowerCase() === s) && Object.hasOwn(next, t.id)) {
+              next[t.id] = undefined;
+            }
+          });
+        });
+      }
+      return next;
+    });
+  }, [bookings, subTab]);
 
   const loadMore = () => {
     if (!meta.nextCursor || meta.loadingMore || meta.loading) return;
@@ -389,10 +450,11 @@ function BookingSubTabs({ bookings, currentUser, onDownloadReceipt, onCancel, on
             <BookingCard
               key={bk.id}
               booking={bk}
-              customerVerificationCode={currentUser?.verificationCode}
               onDownloadReceipt={onDownloadReceipt}
               onCancel={onCancel}
               onReview={onReview}
+              onQuotationConfirm={onQuotationConfirm}
+              onQuotationCancel={onQuotationCancel}
               chatOpen={openChatBookingId === bk.id}
               onToggleChat={() => setOpenChatBookingId(openChatBookingId === bk.id ? null : bk.id)}
               chatInput={chatInput}

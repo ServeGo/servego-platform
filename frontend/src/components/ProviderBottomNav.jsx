@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Inbox,
   Wrench,
-  CreditCard,
   Wallet,
   MoreHorizontal,
   Star,
@@ -18,7 +17,7 @@ const MORE_TABS = ['reviews', 'level', 'support', 'profile'];
  * Sticky bottom navigation for the Provider role on mobile (native-app feel).
  * Hidden from tablet/desktop (md+) where the top Navbar handles navigation.
  *
- * Primary items: Leads (badged), Services, Plans, Wallet.
+ * Primary items: Leads (badged), Services, Wallet.
  * "More" opens a bottom sheet for Reviews, Performance, Support, Profile.
  */
 export default function ProviderBottomNav({
@@ -58,13 +57,6 @@ export default function ProviderBottomNav({
       onClick: () => goToTab('services'),
     },
     {
-      id: 'plans',
-      label: 'Plans',
-      icon: CreditCard,
-      isActive: onDashboard && activeTab === 'plans',
-      onClick: () => goToTab('plans'),
-    },
-    {
       id: 'wallet',
       label: 'Wallet',
       icon: Wallet,
@@ -89,7 +81,7 @@ export default function ProviderBottomNav({
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         aria-label="Provider primary"
       >
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-4">
           {items.map((item) => {
             const Icon = item.icon;
             return (

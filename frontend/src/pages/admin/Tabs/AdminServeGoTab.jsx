@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   SlidersHorizontal,
-  LayoutList,
   Crown,
   Inbox,
   Gauge,
   BarChart3,
-  Plus,
-  Pencil,
   Save,
   ChevronLeft,
   ChevronRight,
@@ -21,8 +18,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   ShieldCheck,
-  FileSpreadsheet,
-  ReceiptText
+  FileSpreadsheet
 } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
 import { exportAllPages } from '../../../utils/exportExcel';
@@ -55,36 +51,6 @@ const STATUS_STYLES = {
 };
 
 const CONFIG_SCHEMA = {
-  platformFeeEnabled: {
-    type: 'boolean',
-    label: 'Platform Fee Enabled',
-    description: 'Master switch for the monthly platform fee.',
-    default: true
-  },
-  platformFeeAmount: {
-    type: 'number',
-    label: 'Provider Platform Fee (₹/month)',
-    description: 'Monthly fee charged to providers; overdue providers stop receiving leads.',
-    default: 99
-  },
-  platformFeeGraceDays: {
-    type: 'number',
-    label: 'Provider Fee Grace Period (days)',
-    description: 'Days a provider gets after joining before the first platform fee payment is due.',
-    default: 30
-  },
-  customerPlatformFeeEnabled: {
-    type: 'boolean',
-    label: 'Customer Platform Fee Enabled',
-    description: 'Master switch for the customer platform fee (reminders only, never blocks access).',
-    default: true
-  },
-  customerPlatformFeeAmount: {
-    type: 'number',
-    label: 'Customer Platform Fee (₹/month)',
-    description: 'Monthly fee charged to customers; reminders only.',
-    default: 49
-  },
   cancellationPenaltyScore: {
     type: 'number',
     label: 'Cancellation Penalty Score',
@@ -106,12 +72,10 @@ export default function AdminServeGoTab() {
 
   const tabs = [
     { id: 'config', label: 'Config' },
-    { id: 'plans', label: 'Subscription Plans' },
     { id: 'levels', label: 'Level Rules' },
     { id: 'leads', label: 'Leads' },
     { id: 'performance', label: 'Provider Performance' },
     { id: 'wallet', label: 'Wallet' },
-    { id: 'fees', label: 'Platform Fees' },
     { id: 'analytics', label: 'Analytics' }
   ];
 
@@ -119,7 +83,7 @@ export default function AdminServeGoTab() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">ServeGo Business Model</h2>
-        <p className="text-slate-500 text-xs">Lead marketplace configuration, subscription plans, level rules, and marketplace analytics.</p>
+        <p className="text-slate-500 text-xs">Lead marketplace configuration, level rules, and marketplace analytics.</p>
       </div>
 
       <div className="flex gap-1 bg-white border border-slate-200 p-1 rounded-2xl w-full overflow-x-auto">
@@ -135,12 +99,10 @@ export default function AdminServeGoTab() {
       </div>
 
       {tab === 'config' && <ConfigSection />}
-      {tab === 'plans' && <PlansSection />}
       {tab === 'levels' && <LevelRulesSection />}
       {tab === 'leads' && <LeadsSection />}
       {tab === 'performance' && <PerformanceSection />}
       {tab === 'wallet' && <WalletSection />}
-      {tab === 'fees' && <PlatformFeesSection />}
       {tab === 'analytics' && <AnalyticsSection />}
     </div>
   );
@@ -266,200 +228,6 @@ function ConfigSection() {
         )}
       </div>
     </div>
-  );
-}
-
-/* ----------------------------------- Plans ---------------------------------- */
-
-const PLAN_EMPTY = { level: '', name: '', price: '', leadCount: '', sector: 'GENERAL', isFree: false, description: '', active: true };
-
-function PlansSection() {
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(PLAN_EMPTY);
-  const [message, setMessage] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await apiClient.get('/admin/subscription-plans');
-    if (res.ok) setPlans(Array.isArray(res.data) ? res.data : []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const openCreate = () => {
-    setForm(PLAN_EMPTY);
-    setEditing('new');
-  };
-  const openEdit = (plan) => {
-    setForm({
-      level: plan.level,
-      name: plan.name,
-      price: plan.price,
-      leadCount: plan.leadCount,
-      sector: plan.sector,
-      isFree: plan.isFree,
-      description: plan.description || '',
-      active: plan.active
-    });
-    setEditing(plan.id);
-  };
-  const close = () => { setEditing(null); setMessage(''); };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    const body = {
-      level: Number(form.level),
-      name: form.name,
-      price: Number(form.price || 0),
-      leadCount: Number(form.leadCount || 0),
-      sector: form.sector,
-      isFree: Boolean(form.isFree),
-      description: form.description || null,
-      active: Boolean(form.active)
-    };
-    const res = editing === 'new'
-      ? await apiClient.post('/admin/subscription-plans', body)
-      : await apiClient.patch(`/admin/subscription-plans/${editing}`, body);
-    if (res.ok) {
-      setMessage('Saved.');
-      close();
-      load();
-    } else {
-      setMessage(res.data?.message || res.data?.error || 'Failed to save plan.');
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {message && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-2xl px-4 py-3">{message}</div>
-      )}
-
-      <div className="flex justify-end">
-        <button
-          onClick={openCreate}
-          className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-black px-4 py-2 rounded-xl transition-all flex items-center gap-1.5"
-        >
-          <Plus className="w-3.5 h-3.5" /> New Plan
-        </button>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-            <LayoutList className="w-4 h-4 text-teal-600" /> Subscription Plans ({plans.length})
-          </span>
-          <button onClick={load} className="text-[10px] font-black text-slate-500 hover:text-slate-800 flex items-center gap-1">
-            <RefreshCw className="w-3 h-3" /> Refresh
-          </button>
-        </div>
-        {loading ? (
-          <p className="text-slate-400 text-xs italic p-6 text-center">Loading plans...</p>
-        ) : plans.length === 0 ? (
-          <p className="text-slate-400 text-xs italic p-6 text-center">No plans yet. Create the first subscription plan.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  {['Level', 'Name', 'Price', 'Leads', 'Sector', 'Free', 'Active', 'Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {plans.map((plan) => (
-                  <tr key={plan.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-black text-slate-900">{plan.level}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-800">{plan.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{fmtMoney(plan.price)}</td>
-                    <td className="px-4 py-3 text-slate-600">{plan.leadCount}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                        plan.sector === 'PREMIUM' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>{plan.sector}</span>
-                    </td>
-                    <td className="px-4 py-3">{plan.isFree ? 'Yes' : '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${plan.active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                        {plan.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => openEdit(plan)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {editing && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={submit} className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h4 className="text-base font-extrabold text-slate-900">{editing === 'new' ? 'New Subscription Plan' : 'Edit Subscription Plan'}</h4>
-              <button type="button" onClick={close} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Level (number)" required>
-                <input type="number" required value={form.level} onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
-              </Field>
-              <Field label="Name">
-                <input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
-              </Field>
-              <Field label="Price (₹)">
-                <input type="number" min="0" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
-              </Field>
-              <Field label="Lead Count">
-                <input type="number" min="0" value={form.leadCount} onChange={(e) => setForm((f) => ({ ...f, leadCount: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
-              </Field>
-              <Field label="Sector">
-                <select value={form.sector} onChange={(e) => setForm((f) => ({ ...f, sector: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500">
-                  <option value="GENERAL">GENERAL</option>
-                  <option value="PREMIUM">PREMIUM</option>
-                </select>
-              </Field>
-              <div className="flex items-end gap-4 pb-1">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <input type="checkbox" checked={form.isFree} onChange={(e) => setForm((f) => ({ ...f, isFree: e.target.checked }))} className="w-4 h-4 accent-teal-600" /> Free
-                </label>
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="w-4 h-4 accent-teal-600" /> Active
-                </label>
-              </div>
-            </div>
-            <Field label="Description">
-              <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" rows={2} />
-            </Field>
-            <div className="flex gap-2 justify-end pt-1">
-              <button type="button" onClick={close} className="bg-white border border-slate-300 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-50">Cancel</button>
-              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-5 py-2 rounded-xl flex items-center gap-1.5">
-                <Save className="w-3.5 h-3.5" /> Save Plan
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Field({ label, children, required }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-1 block">{label}{required ? ' *' : ''}</span>
-      {children}
-    </label>
   );
 }
 
@@ -1367,176 +1135,6 @@ function WalletSection() {
   );
 }
 
-/* ------------------------------ Platform Fees ------------------------------ */
-
-const FEE_STATUS_STYLES = {
-  ACTIVE: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-  GRACE: 'bg-sky-100 border-sky-300 text-sky-800',
-  OVERDUE: 'bg-rose-100 border-rose-300 text-rose-800',
-  DISABLED: 'bg-slate-100 border-slate-300 text-slate-600'
-};
-
-function PlatformFeesSection() {
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('');
-  const [role, setRole] = useState('');
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(0);
-  const [exporting, setExporting] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const q = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-    if (status) q.set('status', status);
-    if (role) q.set('role', role);
-    const res = await apiClient.get(`/admin/platform-fees?${q.toString()}`);
-    if (res.ok) {
-      setAccounts(res.data?.accounts || []);
-      setTotal(res.data?.pagination?.total || 0);
-      setPages(res.data?.pagination?.pages || 0);
-    } else {
-      setAccounts([]);
-    }
-    setLoading(false);
-  }, [page, status, role]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      await exportAllPages({
-        fetchPage: async (p, limit) => {
-          const q = new URLSearchParams({ page: String(p), limit: String(limit) });
-          if (status) q.set('status', status);
-          if (role) q.set('role', role);
-          const res = await apiClient.get(`/admin/platform-fees?${q.toString()}`);
-          const rows = (res.data?.accounts || []).map((a) => ({
-            User: a.user?.name || '',
-            Email: a.user?.email || '',
-            Role: a.role || '',
-            Status: a.status || '',
-            'Overdue': a.overdue ? 'Yes' : 'No',
-            'Amount (₹)': a.amount ?? 0,
-            'Period Start': fmtDate(a.periodStart),
-            'Period End': fmtDate(a.periodEnd),
-            'Grace Ends': fmtDate(a.graceEndsAt),
-            'Last Payment': fmtDate(a.lastPaymentAt),
-            'Joined': fmtDate(a.user?.createdAt)
-          }));
-          return { rows, total: res.data?.pagination?.total || 0 };
-        },
-        fileName: 'platform-fees-report',
-        sheetName: 'Platform Fees'
-      });
-    } catch (err) {
-      console.error('Excel export failed:', err);
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-            <ReceiptText className="w-4 h-4 text-teal-600" /> Monthly Platform Fees ({total})
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleExport}
-              disabled={exporting || total === 0}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              {exporting ? 'Exporting...' : 'Export Excel'}
-            </button>
-            <div className="flex flex-wrap gap-1">
-              {[['', 'All'], ['ACTIVE', 'Active'], ['GRACE', 'Grace'], ['OVERDUE', 'Overdue'], ['DISABLED', 'Disabled']].map(([val, label]) => (
-                <button
-                  key={val || 'all'}
-                  onClick={() => { setStatus(val); setPage(1); }}
-                  className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${status === val ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  {label}
-                </button>
-              ))}
-              <span className="px-2 py-1.5 text-[10px] font-black text-slate-300">|</span>
-              {[['', 'All roles'], ['PROVIDER', 'Providers'], ['CUSTOMER', 'Customers']].map(([val, label]) => (
-                <button
-                  key={val || 'allroles'}
-                  onClick={() => { setRole(val); setPage(1); }}
-                  className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg transition-all ${role === val ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {loading ? (
-          <p className="text-slate-400 text-xs italic p-6 text-center">Loading platform fee accounts...</p>
-        ) : accounts.length === 0 ? (
-          <p className="text-slate-400 text-xs italic p-6 text-center">No platform fee accounts found.</p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    {['User', 'Role', 'Status', 'Amount', 'Period End', 'Grace Ends', 'Last Payment', 'Overdue'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {accounts.map((a) => (
-                    <tr key={a.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-800">{a.user?.name || '—'}</p>
-                        <p className="text-[9px] text-slate-400 font-mono">{a.user?.email}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-slate-100 text-slate-600 border-slate-200">{a.role}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${FEE_STATUS_STYLES[a.status] || 'bg-slate-100 border-slate-300 text-slate-600'}`}>{a.status}</span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 font-semibold">{fmtMoney(a.amount)}</td>
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.periodEnd)}</td>
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.graceEndsAt)}</td>
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtDate(a.lastPaymentAt)}</td>
-                      <td className="px-4 py-3">
-                        {a.overdue ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border bg-rose-50 text-rose-700 border-rose-200">Yes</span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {pages > 1 && (
-              <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] text-slate-400 font-semibold">Page {page} of {pages}</span>
-                <div className="flex gap-1">
-                  <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
-                  <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* --------------------------------- Analytics --------------------------------- */
 
 function AnalyticsSection() {
@@ -1545,14 +1143,12 @@ function AnalyticsSection() {
 
   useEffect(() => {
     (async () => {
-      const [cancel, sub, promo] = await Promise.all([
+      const [cancel, promo] = await Promise.all([
         apiClient.get('/admin/analytics/cancellations'),
-        apiClient.get('/admin/analytics/subscriptions'),
         apiClient.get('/admin/analytics/promotions')
       ]);
       setData({
         cancel: cancel.ok ? cancel.data : null,
-        sub: sub.ok ? sub.data : null,
         promo: promo.ok ? promo.data : null
       });
       setLoading(false);
@@ -1565,27 +1161,7 @@ function AnalyticsSection() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AnalyticsPanel title="Subscription Revenue" subtitle="By plan level">
-          <div className="space-y-3">
-            {(data?.sub?.byPlan || []).map((row) => (
-              <div key={row.levelPurchased} className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700">Level {row.levelPurchased}</span>
-                <span className="text-slate-500">{row._count?._all ?? 0} purchases · <span className="font-black text-emerald-700">{fmtMoney(row._sum?.finalAmount)}</span></span>
-              </div>
-            ))}
-            {data?.sub?.revenueTotals && (
-              <div className="pt-3 border-t border-slate-100 space-y-1.5">
-                <p className="flex justify-between text-xs"><span className="font-semibold text-slate-500">Total purchases</span><span className="font-black text-slate-900">{data.sub.revenueTotals._count?._all ?? 0}</span></p>
-                <p className="flex justify-between text-xs"><span className="font-semibold text-slate-500">Gross revenue</span><span className="font-black text-slate-900">{fmtMoney(data.sub.revenueTotals._sum?.price)}</span></p>
-                <p className="flex justify-between text-xs"><span className="font-semibold text-slate-500">Discounts given</span><span className="font-black text-rose-600">-{fmtMoney(data.sub.revenueTotals._sum?.discountAmount)}</span></p>
-                <p className="flex justify-between text-xs"><span className="font-semibold text-slate-500">Net revenue</span><span className="font-black text-emerald-700">{fmtMoney(data.sub.revenueTotals._sum?.finalAmount)}</span></p>
-              </div>
-            )}
-          </div>
-        </AnalyticsPanel>
-
-        <AnalyticsPanel title="Cancellations" subtitle="By actor">
+      <AnalyticsPanel title="Cancellations" subtitle="By actor">
           <div className="space-y-3">
             {(data?.cancel?.byActor || []).map((row) => (
               <div key={row.actor} className="flex items-center justify-between text-xs">
@@ -1603,7 +1179,6 @@ function AnalyticsSection() {
             </div>
           </div>
         </AnalyticsPanel>
-      </div>
 
       <AnalyticsPanel title="Promotions" subtitle="Level-ups granted">
         <div className="space-y-3">

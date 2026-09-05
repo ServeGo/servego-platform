@@ -125,7 +125,7 @@ function bookingEmailHtml({ heading, lines, footer }) {
 }
 
 /** Booking request received — sent after the customer books a service. */
-export function bookingRequestEmail({ customerName, bookingId, serviceCategory, amount }) {
+export function bookingRequestEmail({ customerName, email, bookingId, serviceCategory, amount }) {
   const name = customerName || 'there';
   const lines = [
     `Hi ${name},`,
@@ -134,6 +134,7 @@ export function bookingRequestEmail({ customerName, bookingId, serviceCategory, 
     `We're matching you with the best available provider right now. You'll be notified the moment one accepts your request.`
   ];
   return {
+    to: email,
     subject: `Booking request received — ${bookingId}`,
     text: lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n'),
     html: bookingEmailHtml({ heading: 'Booking Request Received', lines })
@@ -141,7 +142,7 @@ export function bookingRequestEmail({ customerName, bookingId, serviceCategory, 
 }
 
 /** Booking completed — receipt-style email to the customer. */
-export function bookingCompletedEmail({ customerName, bookingId, serviceCategory, amount }) {
+export function bookingCompletedEmail({ customerName, email, bookingId, serviceCategory, amount }) {
   const name = customerName || 'there';
   const lines = [
     `Hi ${name},`,
@@ -150,6 +151,7 @@ export function bookingCompletedEmail({ customerName, bookingId, serviceCategory
     `An invoice for this booking has been generated and is available in your account.`
   ];
   return {
+    to: email,
     subject: `Your booking ${bookingId} is completed`,
     text: lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n'),
     html: bookingEmailHtml({ heading: 'Booking Completed', lines })

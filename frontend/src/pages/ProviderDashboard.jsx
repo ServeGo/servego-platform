@@ -8,7 +8,6 @@ import { cachedRequest } from '../utils/requestCache';
 // Components
 import ProviderHeader from '../components/ProviderHeader';
 import ProviderLeadsInbox from '../components/ProviderLeadsInbox';
-import ProviderPlans from '../components/ProviderPlans';
 import ProviderLevelAnalytics from '../components/ProviderLevelAnalytics';
 
 import ProviderServicesPanel from '../components/ProviderServicesPanel';
@@ -65,7 +64,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   // from context + self-fetch the moment the page paints — that's the immediate
   // tier. A short moment later the "then" tier warms the next-most-likely
   // destinations in the background: approved services (header chips + Services
-  // tab) and the Performance / Subscription endpoints (cached in requestCache
+  // tab) and the Performance endpoint (cached in requestCache
   // so opening those tabs resolves instantly). Services management, wallet,
   // support and profile stay strictly tab-click (they self-fetch or read
   // context when opened).
@@ -77,12 +76,6 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
       warm('provider-performance/me', () => api.get('/provider-performance/me'));
       warm('level-rules', () => api.get('/level-rules'));
       warm('promotions/me', () => api.get('/promotions/me'));
-      warm('subscriptions/plans', () => api.get('/subscriptions/plans'));
-      warm('subscriptions/me', () => api.get('/subscriptions/me'));
-      warm('subscriptions/remaining', () => api.get('/subscriptions/remaining'));
-      warm('subscriptions/transactions', () => api.get('/subscriptions/transactions'));
-      warm('platform-fee/status', () => api.get('/platform-fee/status'));
-      warm('platform-fee/history', () => api.get('/platform-fee/history'));
     }, 300);
     return () => clearTimeout(timer);
   }, [activeProvider?.id, fetchProviderApprovedServices]);
@@ -140,10 +133,6 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
         {activeTab === 'leads' && (
           <ProviderLeadsInbox providerId={activeProvider?.id} updateBookingStatus={updateBookingStatus} />
-        )}
-
-        {activeTab === 'plans' && (
-          <ProviderPlans providerId={activeProvider?.id} />
         )}
 
         {activeTab === 'level' && (
@@ -205,7 +194,6 @@ function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
   const tabs = [
     { id: 'leads', label: `Leads (${leadsCount})` },
     { id: 'services', label: 'My Services' },
-    { id: 'plans', label: 'Subscription' },
     { id: 'reviews', label: `Reviews (${reviewsCount})` },
     { id: 'level', label: 'Performance & Analytics' },
     { id: 'wallet', label: 'Wallet & Ambassador' },

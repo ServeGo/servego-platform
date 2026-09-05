@@ -35,7 +35,7 @@ export default function TrustBanner({ onBrowse }) {
               <ul className="mt-4 space-y-2 text-[11px] text-slate-400 font-medium">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  No per-booking commission — ServeGo runs on a simple monthly platform fee.
+                  Free to join — no subscription or monthly fee for specialists.
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />

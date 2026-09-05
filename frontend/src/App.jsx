@@ -7,7 +7,6 @@ import { Home } from './pages/Home';
 import { About } from './pages/About';
 import { Services } from './pages/Services';
 import { ServiceDetails } from './pages/ServiceDetails';
-import { BecomePartner } from './pages/BecomePartner';
 import { Contact } from './pages/Contact';
 import { FAQ } from './pages/FAQ';
 import { CustomerDashboard } from './pages/CustomerDashboard';
@@ -77,8 +76,6 @@ const getRoutePath = (page, categoryId = null, tab = null) => {
       return '/services';
     case 'service-details':
       return categoryId ? `/service-details/${encodeURIComponent(categoryId)}` : '/services';
-    case 'partner':
-      return '/partner';
     case 'contact':
       return '/contact';
     case 'faq':
@@ -338,8 +335,6 @@ export function MainLayout() {
         return (
           <ServiceDetails catId={selectedCategoryDetail} onNavigate={handlePageTransition} onViewPermanentRequests={handleViewPermanentRequests} />
         );
-      case 'partner':
-        return <BecomePartner />;
       case 'contact':
         return <Contact />;
       case 'faq':
@@ -815,7 +810,7 @@ export function MainLayout() {
       <main className="flex-1">{renderContent()}</main>
 
       {/* Footer only for public pages and customer dashboard (usually) */}
-      {(!currentUser || currentUser.role === 'customer') && (
+      {currentPage !== 'login' && currentPage !== 'signup' && (!currentUser || currentUser.role === 'customer') && (
         <div className={currentUser?.role === 'customer' ? 'pb-16 md:pb-0' : ''}>
           <Footer onNavigate={handlePageTransition} />
         </div>

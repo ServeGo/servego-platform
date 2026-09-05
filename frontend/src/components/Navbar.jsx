@@ -375,34 +375,19 @@ export default function Navbar({
 
           <nav className="hidden md:flex items-center gap-6 text-xs font-extrabold text-slate-650 uppercase tracking-wider">
             <button
-              onClick={() => handleLinkClick('home')}
-              className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'home' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
+              onClick={() => {
+                setCustomerActiveTab('bookings');
+                handleLinkClick('dashboard-customer');
+              }}
+              className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'dashboard-customer' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
             >
-              Home
+              Dashboard
             </button>
             <button
               onClick={() => handleLinkClick('services')}
               className={`hover:text-teal-700 cursor-pointer py-1 ${['services', 'service-details'].includes(currentPage) ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
             >
               Services
-            </button>
-            <button
-              onClick={() => {
-                setCustomerActiveTab('bookings');
-                handleLinkClick('dashboard-customer');
-              }}
-              className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'dashboard-customer' && customerActiveTab === 'bookings' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
-            >
-              My Bookings
-            </button>
-            <button
-              onClick={() => {
-                setCustomerActiveTab('tickets');
-                handleLinkClick('dashboard-customer');
-              }}
-              className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'dashboard-customer' && customerActiveTab === 'tickets' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
-            >
-              Support Issues
             </button>
           </nav>
 
@@ -468,12 +453,9 @@ export default function Navbar({
                   </div>
 
                   <div className="space-y-1 font-semibold text-slate-700">
-                    <button onClick={() => { setUserDropdownOpen(false); handleLinkClick('home'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Home</button>
                     <button onClick={() => { setUserDropdownOpen(false); handleLinkClick('services'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Services</button>
                     <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('bookings'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Dashboard</button>
                     <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('profile'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Profile Account</button>
-                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('favorites'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Saved Partners</button>
-                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('settings'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Settings</button>
                     <button onClick={handleSignOutAction} className="w-full text-left py-1 px-1.5 hover:bg-rose-50 text-rose-600 rounded font-bold flex items-center gap-1 mt-1 transition-colors">
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Logout</span>
@@ -510,7 +492,6 @@ export default function Navbar({
         <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-600 uppercase tracking-wider">
           <button onClick={() => handleLinkClick('home')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'home' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Home</button>
           <button onClick={() => handleLinkClick('services')} className={`hover:text-teal-700 cursor-pointer py-1 ${['services', 'service-details'].includes(currentPage) ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Services</button>
-          <button onClick={() => handleLinkClick('partner')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'partner' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Become a Partner</button>
           <button onClick={() => handleLinkClick('about')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'about' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>About</button>
           <button onClick={() => handleLinkClick('contact')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'contact' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Contact</button>
         </nav>
@@ -531,7 +512,6 @@ export default function Navbar({
         <div className="md:hidden bg-white border-t border-slate-200 py-4 px-4 flex flex-col justify-between items-center text-xs font-bold text-slate-600 uppercase tracking-wider z-25 relative shadow-md w-full overflow-hidden">
           <button onClick={() => handleLinkClick('home')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Home</button>
           <button onClick={() => handleLinkClick('services')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Services</button>
-          <button onClick={() => handleLinkClick('partner')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Become a Partner</button>
           <button onClick={() => handleLinkClick('about')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">About</button>
           <button onClick={() => handleLinkClick('contact')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Contact</button>
           <button onClick={() => handleLinkClick('login')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full flex items-center justify-center gap-1">

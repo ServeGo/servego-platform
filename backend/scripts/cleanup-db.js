@@ -24,12 +24,8 @@ async function main() {
   await prisma.providerLevelHistory.deleteMany();
   await prisma.providerPerformance.deleteMany();
   await prisma.rankingMetrics.deleteMany();
-  await prisma.subscriptionTransaction.deleteMany();
-  await prisma.providerSubscription.deleteMany();
-  await prisma.subscriptionPlan.deleteMany();
   await prisma.providerLevelRule.deleteMany();
   await prisma.availabilitySlot.deleteMany();
-  await prisma.savedPro.deleteMany();
   await prisma.providerService.deleteMany();
   await prisma.providerServiceRequest.deleteMany();
   await prisma.providerBadge.deleteMany();

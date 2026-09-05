@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { MapPin, RadioTower, ShieldCheck, Sparkles } from 'lucide-react';
 import { useData, useUI } from '../context/AppContext';
 
 // Components
@@ -7,7 +8,6 @@ import CategoryGrid from '../components/CategoryGrid';
 import HowItWorks from '../components/HowItWorks';
 import TrustBanner from '../components/TrustBanner';
 import RealtimeFeatures from '../components/RealtimeFeatures';
-import PartnerCTA from '../components/PartnerCTA';
 import SkeletonLoader from '../components/SkeletonLoader';
 
 export const Home = ({ onNavigate }) => {
@@ -52,9 +52,11 @@ export const Home = ({ onNavigate }) => {
   // first load is in flight we render a skeleton grid so the page never flashes
   // the "no services" empty state before data actually arrives.
   const hasServices = Array.isArray(services) && services.length > 0;
+  const providerCount = Array.isArray(providers) ? providers.length : 0;
+  const areaLabel = selectedArea || 'Hyderabad';
 
   return (
-    <div id="home-page" className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.08),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#f1f5f9_100%)]">
+    <div id="home-page" className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_12%_24%,_rgba(20,184,166,0.1),_transparent_24%),radial-gradient(circle_at_88%_58%,_rgba(245,158,11,0.08),_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f5_100%)]">
       <Hero
         onSearch={handleSearchSubmit}
         selectedArea={selectedArea}
@@ -64,8 +66,49 @@ export const Home = ({ onNavigate }) => {
         onQuickSearch={handleQuickSearch}
       />
 
+      <section aria-label="ServeGo marketplace status" className="relative z-10 -mt-7 px-4">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] sm:grid-cols-3">
+          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:border-b-0 sm:border-r">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Live catalog</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-900">{hasServices ? `${services.length} services ready` : 'Loading services'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:border-b-0 sm:border-r">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+              <RadioTower className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Ready to respond</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-900">{providerCount || 'Verified'} specialists</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                <MapPin className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Serving now</p>
+                <p className="mt-0.5 text-sm font-bold text-slate-900">{areaLabel}</p>
+              </div>
+            </div>
+            <ShieldCheck className="h-5 w-5 text-emerald-500" aria-label="Verified marketplace" />
+          </div>
+        </div>
+      </section>
+
       {servicesLoading && !hasServices ? (
-        <section aria-label="Loading services" className="max-w-6xl mx-auto px-4 py-8">
+        <section aria-label="Loading services" className="mx-auto max-w-6xl px-4 py-12">
+          <div className="mb-5 flex items-end justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-teal-700">Explore services</p>
+              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">Find the right expert</h2>
+            </div>
+          </div>
           <SkeletonLoader type="card" count={6} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" />
         </section>
       ) : (
@@ -83,7 +126,6 @@ export const Home = ({ onNavigate }) => {
 
       <RealtimeFeatures />
 
-      <PartnerCTA onApply={() => onNavigate('partner')} />
     </div>
   );
 };

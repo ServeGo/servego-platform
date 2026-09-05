@@ -1,8 +1,9 @@
-import React from 'react';
-import { Calendar, MapPin, FileText, MessageSquare, ShieldCheck, Navigation, UserCheck, Hourglass } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calendar, MapPin, FileText, MessageSquare, Navigation, UserCheck, Hourglass, IndianRupee, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { LiveTrackingMap } from './LiveTrackingMap';
 import ChatPanel from './ChatPanel';
 import { useRealtime, useToast } from '../context/AppContext';
+import { SERVICE_FEE_DEFAULT } from './QuotationModal';
 
 function DispatchStepper({ phase }) {
   const steps = [
@@ -44,10 +45,11 @@ function DispatchStepper({ phase }) {
 
 export default function BookingCard({ 
   booking, 
-  customerVerificationCode,
   onDownloadReceipt, 
   onCancel, 
   onReview,
+  onQuotationConfirm,
+  onQuotationCancel,
   chatOpen,
   onToggleChat,
   chatInput,
@@ -58,6 +60,9 @@ export default function BookingCard({
   const { showToast } = useToast();
   const liveLocation = getBookingLocation(booking.id);
   const timeline = Array.isArray(booking.statusHistory) ? booking.statusHistory : [];
+  const [cancelling, setCancelling] = useState(false);
+  const quotation = booking.quotation || null;
+  const quotationSubmitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-5 sm:p-6 text-left">
@@ -171,18 +176,15 @@ export default function BookingCard({
         )}
       </div>
 
-      {/* Verification Code */}
-      {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && customerVerificationCode && (
-        <div className="mb-4 bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <ShieldCheck className="w-5 h-5 text-indigo-600" />
-            <span className="text-xs font-black text-indigo-800 uppercase tracking-wider">Your Verification Code</span>
-          </div>
-          <p className="text-[10px] text-indigo-600 font-semibold mb-2">Share this 4-digit code with the specialist to start the service</p>
-          <div className="text-4xl font-black text-indigo-700 tracking-[0.3em] font-mono bg-white rounded-xl py-3 border border-indigo-100 shadow-sm">
-            {customerVerificationCode}
-          </div>
-        </div>
+      {/* Live quotation review — the customer decides to confirm (work starts)
+          or decline (pays the flat service fee). Never shown for other states. */}
+      {booking.status === 'confirmed' && quotationSubmitted && (
+        <QuotationReviewPanel
+          booking={booking}
+          quotation={quotation}
+          onConfirm={onQuotationConfirm}
+          onCancel={onQuotationCancel}
+        />
       )}
 
       {/* Action buttons */}
@@ -198,19 +200,27 @@ export default function BookingCard({
           </button>
         )}
 
-        {['pending', 'confirmed'].includes(booking.status) && (
-          <button 
+        {(booking.status === 'pending' || (booking.status === 'confirmed' && !quotationSubmitted)) && (
+          <button
+            type="button"
+            disabled={cancelling}
             onClick={async () => {
+              if (cancelling) return;
               if (window.confirm('Are you sure you want to cancel this booking?')) {
-                const result = await onCancel(booking.id, 'cancelled', 'Cancelled by customer');
-                if (result?.error) {
-                  showToast({ title: 'Could not cancel booking', message: result.error, type: 'error' });
+                setCancelling(true);
+                try {
+                  const result = await onCancel(booking.id, 'cancelled', 'Cancelled by customer');
+                  if (result?.error) {
+                    showToast({ title: 'Could not cancel booking', message: result.error, type: 'error' });
+                  }
+                } finally {
+                  setCancelling(false);
                 }
               }
             }}
-            className="px-4 py-2 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-xs font-bold transition-all"
+            className={`px-4 py-2 border rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${cancelling ? 'bg-rose-50 text-rose-700 border-rose-200' : 'border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600'}`}
           >
-            Cancel Booking
+            {cancelling ? 'Processing…' : 'Cancel Booking'}
           </button>
         )}
 
@@ -249,6 +259,168 @@ function formatTimelineTime(value) {
   const day = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return `${day} · ${time}`;
+}
+
+/**
+ * The customer's decision panel for a submitted quotation. Confirming starts
+ * the work (booking CONFIRMED → ONGOING); declining cancels the booking and
+ * debits the flat ₹serviceFee from the wallet (unchanged when the customer asks
+ * for another provider — the booking returns to the pool). Both actions POST
+ * to dedicated quotation endpoints; the parent re-pulls the canonical booking
+ * on success (rules 16 + 17: never optimistic for anything that moves money
+ * or switches state).
+ */
+function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
+  const { showToast } = useToast();
+  const items = Array.isArray(quotation?.items) ? quotation.items : [];
+  const fee = Number(quotation?.serviceFee) || SERVICE_FEE_DEFAULT;
+  const total = Number(quotation?.totalAmount) || fee + items.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+
+  const [decision, setDecision] = useState(null); // null | 'confirm' | 'cancel'
+  const [anotherProvider, setAnotherProvider] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const runAction = async (fn, successMsg) => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    const result = await fn();
+    if (!result.ok) {
+      setError(result.error);
+      setBusy(false);
+      return;
+    }
+    showToast({ title: successMsg, type: 'success' });
+    setDecision(null);
+    setBusy(false);
+  };
+
+  return (
+    <div className="mb-4 bg-teal-50/70 border-2 border-teal-200 rounded-2xl p-5 text-left">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center">
+            <IndianRupee className="w-5 h-5" />
+          </span>
+          <div>
+            <h4 className="text-sm font-black text-slate-900">Quotation from {booking.providerName}</h4>
+            <p className="text-[11px] text-slate-500 font-semibold">
+              The specialist has priced the job. Confirm to start work, or decline — a fee of ₹{fee} applies.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-3">
+        <div className="divide-y divide-slate-100">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="text-xs font-bold text-slate-600">ServeGo Service Fee</span>
+            <span className="text-sm font-black text-teal-700">₹{Number(fee).toLocaleString('en-IN')}</span>
+          </div>
+          {items.length === 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-xs font-semibold text-slate-400 italic">No itemised charges — just the service fee</span>
+            </div>
+          )}
+          {items.map((row, idx) => (
+            <div key={idx} className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-xs font-semibold text-slate-700">{row.purpose}</span>
+              <span className="text-sm font-bold text-slate-800">₹{Number(row.amount || 0).toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900">
+            <span className="text-xs font-black text-white uppercase tracking-wide">Total to Pay</span>
+            <span className="text-base font-black text-white flex items-center gap-1">
+              <IndianRupee className="w-4 h-4" /> {total.toLocaleString('en-IN')}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 text-xs font-semibold flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            {error}
+          </div>
+        </div>
+      )}
+
+      {decision === null && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setDecision('cancel')}
+            className="px-4 py-2 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+          >
+            Decline · Pay ₹{Number(fee).toLocaleString('en-IN')}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => runAction(() => onConfirm(booking.id), 'Work started')}
+            className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" /> {busy ? 'Processing…' : 'Confirm & Start Work'}
+          </button>
+        </div>
+      )}
+
+      {decision === 'cancel' && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs text-slate-600 font-semibold">
+            Declining cancels this booking. A flat ₹{Number(fee).toLocaleString('en-IN')} service fee is billed to your
+            account for the specialist's time — it is paid to the specialist either way.
+          </p>
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={anotherProvider}
+              onChange={(e) => { setAnotherProvider(e.target.checked); if (!e.target.checked) setError(''); }}
+              className="mt-0.5 w-4 h-4 accent-teal-600"
+            />
+            <span className="text-xs font-semibold text-slate-700 leading-snug">
+              Ask ServeGo to find another specialist instead <span className="text-slate-400 font-medium">(₹{Number(fee).toLocaleString('en-IN')} fee still applies — please tell us why)</span>
+            </span>
+          </label>
+          {anotherProvider && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Reason for requesting another specialist <span className="text-rose-600">*</span></label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                maxLength={300}
+                placeholder="e.g. The specialist wasn't able to take on the job as discussed."
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500/60 focus:border-teal-500"
+              />
+            </div>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => { setDecision(null); setError(''); setReason(''); }}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy || (anotherProvider && !reason.trim())}
+              onClick={() => runAction(() => onCancel(booking.id, anotherProvider, reason.trim()), anotherProvider ? 'Finding another specialist' : 'Booking cancelled')}
+              className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {busy ? 'Processing…' : anotherProvider ? `Decline & Next Specialist · ₹${Number(fee).toLocaleString('en-IN')}` : `Decline & Cancel · ₹${Number(fee).toLocaleString('en-IN')}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StatusBadge({ status }) {  const styles = {

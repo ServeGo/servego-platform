@@ -44,7 +44,7 @@
 - Root component `App` wraps everything in `AppProvider` (from `frontend/src/context/AppContext.jsx`) and renders role-specific layouts.
 
 **Main concepts:**
-- SPA with browser-history-based routing: `App.jsx` holds `currentPage` state + `history.pushState`; pages are `home | about | services | service-details | partner | contact | faq | login | signup | forgot-password | reset-password | dashboard-customer | dashboard-provider | admin`.
+- SPA with browser-history-based routing: `App.jsx` holds `currentPage` state + `history.pushState`; pages are `home | about | services | service-details | contact | faq | login | signup | forgot-password | reset-password | dashboard-customer | dashboard-provider | admin`.
 - Central app state via `AppContext.jsx` (auth, providers, bookings, notifications, tickets, services, favorites/saved pros, admin approval state, socket + `socketRef`, connection status).
 - API client: `frontend/src/utils/apiClient.js` — fetch wrapper with retry logic + exponential backoff, 401 token-refresh, 429 handling, `VITE_API_URL` fallback (deployed backend → localhost), FormData support.
 - Normalisation layer: `frontend/src/utils/normalizeCustomerData.js`, `frontend/src/utils/normalizeAdminData.js`.
@@ -52,7 +52,7 @@
 - Route guard: unauthenticated users cannot reach `dashboard-customer`, `dashboard-provider`, `admin`; role mismatch redirects (`App.jsx`).
 
 **Role pages (entry points):**
-- Public: `Home`, `About`, `Services`, `ServiceDetails`, `BecomePartner`, `Contact`, `FAQ`, `Login`, `Signup`, `ForgotPassword`, `ResetPassword`
+- Public: `Home`, `About`, `Services`, `ServiceDetails`, `Contact`, `FAQ`, `Login`, `Signup`, `ForgotPassword`, `ResetPassword`
 - Customer: `frontend/src/pages/CustomerDashboard.jsx`
 - Provider: `frontend/src/pages/ProviderDashboard.jsx`
 - Admin: `frontend/src/pages/AdminPanel.jsx` + tab router `frontend/src/pages/admin/AdminPanelTabsRouter.jsx`

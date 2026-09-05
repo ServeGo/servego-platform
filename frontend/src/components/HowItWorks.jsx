@@ -19,16 +19,16 @@ const STEPS = [
   },
   {
     icon: CheckCircle2,
-    title: 'Track & Complete',
-    desc: 'Follow the specialist live on the map, chat on the booking thread, and complete the job with a 4-digit verification code.',
+    title: 'Review & Complete',
+    desc: 'Review the specialist\'s quotation, confirm it to start the job, then rate the work once it is done.',
   },
 ];
 
 export default function HowItWorks() {
   return (
-    <section className="py-16 px-4">
-      <div className="max-w-6xl mx-auto rounded-[32px] border border-slate-200 bg-white/90 p-6 sm:p-8 lg:p-10 shadow-[0_25px_80px_-25px_rgba(15,23,42,0.2)]">
-        <div className="text-center max-w-2xl mx-auto mb-10">
+    <section className="mx-auto max-w-6xl px-4 py-16 sm:py-20">
+      <div>
+        <div className="mx-auto mb-10 max-w-2xl text-center">
           <span className="text-teal-700 font-bold uppercase tracking-[0.25em] text-[11px]">Simple Booking Flow</span>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">From request to completion in four steps</h2>
           <p className="text-slate-500 text-xs sm:text-sm mt-1.5 font-semibold">
@@ -36,7 +36,7 @@ export default function HowItWorks() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 relative">
+        <div className="relative grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="hidden lg:block absolute top-[52px] left-[14%] right-[14%] h-px bg-gradient-to-r from-teal-200 via-slate-300 to-teal-200" />
           {STEPS.map((step, idx) => (
             <Step key={step.title} number={idx + 1} {...step} />

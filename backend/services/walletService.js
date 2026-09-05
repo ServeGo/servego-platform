@@ -2,11 +2,26 @@ import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
-function withClientTransaction(client, fn) {
-  if (client === prisma) {
-    return prisma.$transaction(fn, { isolationLevel: 'Serializable', maxWait: 20000, timeout: 30000 });
+async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
+  if (client !== prisma) return fn(client);
+  const run = () => prisma.$transaction(fn, { isolationLevel: 'Serializable', maxWait: 20000, timeout: 30000 });
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await run();
+    } catch (err) {
+      const code = err?.code;
+      const message = err?.message || '';
+      const isSerialization = code === 'P2034' || code === 'P2010' ||
+        /serialization failure|deadlock detected|could not serialize access/i.test(message);
+      if (isSerialization && attempt < maxRetries) {
+        attempt += 1;
+        await new Promise((res) => setTimeout(res, 150 * attempt));
+        continue;
+      }
+      throw err;
+    }
   }
-  return fn(client);
 }
 
 function walletError(code, message) {
@@ -25,11 +40,11 @@ export async function getOrCreateWallet(userId, client = prisma) {
   return wallet;
 }
 
-async function mutateWallet({ userId, delta, type, category, referenceType, referenceId, description, status = 'COMPLETED', client }) {
+async function mutateWallet({ userId, delta, type, category, referenceType, referenceId, description, status = 'COMPLETED', allowNegative = false, client }) {
   return withClientTransaction(client, async (tx) => {
     const wallet = await getOrCreateWallet(userId, tx);
     const newBalance = Number(wallet.balance) + delta;
-    if (newBalance < 0) throw walletError('INSUFFICIENT_BALANCE', 'Insufficient wallet balance.');
+    if (newBalance < 0 && !allowNegative) throw walletError('INSUFFICIENT_BALANCE', 'Insufficient wallet balance.');
 
     const data = {
       balance: newBalance,
@@ -94,6 +109,29 @@ export function debitWallet({ userId, amount, category, referenceType = null, re
   });
 }
 
+/**
+ * Bill a user without a balance check — the wallet may run negative, recording
+ * what is owed (e.g. the service fee for declining a quotation, or the full
+ * accepted quotation total at completion). Used so billing/tab-style debits
+ * never block the underlying flow; the balance resolves once funds are added.
+ */
+export function debitWalletAllowNegative({ userId, amount, category, referenceType = null, referenceId = null, description = null, status = 'COMPLETED', client = prisma }) {
+  const amt = Number(amount) || 0;
+  if (amt <= 0) throw walletError('INVALID_AMOUNT', 'Debit amount must be positive.');
+  return mutateWallet({
+    userId,
+    delta: -amt,
+    type: 'DEBIT',
+    category,
+    referenceType,
+    referenceId,
+    description,
+    status,
+    allowNegative: true,
+    client
+  });
+}
+
 /** Wallet + latest transactions for the current user. */
 export async function getWalletOverview(userId, client = prisma) {
   const wallet = await getOrCreateWallet(userId, client);
@@ -123,10 +161,31 @@ export async function listWalletTransactions(userId, { page = 1, limit = 25, cat
   const skip = (Math.max(1, parseInt(page)) - 1) * Math.min(100, Math.max(1, parseInt(limit)));
   const where = { userId };
   if (category) where.category = category;
-  const [transactions, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     client.walletTransaction.findMany({ where, skip, take: Math.min(100, Math.max(1, parseInt(limit))), orderBy: { createdAt: 'desc' } }),
     client.walletTransaction.count({ where })
   ]);
+
+  // Enrich booking-linked entries with the service name so the customer wallet
+  // can render "which service · which date · how much". One batched lookup, no
+  // per-row query (rule 12).
+  const bookingIds = [...new Set(
+    rows.filter((t) => t.referenceType === 'BOOKING' && t.referenceId).map((t) => t.referenceId)
+  )];
+  let serviceByBookingId = new Map();
+  if (bookingIds.length) {
+    const bookings = await client.booking.findMany({
+      where: { id: { in: bookingIds } },
+      select: { id: true, serviceCategory: true }
+    });
+    serviceByBookingId = new Map(bookings.map((b) => [b.id, b.serviceCategory || 'Service']));
+  }
+
+  const transactions = rows.map((t) => ({
+    ...t,
+    service: t.referenceType === 'BOOKING' && t.referenceId ? serviceByBookingId.get(t.referenceId) || null : null
+  }));
+
   return {
     transactions,
     pagination: {
