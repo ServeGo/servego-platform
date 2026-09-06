@@ -386,29 +386,25 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
         )}
       </div>
 
-      {/* Live address preview + confirm (Uber style) */}
+      {/* Live address + confirm (single editable field — no duplicate text) */}
       <div
         className={`rounded-2xl border p-3 transition-colors ${
           confirmed ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'
         }`}
       >
-        <div className="flex items-start gap-2">
-          <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${confirmed ? 'text-emerald-600' : 'text-indigo-500'}`} />
-          <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-              {confirmed ? 'Service location' : 'Picked location'}
-            </p>
-            <p className={`text-sm leading-snug mt-0.5 ${geocoding ? 'text-slate-400 italic' : 'text-slate-800 font-semibold'}`}>
-              {geocoding ? (
-                <span className="inline-flex items-center gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2">
+            <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${confirmed ? 'text-emerald-600' : 'text-indigo-500'}`} />
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                {confirmed ? 'Service location' : 'Picked location'}
+              </p>
+              {geocoding && (
+                <p className="inline-flex items-center gap-1.5 text-[10px] text-slate-400 italic font-medium mt-0.5">
                   <Loader2 className="w-3 h-3 animate-spin text-indigo-500" /> Getting the address...
-                </span>
-              ) : address ? (
-                address
-              ) : (
-                'Move the map to choose your exact spot.'
+                </p>
               )}
-            </p>
+            </div>
           </div>
           {confirmed ? (
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-100 border border-emerald-200 rounded-full px-2.5 py-1">
@@ -428,16 +424,24 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
           )}
         </div>
 
-        <textarea
-          placeholder="Flat No, Apartment, Street name, Landmark, Pin"
-          value={address}
-          onChange={handleAddressEdit}
-          rows={2}
-          className="mt-2 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        />
-        <p className="text-[9px] text-slate-400 font-medium mt-1">
-          Auto-filled from the map — refine it if needed (flat number, landmark).
-        </p>
+        {confirmed ? (
+          <p className="mt-2 text-sm font-semibold text-slate-800 leading-snug break-words">
+            {address || 'Service location set.'}
+          </p>
+        ) : (
+          <>
+            <textarea
+              placeholder="Move the map to choose your exact spot."
+              value={address}
+              onChange={handleAddressEdit}
+              rows={2}
+              className="mt-2 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 resize-none"
+            />
+            <p className="text-[9px] text-slate-400 font-medium mt-1">
+              Auto-filled from the map — refine it before confirming.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

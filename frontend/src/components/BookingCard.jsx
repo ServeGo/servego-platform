@@ -52,8 +52,6 @@ export default function BookingCard({
   onQuotationCancel,
   chatOpen,
   onToggleChat,
-  chatInput,
-  setChatInput,
   onSendMessage
 }) {
   const { getBookingLocation } = useRealtime();
@@ -67,12 +65,12 @@ export default function BookingCard({
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-5 sm:p-6 text-left">
       {/* Top line panel */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-slate-100 gap-4 mb-5 text-xs font-bold">
-        <div>
-          <span className="text-slate-400 uppercase tracking-tight">Booking ID: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{booking.id}</span></span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-4 border-b border-slate-100 mb-5 text-xs font-bold">
+        <div className="min-w-0">
+          <span className="text-slate-400 uppercase tracking-tight">Booking ID: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded break-all">{booking.id}</span></span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex justify-end w-full sm:w-auto">
           <StatusBadge status={booking.status} />
         </div>
       </div>
@@ -102,18 +100,18 @@ export default function BookingCard({
         )}
 
         <div className="md:col-span-5 space-y-2 text-xs font-semibold text-slate-500">
-          <div className="flex gap-1.5 items-center">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-slate-800">{booking.bookingDateLabel || booking.createdAt}</span>
+          <div className="flex gap-1.5 items-start">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+            <span className="text-slate-800 flex-1 min-w-0 leading-snug">{booking.bookingDateLabel || booking.createdAt}</span>
           </div>
-          <div className="flex gap-1.5 items-center">
-            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-slate-700 leading-tight">{booking.locationAddress}</span>
+          <div className="flex gap-1.5 items-start">
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+            <span className="text-slate-700 flex-1 min-w-0 leading-tight">{booking.locationAddress}</span>
           </div>
           {booking.instructions && (
-            <div className="flex gap-1.5 items-center">
-              <span className="bg-indigo-50 text-indigo-700 font-bold px-1 rounded text-[9px] uppercase border border-indigo-100">Note</span>
-              <span className="italic">"{booking.instructions}"</span>
+            <div className="flex gap-1.5 items-start">
+              <span className="bg-indigo-50 text-indigo-700 font-bold px-1 rounded text-[9px] uppercase border border-indigo-100 shrink-0 mt-0.5">Note</span>
+              <span className="italic flex-1 min-w-0 leading-snug">"{booking.instructions}"</span>
             </div>
           )}
         </div>
@@ -189,17 +187,6 @@ export default function BookingCard({
 
       {/* Action buttons */}
       <div className="flex justify-end gap-2">
-        {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && (
-          <button 
-            type="button"
-            onClick={onToggleChat}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border shadow-3xs ${chatOpen ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'}`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>{chatOpen ? 'Hide Chat' : 'Chat with Specialist'}</span>
-          </button>
-        )}
-
         {(booking.status === 'pending' || (booking.status === 'confirmed' && !quotationSubmitted)) && (
           <button
             type="button"
@@ -218,9 +205,20 @@ export default function BookingCard({
                 }
               }
             }}
-            className={`px-4 py-2 border rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${cancelling ? 'bg-rose-50 text-rose-700 border-rose-200' : 'border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600'}`}
+            className={`px-4 py-2 border rounded-lg text-xs font-bold whitespace-nowrap transition-all disabled:opacity-50 disabled:cursor-not-allowed ${cancelling ? 'bg-rose-50 text-rose-700 border-rose-200' : 'border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600'}`}
           >
             {cancelling ? 'Processing…' : 'Cancel Booking'}
+          </button>
+        )}
+
+        {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && (
+          <button 
+            type="button"
+            onClick={onToggleChat}
+            className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border shadow-3xs ${chatOpen ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'}`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>{chatOpen ? 'Hide Chat' : 'Chat with Specialist'}</span>
           </button>
         )}
 
@@ -241,10 +239,8 @@ export default function BookingCard({
       </div>
 
       {chatOpen && (
-        <ChatPanel 
+        <ChatPanel
           booking={booking}
-          input={chatInput}
-          setInput={setChatInput}
           onSend={onSendMessage}
         />
       )}
@@ -332,8 +328,8 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
           ))}
           <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900">
             <span className="text-xs font-black text-white uppercase tracking-wide">Total to Pay</span>
-            <span className="text-base font-black text-white flex items-center gap-1">
-              <IndianRupee className="w-4 h-4" /> {total.toLocaleString('en-IN')}
+            <span className="text-base font-black text-white flex items-center gap-1.5 whitespace-nowrap">
+              <IndianRupee className="w-4 h-4 shrink-0" /> {total.toLocaleString('en-IN')}
             </span>
           </div>
         </div>
@@ -349,22 +345,23 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
       )}
 
       {decision === null && (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex justify-end gap-2">
           <button
             type="button"
             disabled={busy}
             onClick={() => setDecision('cancel')}
-            className="px-4 py-2 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+            className="flex-1 sm:flex-none px-2 sm:px-5 py-2.5 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-all disabled:opacity-50"
           >
-            Decline · Pay ₹{Number(fee).toLocaleString('en-IN')}
+            <span className="sm:hidden">Decline</span>
+            <span className="hidden sm:inline">Decline · Pay ₹{Number(fee).toLocaleString('en-IN')}</span>
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => runAction(() => onConfirm(booking.id), 'Work started')}
-            className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none px-2 sm:px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[10px] sm:text-xs font-black whitespace-nowrap transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <CheckCircle2 className="w-3.5 h-3.5" /> {busy ? 'Processing…' : 'Confirm & Start Work'}
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {busy ? 'Processing…' : <span><span className="sm:hidden">Confirm &amp; Start</span><span className="hidden sm:inline">Confirm &amp; Start Work</span></span>}
           </button>
         </div>
       )}
@@ -399,12 +396,12 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
               />
             </div>
           )}
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <button
               type="button"
               disabled={busy}
               onClick={() => { setDecision(null); setError(''); setReason(''); }}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+              className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-all disabled:opacity-50"
             >
               Back
             </button>
@@ -412,9 +409,14 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
               type="button"
               disabled={busy || (anotherProvider && !reason.trim())}
               onClick={() => runAction(() => onCancel(booking.id, anotherProvider, reason.trim()), anotherProvider ? 'Finding another specialist' : 'Booking cancelled')}
-              className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none px-2 sm:px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] sm:text-xs font-black whitespace-nowrap transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {busy ? 'Processing…' : anotherProvider ? `Decline & Next Specialist · ₹${Number(fee).toLocaleString('en-IN')}` : `Decline & Cancel · ₹${Number(fee).toLocaleString('en-IN')}`}
+              {busy ? 'Processing…' : (
+                <span>
+                  <span className="sm:hidden">{anotherProvider ? 'Decline & Next' : 'Decline & Cancel'}</span>
+                  <span className="hidden sm:inline">{anotherProvider ? 'Decline & Next Specialist' : 'Decline & Cancel'} · ₹{Number(fee).toLocaleString('en-IN')}</span>
+                </span>
+              )}
             </button>
           </div>
         </div>

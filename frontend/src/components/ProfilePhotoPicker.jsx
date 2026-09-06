@@ -21,6 +21,10 @@ export default function ProfilePhotoPicker({ src, folder, onChange, size = 'w-24
       setError('Please choose an image file (JPG, PNG, WebP).');
       return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image is too large. Please choose one under 5 MB.');
+      return;
+    }
     setError('');
     setUploading(true);
     try {

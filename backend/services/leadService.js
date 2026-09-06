@@ -734,7 +734,8 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
-        statusHistory: { push: { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' } }
+        statusHistory: { push: { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' } },
+        messages: []
       }
     });
     if (transitioned.count === 0) {

@@ -29,11 +29,14 @@ export default function DashboardHeader({ user, activeTab, setActiveTab, counts 
             Active Resident Customer
           </span>
           <h2 className="text-lg font-extrabold text-slate-900 mt-1 leading-none">{user?.name || 'Guest Resident'}</h2>
-          <p className="text-slate-500 text-xs mt-1.5 font-medium">{user?.email} • Joined {user?.joinedDate || (user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')}</p>
+          <p className="text-slate-500 text-xs mt-1.5 font-medium">
+            <span className="block sm:inline">{user?.email}</span>
+            <span className="block sm:inline mt-0.5 sm:mt-0">• Joined {user?.joinedDate || (user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')}</span>
+          </p>
         </div>
       </div>
 
-      <div className="flex w-full md:w-auto md:flex-wrap gap-1 bg-slate-100 border border-slate-200 p-1 rounded-xl overflow-x-auto">
+      <div className="hidden md:flex w-full md:w-auto md:flex-wrap gap-1 bg-slate-100 border border-slate-200 p-1 rounded-xl overflow-x-auto">
         {tabs.map(tab => (
           <button 
             key={tab.id}
