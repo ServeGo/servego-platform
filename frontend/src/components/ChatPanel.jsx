@@ -1,15 +1,42 @@
 import React, { useState } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { useToast } from '../context/AppContext';
 
-export default function ChatPanel({ booking, input, setInput, onSend, sending }) {
-  const [localSending, setLocalSending] = useState(false);
-  const isSending = sending ?? localSending;
+const QUICK_REPLIES = [
+  { label: "I'm at the location", message: "I'm at the location now." },
+  { label: 'Please call me', message: 'Please call me when you arrive.' },
+  { label: 'Are you on your way?', message: 'Are you on your way?' },
+];
+
+/**
+ * Quick-reply chat for the customer (Rapido/Uber style). No free-text input —
+ * the customer picks from preset messages so the specialist gets a clear,
+ * standard signal without a live interaction loop.
+ */
+export default function ChatPanel({ booking, onSend, sending }) {
+  const { showToast } = useToast();
+  const [sendingKey, setSendingKey] = useState(null);
+  const isSending = sending ?? (sendingKey !== null);
+
+  const quickSend = async (message) => {
+    if (isSending) return;
+    setSendingKey(message);
+    try {
+      const result = await onSend(booking.id, message, 'customer');
+      if (result && result.ok === false) {
+        showToast({ title: 'Could not send message', message: result.error, type: 'error' });
+      }
+    } finally {
+      setSendingKey(null);
+    }
+  };
+
   return (
     <div className="mt-4 border border-slate-200 rounded-2xl bg-slate-50 overflow-hidden flex flex-col h-80 animate-fade-in shadow-xs text-left">
       <div className="bg-slate-100 px-4 py-3 flex justify-between items-center border-b border-slate-200">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span className="font-extrabold text-slate-800 text-[10px] uppercase tracking-wider">Direct Specialist Support</span>
+          <span className="font-extrabold text-slate-800 text-[10px] uppercase tracking-wider">Quick Messages</span>
         </div>
         <span className="text-[10px] text-slate-500 font-mono font-bold bg-slate-200 px-2 py-0.5 rounded">ID: {booking.id}</span>
       </div>
@@ -17,9 +44,9 @@ export default function ChatPanel({ booking, input, setInput, onSend, sending })
       <div className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col min-h-0 bg-white">
         {(!booking.messages || booking.messages.length === 0) ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-            <h5 className="font-extrabold text-slate-800 text-xs">Chat with {booking.providerName}</h5>
+            <h5 className="font-extrabold text-slate-800 text-xs">Send a quick message to {booking.providerName}</h5>
             <p className="text-[10px] text-slate-400 mt-1 max-w-[240px] font-medium">
-              Coordinate arrival times, landmarks, or specific job details here.
+              Tap a preset message below — no need to type.
             </p>
           </div>
         ) : (
@@ -41,25 +68,19 @@ export default function ChatPanel({ booking, input, setInput, onSend, sending })
         )}
       </div>
 
-      <form 
-        onSubmit={async (e) => { e.preventDefault(); if (!input.trim()) return; setLocalSending(true); try { await onSend(booking.id, input, 'customer'); setInput(''); } finally { setLocalSending(false); } }}
-        className="p-2 border-t border-slate-200 bg-white flex gap-2 shrink-0"
-      >
-        <input 
-          type="text"
-          placeholder="Type message to specialist..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          className="flex-grow bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-bold focus:outline-none"
-        />
-        <button 
-          type="submit"
-          disabled={isSending}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-xl transition-all w-8 h-8 flex items-center justify-center shrink-0 disabled:opacity-50"
-        >
-          {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-        </button>
-      </form>
+      <div className="p-2 border-t border-slate-200 bg-white flex gap-2 shrink-0">
+        {QUICK_REPLIES.map((q) => (
+          <button
+            key={q.message}
+            type="button"
+            disabled={isSending}
+            onClick={() => quickSend(q.message)}
+            className="flex-1 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-700 text-[10px] font-bold rounded-xl px-2 py-2.5 transition-colors disabled:opacity-50"
+          >
+            {isSending && sendingKey === q.message ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : q.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

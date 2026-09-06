@@ -15,7 +15,9 @@ import {
   MapPin,
   Check,
   ShieldCheck,
-  XCircle
+  XCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const inputClass =
@@ -80,6 +82,10 @@ export function Signup({ onNavigate }) {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
       setPhotoError('Please choose an image file (JPG, PNG, WebP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Image is too large. Please choose one under 5 MB.');
       return;
     }
     setPhotoUploading(true);
@@ -410,7 +416,7 @@ export function Signup({ onNavigate }) {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="8+ chars, letter &amp; number"
+                    placeholder="Enter password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={`${inputClass} pr-10`}
@@ -418,10 +424,11 @@ export function Signup({ onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setShowPassword((value) => !value)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-[10px] font-extrabold"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                     tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? 'Hide' : 'Show'}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -433,7 +440,7 @@ export function Signup({ onNavigate }) {
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
-                    placeholder="Re-enter your password"
+                    placeholder="Confirm password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className={`${inputClass} pr-10`}
@@ -441,10 +448,11 @@ export function Signup({ onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((value) => !value)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-[10px] font-extrabold"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                     tabIndex={-1}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                   >
-                    {showConfirmPassword ? 'Hide' : 'Show'}
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -455,7 +463,7 @@ export function Signup({ onNavigate }) {
                 type="checkbox"
                 checked={acceptedTerms}
                 onChange={(e) => setAcceptedTerms(e.target.checked)}
-                className="mt-0.5 w-3.5 h-3.5 accent-teal-700"
+                className="mt-0.5 w-3.5 h-3.5 accent-teal-700 cursor-pointer"
               />
               <span>
                 I agree to the <span className="text-slate-900 font-extrabold">Terms &amp; Conditions</span>

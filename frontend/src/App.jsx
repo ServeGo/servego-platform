@@ -4,6 +4,7 @@ import { api as apiClient } from './utils/apiClient';
 import './cursor.css';
 
 import { Home } from './pages/Home';
+import { CustomerHome } from './pages/CustomerHome';
 import { About } from './pages/About';
 import { Services } from './pages/Services';
 import { ServiceDetails } from './pages/ServiceDetails';
@@ -47,7 +48,7 @@ import {
 } from 'lucide-react';
 
 
-const RESTRICTED_ROUTES = ['dashboard-customer', 'dashboard-provider', 'admin'];
+const RESTRICTED_ROUTES = ['dashboard-customer', 'dashboard-provider', 'admin', 'customer-home'];
 
 const getAdminTabFromRoute = (routeValue) => {
   const tab = routeValue || 'dashboard';
@@ -71,6 +72,8 @@ const getRoutePath = (page, categoryId = null, tab = null) => {
   switch (page) {
     case 'home':
       return '/';
+    case 'customer-home':
+      return '/customer-home';
     case 'about':
       return '/about';
     case 'services':
@@ -183,6 +186,7 @@ export function MainLayout() {
     if (!RESTRICTED_ROUTES.includes(page)) return true;
     if (!user) return false;
     if (page === 'dashboard-customer') return user.role === 'customer';
+    if (page === 'customer-home') return user.role === 'customer';
     if (page === 'dashboard-provider') return user.role === 'provider';
     if (page === 'admin') return user.role === 'admin';
     return false;
@@ -330,6 +334,8 @@ export function MainLayout() {
     switch (currentPage) {
       case 'home':
         return <Home onNavigate={handlePageTransition} />;
+      case 'customer-home':
+        return <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerActiveTabExternal(tab); handlePageTransition('dashboard-customer'); }} />;
       case 'about':
         return <About />;
       case 'services':

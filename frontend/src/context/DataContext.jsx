@@ -879,24 +879,30 @@ export const DataProvider = ({ children }) => {
 
   const sendChatMessage = async (bookingId, text, senderRole) => {
     try {
-      const res = await api(`${API_BASE_URL}/bookings/${bookingId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderId: currentUser?.id,
-          senderName: currentUser?.name,
-          senderRole,
-          text,
-          timestamp: new Date().toISOString()
-        })
+      const res = await apiClient.post(`/bookings/${bookingId}/messages`, {
+        senderId: currentUser?.id,
+        senderName: currentUser?.name,
+        senderRole,
+        text,
+        timestamp: new Date().toISOString()
       });
-      const data = await res.json();
-      if (data.id) {
-        const normalized = normalizeBooking(data);
+      if (res.ok && res.data?.id) {
+        const normalized = normalizeBooking(res.data);
         setBookings(prev => prev.map(bk => bk.id === bookingId ? normalized : bk));
+        return { ok: true };
       }
+      return {
+        ok: false,
+        error:
+          (res.data && (res.data.message || res.data.error)) ||
+          'Could not send the message. Please try again.'
+      };
     } catch (err) {
       console.error('Failed to send message:', err);
+      return {
+        ok: false,
+        error: 'Could not send the message. Please check your connection and try again.'
+      };
     }
   };
 

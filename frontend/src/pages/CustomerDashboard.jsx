@@ -50,7 +50,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
   // Chat states
   const [openChatBookingId, setOpenChatBookingId] = useState(null);
-  const [chatInput, setChatInput] = useState('');
 
   // Quotation actions — POST first, then re-pull the canonical booking so the
   // card flips from the server's committed state (never optimistic; rule 16).
@@ -210,11 +209,11 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
         {activeTab === 'bookings' && (
           <div className="space-y-6">
-            <h3 className="text-lg font-bold text-slate-900 text-left">Your Booking Orders</h3>
+            <h3 className="text-lg font-bold text-slate-900 text-center md:text-left">Your Booking Orders</h3>
             {userBookings.length === 0 ? (
               <EmptyBookings onNavigate={onNavigate} />
             ) : (
-              <BookingSubTabs bookings={userBookings} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} chatInput={chatInput} setChatInput={setChatInput} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
+              <BookingSubTabs bookings={userBookings} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
         )}
@@ -300,7 +299,7 @@ const TAB_STATUS_QUERY = {
 
 const TAB_PAGE_SIZE = 10;
 
-function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuotationConfirm, onQuotationCancel, openChatBookingId, setOpenChatBookingId, chatInput, setChatInput, onSendMessage, onNavigate }) {
+function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuotationConfirm, onQuotationCancel, openChatBookingId, setOpenChatBookingId, onSendMessage, onNavigate }) {
   const [subTab, setSubTab] = useState('active');
   const [tabItems, setTabItems] = useState({});
   const [tabMeta, setTabMeta] = useState({});
@@ -370,7 +369,11 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
             continue;
           }
           const providerId = (b) => b?.provider?.id ?? b?.provider?.userId ?? null;
-          if (item.status === fresh.status && providerId(item) === providerId(fresh)) continue;
+          // Skip only when nothing the card renders changed — status, provider
+          // AND chat messages must all match, otherwise message-only updates
+          // (quick replies) would never reach the visible card.
+          if (item.status === fresh.status && providerId(item) === providerId(fresh) &&
+              JSON.stringify(item.messages || []) === JSON.stringify(fresh.messages || [])) continue;
           changed = true;
         }
         if (changed) {
@@ -454,8 +457,6 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
               onQuotationCancel={onQuotationCancel}
               chatOpen={openChatBookingId === bk.id}
               onToggleChat={() => setOpenChatBookingId(openChatBookingId === bk.id ? null : bk.id)}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
               onSendMessage={onSendMessage}
             />
           ))}

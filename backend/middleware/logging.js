@@ -103,6 +103,17 @@ export const errorHandler = (err, req, res, next) => {
   if (err.code === 'P2003') {
     return res.status(409).json({ success: false, code: 'FOREIGN_KEY_CONSTRAINT', message: 'This record is still referenced by another resource', requestId: req.requestId });
   }
+  if (err.name === 'MulterError') {
+    const isSize = err.code === 'LIMIT_FILE_SIZE';
+    return res.status(400).json({
+      success: false,
+      code: isSize ? 'FILE_TOO_LARGE' : 'INVALID_FILE',
+      message: isSize
+        ? 'Image is too large. Please choose one under 5 MB.'
+        : 'Could not read the uploaded file. Please try a different image.',
+      requestId: req.requestId
+    });
+  }
 
   const statusCode = err.statusCode || err.status || 500;
   res.status(statusCode).json({
