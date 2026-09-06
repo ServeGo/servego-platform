@@ -7,6 +7,8 @@ import {
   normalizeTickets,
   normalizeNotification,
   normalizeNotifications,
+  normalizeAlert,
+  normalizeAlerts,
 } from '../utils/normalizeCustomerData';
 import { api as apiClient, API_BASE_URL } from '../utils/apiClient';
 import { api } from '../utils/apiWrapper';
@@ -17,7 +19,7 @@ import { getErrorMessage } from '../utils/errorMessages';
 const DataContext = createContext(undefined);
 
 export const DataProvider = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, setCurrentUser } = useAuth();
 
   // Database of users - purely for local dev fallback or admin view if needed
   const [users, setUsers] = useState([]);
@@ -33,6 +35,7 @@ export const DataProvider = ({ children }) => {
 
   const [bookings, setBookings] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [tickets, setTickets] = useState([]);
 
   // Ids of notifications already surfaced through any channel (socket event,
@@ -41,6 +44,9 @@ export const DataProvider = ({ children }) => {
   // the shared seen-set guarantees it is rendered — and toasts/badge fire —
   // exactly once. Bounded to the most recent 1000 ids.
   const seenNotificationIdsRef = useRef(new Set());
+
+  // Same dedupe for temporary alerts (socket + REST + poll arrive separately).
+  const seenAlertIdsRef = useRef(new Set());
 
   // In-flight booking status transitions (`bookingId:status`), so a physical
   // double-click on a destructive action (cancel, complete, start work) cannot
@@ -73,6 +79,18 @@ export const DataProvider = ({ children }) => {
     if (!normalized?.id || seenNotificationIdsRef.current.has(normalized.id)) return false;
     seenNotificationIdsRef.current.add(normalized.id);
     setNotifications(prev => (prev.some(n => n.id === normalized.id) ? prev : [normalized, ...prev]));
+    return true;
+  }, []);
+
+  // Prepend a socket-delivered alert only if it has not already been surfaced
+  // (the same alert also lands via REST refresh). Idempotent, like
+  // addLiveNotification; no toast here — the Alerts tab badge carries the signal
+  // and the matching notification already toasts through the socket handler.
+  const addLiveAlert = useCallback((alert) => {
+    const normalized = normalizeAlert(alert);
+    if (!normalized?.id || seenAlertIdsRef.current.has(normalized.id)) return false;
+    seenAlertIdsRef.current.add(normalized.id);
+    setAlerts(prev => (prev.some(a => a.id === normalized.id) ? prev : [normalized, ...prev]));
     return true;
   }, []);
 
@@ -339,6 +357,76 @@ export const DataProvider = ({ children }) => {
     }
   }, [dedupeNotifications, currentUser?.id]);
 
+  // Unreviewed alerts are read-once rows kept on the backend until reviewed
+  // (reviewing DELETES them), so a fresh fetch is the canonical snapshot and
+  // merge is unnecessary — replace the local list.
+  const fetchAlerts = useCallback(async () => {
+    if (!currentUser?.id) {
+      setAlerts([]);
+      return;
+    }
+    try {
+      const res = await apiClient.get('/alerts');
+      if (res.ok) {
+        const normalized = normalizeAlerts(res.data?.alerts || res.data);
+        normalized.forEach(a => seenAlertIdsRef.current.add(a.id));
+        setAlerts(normalized);
+      }
+    } catch (err) {
+      console.error('Failed to fetch alerts:', err);
+    }
+  }, [currentUser?.id]);
+
+  // Review (consume) one alert: the server deletes it, the socket broadcasts
+  // `alert:reviewed` to the recipient's other devices, and we drop the local row.
+  const reviewAlert = useCallback(async (alertId) => {
+    if (!alertId) return { ok: false };
+    try {
+      const res = await apiClient.delete(`/alerts/${alertId}`);
+      if (res.ok) {
+        setAlerts(prev => prev.filter(a => a.id !== alertId));
+        return { ok: true, alertId };
+      }
+      if (res.data?.code === 'ALERT_NOT_FOUND') {
+        // Already reviewed elsewhere — remove the stale row, it is not an error.
+        setAlerts(prev => prev.filter(a => a.id !== alertId));
+        return { ok: true, alertId };
+      }
+      return { ok: false, error: res.data?.message || 'Unable to review this alert.' };
+    } catch (err) {
+      console.error('Failed to review alert:', err);
+      return { ok: false, error: 'Could not reach the server. Try again.' };
+    }
+  }, []);
+
+  const reviewAllAlerts = useCallback(async () => {
+    try {
+      const res = await apiClient.delete('/alerts');
+      if (res.ok) {
+        seenAlertIdsRef.current.clear();
+        setAlerts([]);
+        return { ok: true };
+      }
+      return { ok: false, error: res.data?.message || 'Unable to clear your alerts.' };
+    } catch (err) {
+      console.error('Failed to clear alerts:', err);
+      return { ok: false, error: 'Could not reach the server. Try again.' };
+    }
+  }, []);
+
+  // Cross-device sync helpers for the `alert:reviewed` / `alert:cleared` socket
+  // events. The alert was already deleted server-side by the device that acted;
+  // here we only drop/clear the local row — no extra DELETE round-trip.
+  const removeAlertSilently = useCallback((alertId) => {
+    if (!alertId) return;
+    setAlerts(prev => prev.filter(a => a.id !== alertId));
+  }, []);
+
+  const clearAlertsSilently = useCallback(() => {
+    seenAlertIdsRef.current.clear();
+    setAlerts([]);
+  }, []);
+
   // Realtime connection recovery (rule 23): called by RealtimeContext on
   // reconnect. Pulls everything the server says changed after our lastSeen
   // watermark; falls back to a full refetch when no watermark exists yet.
@@ -350,12 +438,16 @@ export const DataProvider = ({ children }) => {
     } else {
       await fetchNotifications();
     }
+    // Alerts are read-once rows — just refresh the canonical list; anything
+    // reviewed while offline is gone server-side and anything missed via socket
+    // is pulled back in.
+    await fetchAlerts();
     if (watermark?.bookingsAfter) {
       await fetchBookings({ updatedAfter: watermark.bookingsAfter, merge: true });
     } else {
       await fetchBookings();
     }
-  }, [currentUser?.id, fetchNotifications, fetchBookings]);
+  }, [currentUser?.id, fetchNotifications, fetchBookings, fetchAlerts]);
 
   const fetchTickets = useCallback(async () => {
     try {
@@ -424,7 +516,7 @@ export const DataProvider = ({ children }) => {
 
   const deleteService = async (id) => {
     try {
-      const res = await api(`${API_BASE_URL}/services/${id}`, {
+      const res = await api(`${API_BASE_URL}/services/${id}?confirm=true`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -466,11 +558,13 @@ export const DataProvider = ({ children }) => {
     if (currentUser?.id) {
       fetchProviders();
       fetchNotifications();
+      fetchAlerts();
       fetchBookings();
       fetchTickets();
       if (currentUser?.role === 'provider') fetchMyProviderSummary();
     } else {
       setNotifications([]);
+      setAlerts([]);
       setBookings([]);
       setTickets([]);
       setProviders([]);
@@ -615,6 +709,13 @@ export const DataProvider = ({ children }) => {
       const data = await res.json();
       if (data.id) {
         setProviders(prev => prev.map(p => p.id === providerId ? data : p));
+        // Keep the auth user's avatar in sync so the navbar/app avatar updates
+        // the moment a provider saves a new profile photo (the provider PATCH
+        // writes to user.avatar via the backend transaction).
+        const newAvatar = data?.user?.avatar;
+        if (newAvatar !== undefined && newAvatar !== null) {
+          setCurrentUser(prev => (prev ? { ...prev, avatar: newAvatar } : prev));
+        }
         fetchMyProviderSummary();
         return data;
       }
@@ -703,10 +804,21 @@ export const DataProvider = ({ children }) => {
       const res = await api(`${API_BASE_URL}/notifications/${id}/read`, {
         method: 'PATCH'
       });
-      const data = await res.json();
-      if (data.id) {
+      const body = await res.json();
+      const data = body?.data || body;
+      if (res.ok && data?.id) {
         setNotifications(prev => prev.map(n => n.id === id ? normalizeNotification(data) : n));
+        return;
       }
+      // 404 = the row was already deleted server-side (cleared/read elsewhere).
+      // Drop the stale row locally instead of piling up console noise — this
+      // is the normal recovery path, not an error.
+      if (res.status === 404) {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+        clearSeenNotifications();
+        return;
+      }
+      console.error('Failed to mark notification as read:', body?.message || body?.code || res.status);
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
@@ -796,9 +908,13 @@ export const DataProvider = ({ children }) => {
     if (!providerId) return null;
     try {
       const res = await api(`${API_BASE_URL}/providers/${providerId}/analytics?range=${encodeURIComponent(range)}`);
-      const data = await res.json();
+      const body = await res.json();
       if (!res.ok) return null;
-      return data?.data || null;
+      // `api` (apiWrapper) routes through apiClient, which already unwraps the
+      // `{ success, data }` envelope — so the analytics object is `body` itself.
+      // Handle both raw and unwrapped shapes defensively.
+      const resource = body?.data ?? body;
+      return resource && typeof resource === 'object' ? resource : null;
     } catch {
       return null;
     }
@@ -916,6 +1032,13 @@ export const DataProvider = ({ children }) => {
       applyBookingSocketUpdate,
       refreshBooking,
       fetchNotifications,
+      // temporary alerts (read-once, deleted on review)
+      alerts,
+      fetchAlerts,
+      reviewAlert,
+      reviewAllAlerts,
+      removeAlertSilently,
+      clearAlertsSilently,
       // realtime connection recovery (rule 23)
       resyncAfterReconnect,
       fetchTickets,
@@ -946,7 +1069,8 @@ export const DataProvider = ({ children }) => {
       approveProviderServiceRequest,
       denyProviderServiceRequest,
       // Dedupe-aware live-notification prepend for RealtimeProvider.
-      addLiveNotification
+      addLiveNotification,
+      addLiveAlert
     }}>
       {children}
     </DataContext.Provider>

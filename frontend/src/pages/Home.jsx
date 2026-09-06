@@ -66,7 +66,7 @@ export const Home = ({ onNavigate }) => {
         onQuickSearch={handleQuickSearch}
       />
 
-      <section aria-label="ServeGo marketplace status" className="relative z-10 -mt-7 px-4">
+      <section aria-label="servego24 marketplace status" className="relative z-10 -mt-7 px-4">
         <div className="mx-auto grid max-w-6xl grid-cols-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] sm:grid-cols-3">
           <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:border-b-0 sm:border-r">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">

@@ -31,7 +31,7 @@ export async function sendEmail({ to, subject, text = null, html = null }) {
     return null;
   }
   const info = await getTransporter().sendMail({
-    from: `"ServeGo" <${process.env.SMTP_EMAIL}>`,
+    from: `"servego24" <${process.env.SMTP_EMAIL}>`,
     to,
     subject,
     text: text || undefined,
@@ -54,7 +54,7 @@ export async function sendPasswordResetEmail(toEmail, resetToken) {
     <body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
       <div style="max-width:480px;margin:40px auto;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
         <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 24px;text-align:center;">
-          <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px;">ServeGo</h1>
+          <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px;">servego24</h1>
           <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:8px 0 0;">Password Reset Request</p>
         </div>
         <div style="padding:32px 24px;">
@@ -79,7 +79,7 @@ export async function sendPasswordResetEmail(toEmail, resetToken) {
         </div>
         <div style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
           <p style="color:#94a3b8;font-size:11px;margin:0;">
-            &copy; ${new Date().getFullYear()} ServeGo. All rights reserved.
+            &copy; ${new Date().getFullYear()} servego24. All rights reserved.
           </p>
         </div>
       </div>
@@ -88,9 +88,9 @@ export async function sendPasswordResetEmail(toEmail, resetToken) {
   `;
 
   const info = await getTransporter().sendMail({
-    from: `"ServeGo" <${process.env.SMTP_EMAIL}>`,
+    from: `"servego24" <${process.env.SMTP_EMAIL}>`,
     to: toEmail,
-    subject: 'Reset Your ServeGo Password',
+    subject: 'Reset Your servego24 Password',
     html
   });
 
@@ -111,12 +111,12 @@ function bookingEmailHtml({ heading, lines, footer }) {
     <body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
       <div style="max-width:480px;margin:40px auto;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
         <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 24px;text-align:center;">
-          <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px;">ServeGo</h1>
+          <h1 style="color:#ffffff;font-size:24px;margin:0;font-weight:800;letter-spacing:-0.5px;">servego24</h1>
           <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:8px 0 0;">${heading}</p>
         </div>
         <div style="padding:32px 24px;">${body}</div>
         <div style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
-          <p style="color:#94a3b8;font-size:11px;margin:0;">${footer || `&copy; ${new Date().getFullYear()} ServeGo. All rights reserved.`}</p>
+          <p style="color:#94a3b8;font-size:11px;margin:0;">${footer || `&copy; ${new Date().getFullYear()} servego24. All rights reserved.`}</p>
         </div>
       </div>
     </body>
@@ -146,7 +146,7 @@ export function bookingCompletedEmail({ customerName, email, bookingId, serviceC
   const name = customerName || 'there';
   const lines = [
     `Hi ${name},`,
-    `Your <strong>${serviceCategory || 'service'}</strong> booking <strong>${bookingId}</strong> has been completed. Thank you for using ServeGo!`,
+    `Your <strong>${serviceCategory || 'service'}</strong> booking <strong>${bookingId}</strong> has been completed. Thank you for using servego24!`,
     ...(amount ? [`Amount: <strong>&#8377;${Number(amount).toLocaleString('en-IN')}</strong>`] : []),
     `An invoice for this booking has been generated and is available in your account.`
   ];

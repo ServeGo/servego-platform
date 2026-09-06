@@ -322,17 +322,18 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
 
 /**
  * Provider taps "Arrived / Reached" — the dispatch phase moves to ARRIVED and
- * the customer is notified in real time.
+ * the customer is notified in real time. `source` records HOW arrival was
+ * signalled ('gps' auto-detected vs 'manual' override) for audit/disputes.
  */
-export async function markProviderArrived({ bookingId, providerUserId, io = null, client = prisma }) {
+export async function markProviderArrived({ bookingId, providerUserId, io = null, source = 'gps', client = prisma }) {
   const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
 
   const updated = await client.booking.update({
     where: { id: booking.id },
-    data: { providerPhase: 'ARRIVED' }
+    data: { providerPhase: 'ARRIVED', arrivedSource: source === 'manual' ? 'manual' : 'gps' }
   });
 
-  const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', timestamp: new Date().toISOString() };
+  const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', arrivedSource: updated.arrivedSource, timestamp: new Date().toISOString() };
   if (io) {
     io.to(`user:${booking.customerId}`).emit('provider:arrived', payload);
     if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:arrived', payload);

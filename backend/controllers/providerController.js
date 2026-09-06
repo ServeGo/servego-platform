@@ -333,7 +333,7 @@ export const ProviderController = {
   updateProfile: async (req, res) => {
     try {
       const { id } = req.params;
-      const { bio, specialties, serviceAreas, experienceYears, phone } = req.body;
+      const { bio, specialties, serviceAreas, experienceYears, phone, avatar } = req.body;
 
       const existing = await prisma.provider.findUnique({ where: { id } });
       if (!existing) {
@@ -350,6 +350,9 @@ export const ProviderController = {
       const updated = await prisma.$transaction(async (tx) => {
         if (phone !== undefined) {
           await tx.user.update({ where: { id: existing.userId }, data: { phone: String(phone).trim() } });
+        }
+        if (avatar !== undefined && avatar !== null) {
+          await tx.user.update({ where: { id: existing.userId }, data: { avatar: String(avatar).trim() || null } });
         }
         return tx.provider.update({
           where: { id },

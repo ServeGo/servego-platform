@@ -7,7 +7,7 @@ export default function TrustBanner({ onBrowse }) {
       <div className="max-w-6xl mx-auto rounded-[32px] border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-8 lg:p-10 shadow-[0_30px_120px_-30px_rgba(0,0,0,0.7)]">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-7">
-            <span className="text-teal-400 font-bold uppercase tracking-[0.25em] text-[11px]">ServeGo Trust Guarantee</span>
+            <span className="text-teal-400 font-bold uppercase tracking-[0.25em] text-[11px]">servego24 Trust Guarantee</span>
             <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight mt-2">A lead-based marketplace, not a listings board</h2>
             <p className="text-slate-400 text-xs sm:text-sm mt-3 leading-relaxed font-medium">
               Every request is broadcast to eligible specialists at once, every provider is approved before they

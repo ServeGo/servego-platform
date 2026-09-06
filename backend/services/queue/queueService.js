@@ -49,6 +49,17 @@ export function backoffDelayMs(attempt) {
 }
 
 /**
+ * Mark an error as PERMANENT — retrying can never fix it (e.g. a poisoned
+ * payload missing a required field). The worker dead-letters it immediately
+ * instead of retrying with backoff.
+ */
+export function permanentError(message) {
+  const err = new Error(message);
+  err.permanent = true;
+  return err;
+}
+
+/**
  * Insert a job for async processing. Returns the created job (or an object
  * describing the skipped duplicate when `dedupeKey` is already queued).
  */
@@ -135,6 +146,16 @@ export async function processClaimedJob(job) {
       data: { status: 'SUCCEEDED', finishedAt: new Date(), lastError: null, result: result ?? undefined }
     });
   } catch (err) {
+    // A payload error that retrying can NEVER fix (missing required fields,
+    // corrupted payload) dead-letters immediately instead of churning retries.
+    if (err?.permanent === true) {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: { status: 'DEAD', finishedAt: new Date(), lastError: err.message }
+      });
+      console.error(`[Queue] Job ${job.id} (${job.type}) blocked as permanent error: ${err.message}`);
+      return;
+    }
     // `job.attempts` was incremented by the claim before the handler ran, so
     // this execution is attempt number (attempts + 1).
     const attemptNumber = (Number(job.attempts) || 0) + 1;

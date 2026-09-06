@@ -224,17 +224,37 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
     mapRef.current = map;
 
     let watcher = null;
+    let locateFallbackTimer = null;
     if (saved) {
       setFindingYou(false);
     } else if (navigator.geolocation) {
+      // Never let the "Finding your location..." overlay block the picker
+      // forever — if the browser permission prompt stalls, degrade gracefully.
+      locateFallbackTimer = window.setTimeout(() => {
+        setFindingYou(false);
+        setGeoNotice('Still finding your location — drag the map or search to set your spot.');
+      }, 9000);
+      navigateToGps();
+    } else {
+      setFindingYou(false);
+      setGeoNotice('Location is not available on this device. Search for your area instead.');
+    }
+
+    async function navigateToGps() {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        async (pos) => {
           const { latitude, longitude } = pos.coords;
+          window.clearTimeout(locateFallbackTimer);
           setFindingYou(false);
+          preserveAddressRef.current = false;
           dot.setLngLat([longitude, latitude]);
           map.flyTo({ center: [longitude, latitude], zoom: 15, duration: 1100, essential: true });
+          const addr = (await reverseGeocodeOnce(latitude, longitude)) || '';
+          setAddress(addr);
+          emitChange(latitude, longitude, addr);
         },
         () => {
+          window.clearTimeout(locateFallbackTimer);
           setFindingYou(false);
           setGeoNotice('Could not access your location. Drag the map or search to set your spot.');
         },
@@ -244,13 +264,11 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
         (pos) => dot.setLngLat([pos.coords.longitude, pos.coords.latitude]),
         () => {}
       );
-    } else {
-      setFindingYou(false);
-      setGeoNotice('Location is not available on this device. Search for your area instead.');
     }
 
     return () => {
       if (watcher != null) navigator.geolocation.clearWatch(watcher);
+      window.clearTimeout(locateFallbackTimer);
       if (geocodeTimerRef.current) window.clearTimeout(geocodeTimerRef.current);
       map.remove();
       mapRef.current = null;
@@ -342,7 +360,8 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
               type="button"
               onClick={handleUseMyLocation}
               disabled={locating}
-              className="cursor-pointer absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-white/95 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+              aria-label="Use my current location"
+              className="cursor-pointer absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-white/95 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
             >
               {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" /> : <LocateFixed className="w-3.5 h-3.5 text-indigo-500" />}
               Use my location
@@ -414,7 +433,6 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
           value={address}
           onChange={handleAddressEdit}
           rows={2}
-          required
           className="mt-2 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
         <p className="text-[9px] text-slate-400 font-medium mt-1">

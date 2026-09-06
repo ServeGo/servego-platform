@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth, useData } from '../context/AppContext';
 import { AchievementList, VerificationLevelPill } from './ProviderReputation';
+import ProfilePhotoPicker from './ProfilePhotoPicker';
 
 export default function ProviderProfileView() {
   const { currentUser, logout } = useAuth();
@@ -36,6 +37,10 @@ export default function ProviderProfileView() {
   const [specialtiesText, setSpecialtiesText] = useState('');
   const [serviceAreasText, setServiceAreasText] = useState('');
 
+  // Profile photo (optional) — previewed live, persisted only on Save.
+  const [avatarState, setAvatarState] = useState('');
+  const [avatarChanged, setAvatarChanged] = useState(false);
+
   // Live tracking / route planner
   const [online, setOnline] = useState(true);
   const [accepting, setAccepting] = useState(true);
@@ -69,6 +74,9 @@ export default function ProviderProfileView() {
     setBaseLat(provider.latitude != null ? String(provider.latitude) : '');
     setBaseLng(provider.longitude != null ? String(provider.longitude) : '');
     setRadiusKm(provider.maxRadiusKm != null ? String(provider.maxRadiusKm) : '');
+
+    setAvatarState(provider.avatar || provider.photo || provider.user?.avatar || '');
+    setAvatarChanged(false);
   }, [provider]);
 
   const user = provider?.user || {};
@@ -120,7 +128,8 @@ export default function ProviderProfileView() {
         phone: phone || '',
         experienceYears: Number(experienceYears),
         specialties: nextSpecialties,
-        serviceAreas: nextAreas
+        serviceAreas: nextAreas,
+        ...(avatarChanged ? { avatar: avatarState || null } : {})
       });
 
       setSaveMsg('Profile saved successfully');
@@ -210,10 +219,10 @@ export default function ProviderProfileView() {
       <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs max-w-3xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="flex gap-4 items-center">
-            {user.avatar || provider.photo ? (
+            {avatarState ? (
               <img
                 className="w-14 h-14 rounded-2xl object-cover border border-slate-200"
-                src={user.avatar || provider.photo}
+                src={avatarState}
                 alt="Partner avatar"
               />
             ) : (
@@ -254,6 +263,8 @@ export default function ProviderProfileView() {
                     setEditMode(false);
                     setSaveMsg('');
                     setSaveErr('');
+                    setAvatarState(provider.avatar || provider.photo || provider.user?.avatar || '');
+                    setAvatarChanged(false);
                   }}
                   className="bg-white border border-slate-200 hover:border-slate-300 text-slate-800 text-xs font-black px-4 py-2 rounded-xl transition-colors"
                 >
@@ -275,6 +286,14 @@ export default function ProviderProfileView() {
       <Section title="Partner (Provider) details">
         {editMode ? (
           <form onSubmit={handleSave} className="space-y-4">
+            <ProfilePhotoPicker
+              src={avatarState}
+              folder="servego/providers"
+              onChange={(url) => {
+                setAvatarState(url);
+                setAvatarChanged(true);
+              }}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Provider ID" value={provider.id} mono />
               <Field label="Category / Sector" value={provider.category} />

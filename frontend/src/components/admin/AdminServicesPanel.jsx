@@ -1,4 +1,81 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Camera, Loader2, ImagePlus } from 'lucide-react';
+import { api } from '../../utils/apiClient';
+
+const inputClass =
+  'w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all';
+
+/**
+ * Service photo uploader. Uploads go to Cloudinary under servego/services and
+ * hand the returned URL back through onChange. A photo is required to create a
+ * service; on edit it can be kept or replaced.
+ */
+function ServiceImageField({ label, imageUrl, required = false, onChange }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      setUploadError('Please choose an image file (JPG, PNG, WebP).');
+      return;
+    }
+    setUploading(true);
+    setUploadError('');
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('folder', 'servego/services');
+      const res = await api.postFormData('/images/upload', fd);
+      if (res.ok && res.data?.url) {
+        onChange(res.data.url);
+      } else {
+        setUploadError((res.data && (res.data.message || res.data.error)) || 'Upload failed. Try again.');
+      }
+    } catch {
+      setUploadError('Upload failed. Try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+        {label} {required && <span className="text-rose-600">*</span>}
+        {!required && imageUrl && <span className="text-slate-400 normal-case font-semibold ml-1">(keep current if left unchanged)</span>}
+      </label>
+      <div className="flex items-center gap-3">
+        <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
+          {imageUrl ? (
+            <img src={imageUrl} alt="Service" className="w-full h-full object-cover" />
+          ) : (
+            <Camera className="w-6 h-6 text-slate-300" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <label className="cursor-pointer inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-bold px-3 py-2 rounded-lg transition-colors">
+            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+            {uploading ? 'Uploading...' : imageUrl ? 'Replace photo' : 'Upload photo'}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFile(file);
+              }}
+            />
+          </label>
+          {required && !imageUrl && (
+            <p className="text-[10px] font-semibold text-slate-400 mt-1.5">Required — every service needs a photo for the catalog.</p>
+          )}
+          {uploadError && <p className="text-[10px] font-bold text-rose-600 mt-1.5">{uploadError}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminServicesPanel({
   isAdmin,
@@ -11,6 +88,7 @@ export default function AdminServicesPanel({
   serviceEditError,
   serviceEditSuccess,
   submitNewService,
+  submitEditService,
   openAddService,
   closeAddService,
   openEditService,
@@ -87,8 +165,17 @@ export default function AdminServicesPanel({
                 value={newServiceForm.description}
                 onChange={(e) => setNewServiceForm((prev) => ({ ...prev, description: e.target.value }))}
                 rows={3}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                className={inputClass}
                 placeholder="Short description for the service category"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <ServiceImageField
+                label="Service Photo"
+                required
+                imageUrl={newServiceForm.imageUrl}
+                onChange={(url) => setNewServiceForm((prev) => ({ ...prev, imageUrl: url }))}
               />
             </div>
           </div>
@@ -110,15 +197,7 @@ export default function AdminServicesPanel({
 
       {canManage && isEditingService && (
         <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const { name, description, popularIssuesText } = editServiceForm;
-            if (!name.trim()) return;
-            const popularIssues = popularIssuesText.split(',').map(x => x.trim()).filter(Boolean);
-            const resp = await updateService(editServiceId, { name: name.trim(), description: description.trim(), popularIssues });
-            if (resp?.error) { setEditServiceForm(prev => ({ ...prev, _error: resp.error })); return; }
-            closeEditService();
-          }}
+          onSubmit={submitEditService}
           className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-5"
         >
           <div>
@@ -161,8 +240,16 @@ export default function AdminServicesPanel({
                 value={editServiceForm.description}
                 onChange={(e) => setEditServiceForm((prev) => ({ ...prev, description: e.target.value }))}
                 rows={3}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                className={inputClass}
                 placeholder="Short description for the service category"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <ServiceImageField
+                label="Service Photo"
+                imageUrl={editServiceForm.imageUrl}
+                onChange={(url) => setEditServiceForm((prev) => ({ ...prev, imageUrl: url }))}
               />
             </div>
           </div>
@@ -176,7 +263,6 @@ export default function AdminServicesPanel({
               Cancel
             </button>
 
-            {/* submit is intentionally handled by AdminPanel inline for now */}
             <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs">
               Update Service
             </button>
@@ -190,11 +276,15 @@ export default function AdminServicesPanel({
           return (
             <div key={cat.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between gap-4">
               <div className="space-y-2 font-semibold">
-                <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-700 font-extrabold text-base">
-                  {(cat.name || '?').charAt(0)}
-                </div>
+                {cat.image ? (
+                  <img src={cat.image} alt={cat.name} className="w-16 h-16 rounded-xl object-cover border border-slate-100" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-teal-700 font-extrabold text-base">
+                    {(cat.name || '?').charAt(0)}
+                  </div>
+                )}
                 <h4 className="text-slate-900 font-extrabold text-sm">{cat.name}</h4>
-                <p className="text-slate-500 text-xs font-medium leading-relaxed">{cat.description}</p>
+                <p className="text-slate-500 text-xs font-medium leading-relaxed line-clamp-3">{cat.description}</p>
               </div>
 
               {canManage && (

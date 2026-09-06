@@ -165,9 +165,12 @@ export const ServiceController = {
 
   create: async (req, res) => {
     try {
-      const { name, description, popularIssues } = req.body;
+      const { name, description, popularIssues, image } = req.body;
       if (!name) {
         return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing required field: name');
+      }
+      if (!image || !String(image).trim()) {
+        return sendApiError(res, 400, 'IMAGE_REQUIRED', 'A service photo is required to create a service.');
       }
 
       const nameNormalized = normalize(name);
@@ -181,7 +184,8 @@ export const ServiceController = {
           name,
           nameNormalized,
           description: description || '',
-          popularIssues: Array.isArray(popularIssues) ? popularIssues : []
+          popularIssues: Array.isArray(popularIssues) ? popularIssues : [],
+          image: String(image).trim()
         }
       });
 
@@ -233,7 +237,7 @@ export const ServiceController = {
       const { id } = req.params;
       if (!id) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing service id');
 
-      const { name, description, popularIssues } = req.body || {};
+      const { name, description, popularIssues, image } = req.body || {};
 
       const existing = await prisma.service.findUnique({ where: { id }, select: { name: true, nameNormalized: true } });
       if (!existing) return sendApiError(res, 404, 'NOT_FOUND', 'Service not found');
@@ -245,7 +249,8 @@ export const ServiceController = {
           name: nextName,
           nameNormalized: normalize(nextName),
           ...(description !== undefined ? { description } : {}),
-          ...(Array.isArray(popularIssues) ? { popularIssues } : {})
+          ...(Array.isArray(popularIssues) ? { popularIssues } : {}),
+          ...(image !== undefined ? { image: String(image).trim() || null } : {})
         }
       });
 
@@ -253,6 +258,9 @@ export const ServiceController = {
 
       return sendApiSuccess(res, 200, { service: updated });
     } catch (err) {
+      if (err.code === 'P2002') {
+        return sendApiError(res, 409, 'DUPLICATE_ENTRY', 'A service with this name already exists');
+      }
       if (err.code === 'P2025') {
         return sendApiError(res, 404, 'NOT_FOUND', 'Service not found');
       }

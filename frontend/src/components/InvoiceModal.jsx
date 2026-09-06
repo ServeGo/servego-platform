@@ -1,5 +1,6 @@
 import React from 'react';
 import { Download, X } from 'lucide-react';
+import Logo from './Logo';
 
 export default function InvoiceModal({ booking, onClose }) {
   const issuedLabel = booking.bookingDateLabel || booking.createdAt;
@@ -29,10 +30,8 @@ export default function InvoiceModal({ booking, onClose }) {
 
             {/* Brand */}
             <div className="text-center border-b-2 border-dashed border-slate-200 pb-3">
-              <div className="w-9 h-9 mx-auto rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm tracking-tight">
-                SG
-              </div>
-              <h4 className="text-base font-black text-slate-900 tracking-tight mt-1.5">ServeGo</h4>
+              <Logo className="w-10 h-10 mx-auto rounded-xl shadow-sm" />
+              <h4 className="text-base font-black text-slate-900 tracking-tight mt-1.5">servego24</h4>
               <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest block">
                 Service Receipt
               </span>
@@ -100,7 +99,7 @@ export default function InvoiceModal({ booking, onClose }) {
             </div>
 
             <p className="mt-3 text-center text-[10px] text-slate-400 font-medium">
-              Thank you for choosing ServeGo!
+              Thank you for choosing servego24!
             </p>
           </div>
         </div>

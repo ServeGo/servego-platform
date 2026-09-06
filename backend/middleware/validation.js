@@ -366,7 +366,11 @@ export const updateProviderProfileValidation = [
   body('phone')
     .optional()
     .trim()
-    .matches(/^[+]?[\d\s-]{10,15}$/).withMessage('Invalid phone number format')
+    .matches(/^[+]?[\d\s-]{10,15}$/).withMessage('Invalid phone number format'),
+  body('avatar')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 }).withMessage('Avatar URL is too long')
 ];
 
 export const updateAvailabilityValidation = [
@@ -387,7 +391,8 @@ export const updateUserProfileValidation = [
   body('name').optional().trim().isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters').escape(),
   body('phone').optional().trim().matches(/^[+]?[\d\s-]{10,15}$/).withMessage('Invalid phone number format'),
   body('address').optional().trim().isLength({ max: 500 }).withMessage('Address is too long').escape(),
-  body('pincode').optional().trim().matches(/^[0-9]{5,6}$/).withMessage('Please enter a valid 5-6 digit pincode')
+  body('pincode').optional().trim().matches(/^[0-9]{5,6}$/).withMessage('Please enter a valid 5-6 digit pincode'),
+  body('avatar').optional().trim().isLength({ max: 1000 }).withMessage('Avatar URL is too long')
 ];
 
 export const createAuthenticatedTicketValidation = [
@@ -402,32 +407,36 @@ export const createServiceValidation = [
   body('name')
     .trim()
     .notEmpty().withMessage('Service name is required')
-    .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters')
-    .escape(),
+    .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters'),
   body('description')
     .optional()
     .trim()
-    .isLength({ max: 2000 }).withMessage('Description too long')
-    .escape(),
+    .isLength({ max: 2000 }).withMessage('Description too long'),
   body('popularIssues')
     .optional()
-    .isArray().withMessage('Popular issues must be an array')
+    .isArray().withMessage('Popular issues must be an array'),
+  body('image')
+    .trim()
+    .notEmpty().withMessage('Service photo is required')
+    .isLength({ max: 1000 }).withMessage('Image URL is too long')
 ];
 
 export const updateServiceValidation = [
   body('name')
     .optional()
     .trim()
-    .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters')
-    .escape(),
+    .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters'),
   body('description')
     .optional()
     .trim()
-    .isLength({ max: 2000 }).withMessage('Description too long')
-    .escape(),
+    .isLength({ max: 2000 }).withMessage('Description too long'),
   body('popularIssues')
     .optional()
-    .isArray().withMessage('Popular issues must be an array')
+    .isArray().withMessage('Popular issues must be an array'),
+  body('image')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 }).withMessage('Image URL is too long')
 ];
 
 // ==================== Chat Message Validation ====================

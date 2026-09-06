@@ -19,6 +19,7 @@ import { ResetPassword } from './pages/ResetPassword';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import Logo from './components/Logo';
 import CustomerBottomNav from './components/CustomerBottomNav';
 import ProviderBottomNav from './components/ProviderBottomNav';
 import ActionSpinnerOverlay from './components/ActionSpinnerOverlay';
@@ -108,19 +109,21 @@ const updateBrowserRoute = (page, categoryId = null, tab = null) => {
 
 export function MainLayout() {
   const { currentUser, logout, isInitializing } = useAuth();
-  const { notifications, bookings } = useData();
+  const { bookings, alerts } = useData();
   const { actionSpinner } = useUI();
   const { connectionStatus } = useRealtime();
-
-  const unreadNotifications = (notifications || []).filter(
-    (n) => n.userId === currentUser?.id && !n.isRead
-  ).length;
 
   // Active jobs for this provider — mirrors the dashboard's "Leads" tab count.
   const providerLeadsCount = (bookings || []).filter(
     (b) =>
       b.providerId === currentUser?.providerId &&
       ['pending', 'confirmed', 'ongoing'].includes(b.status)
+  ).length;
+
+  // Unreviewed alerts (every existing alert row is action-required and
+  // unreviewed by construction).
+  const unreadAlerts = (alerts || []).filter(
+    (a) => a.userId === currentUser?.id
   ).length;
 
   const [currentPage, setCurrentPage] = useState('home');
@@ -301,10 +304,10 @@ export function MainLayout() {
 
         {/* Logo with soft pulse */}
         <div
-          className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center"
+          className="relative w-16 h-16 rounded-2xl overflow-hidden ring-1 ring-slate-200"
           style={{ animation: 'logoPulse 1.8s ease-out infinite' }}
         >
-          <span className="text-white font-extrabold text-2xl tracking-tight select-none">S</span>
+          <Logo className="w-16 h-16 rounded-none" />
         </div>
 
         {/* Clean spinner ring */}
@@ -312,7 +315,7 @@ export function MainLayout() {
 
         {/* Brand text */}
         <div className="flex flex-col items-center gap-1.5">
-          <span className="text-slate-900 font-extrabold text-xl tracking-tight">ServeGo</span>
+          <span className="text-slate-900 font-extrabold text-xl tracking-tight">servego24</span>
           <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-slate-400">Loading…</span>
         </div>
       </div>
@@ -565,7 +568,7 @@ export function MainLayout() {
                 }`}
               >
                 <Sparkles className="w-4 h-4 shrink-0" />
-                <span>ServeGo Business</span>
+                <span>servego24 Business</span>
               </button>
 
               <button
@@ -700,7 +703,7 @@ export function MainLayout() {
                     { key: 'providers', label: 'Providers', icon: Briefcase },
                     { key: 'permanentServiceRequests', label: 'Permanent Hires', icon: ClipboardList },
                     { key: 'tickets', label: 'Tickets', icon: MessageSquare },
-                    { key: 'servego', label: 'ServeGo', icon: Sparkles },
+                    { key: 'servego', label: 'servego24', icon: Sparkles },
                     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
                     { key: 'reports', label: 'Reports', icon: FileText },
                     { key: 'settings', label: 'Settings', icon: Settings },
@@ -746,7 +749,7 @@ export function MainLayout() {
         </div>
         <h1 className="text-2xl font-extrabold text-white tracking-tight">Under Maintenance</h1>
         <p className="text-slate-400 text-sm mt-2 max-w-sm">
-          ServeGo is undergoing scheduled maintenance. We will be back shortly — please check again in a few minutes.
+          servego24 is undergoing scheduled maintenance. We will be back shortly — please check again in a few minutes.
         </p>
         {currentUser && (
           <button
@@ -823,7 +826,7 @@ export function MainLayout() {
           activeTab={customerActiveTabExternal}
           onNavigate={handlePageTransition}
           setCustomerActiveTab={setCustomerActiveTabExternal}
-          notificationsCount={unreadNotifications}
+          alertsCount={unreadAlerts}
         />
       )}
 

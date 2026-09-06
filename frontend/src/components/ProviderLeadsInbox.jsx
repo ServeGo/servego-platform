@@ -60,6 +60,28 @@ const fmtMoney = (v) => {
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
 };
 
+const ARRIVAL_RADIUS_M = 1000;
+
+// A GPS fix is only trusted when its reported accuracy is at least this good.
+// Poor fixes (e.g. 500 m accuracy inside a 1 km radius) prove nothing, so the
+// provider is routed to the manual "Arrive & Confirm" path instead of a
+// wrongly-enabled "Arrived" button.
+const ARRIVAL_ACCURACY_M = 300;
+
+// Straight-line distance between two { latitude, longitude } points in metres.
+// The 1 km "mark arrival" gate is a proximity check, not turn-by-turn distance,
+// so haversine is deliberately used instead of the maps driving distance.
+const haversineMeters = (a, b) => {
+  if (!a || !b) return null;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(s));
+};
+
 const fmtTime = (d) => {
   if (!d) return '—';
   const date = new Date(d);
@@ -208,11 +230,15 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
       bookingUpdated: handleBookingStatus,
       bookingStatusChanged: handleBookingStatus,
       'booking:cancelled': handleBookingStatus,
-      'booking:statusChanged': handleBookingStatus
+      'booking:statusChanged': handleBookingStatus,
+      // A quotation was submitted/revised/decided for one of my bookings —
+      // pull the canonical inbox instead of trusting the partial card, so the
+      // card can never revert to "Submit Quotation" on a live quotation.
+      quotation: () => fetchLeads(true)
     };
     Object.entries(handlers).forEach(([event, handler]) => socket.on(event, handler));
     return () => Object.entries(handlers).forEach(([event, handler]) => socket.off(event, handler));
-  }, [socketRef]);
+  }, [socketRef, fetchLeads]);
 
   // Poll fallback every 30s (identical cadence to the app's booking poll).
   useEffect(() => {
@@ -361,15 +387,34 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
 
   const handleQuotationSubmitted = (result) => {
     // `submitQuotation` returns the raw quotation row (with items + status
-    // SUBMITTED) plus a scalar-only booking — patch the card in place rather
-    // than trusting the partial booking shape.
+    // SUBMITTED) plus a scalar-only booking — patch the card in place AND
+    // reconcile with the canonical GET /leads so a stale/socket race can never
+    // leave the card asking for a fresh quotation right after submission.
     const quotation = result?.quotation;
-    if (!quotation) return;
-    setLeads(prev => prev.map(l => {
-      if (!quoteLead || l.bookingId !== quoteLead.bookingId) return l;
-      return { ...l, booking: { ...(l.booking || {}), status: 'CONFIRMED', quotation } };
-    }));
+    const bookingStatus = result?.booking?.status;
+    setLeads((prev) =>
+      prev.map((l) => {
+        if (!quoteLead || l.bookingId !== quoteLead.bookingId) return l;
+        const status = l.status;
+        const acceptedAsActive =
+          status === 'NEW' || status === 'VIEWED'
+            ? bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING'
+              ? 'ACCEPTED'
+              : status
+            : status;
+        return {
+          ...l,
+          status: acceptedAsActive,
+          booking: {
+            ...(l.booking || {}),
+            ...(bookingStatus ? { status: bookingStatus } : {}),
+            ...(quotation ? { quotation } : {})
+          }
+        };
+      })
+    );
     setQuoteLead(null);
+    if (quotation) fetchLeads(true);
   };
 
   return (
@@ -478,11 +523,24 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   );
 }
 
-function QuotationActionButtons({ quotation, busy, onQuote }) {
-  const submitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
+function QuotationActionButtons({ quotation, busy, onQuote, arrived }) {
+  const status = quotation && String(quotation.status).toUpperCase();
+  // A live quotation (submitted / accepted / still pending) always supersedes
+  // the submit flow — only a missing or a closed/declined quotation should ask
+  // the provider to submit again.
+  const liveQuote = Boolean(quotation) && (status === 'SUBMITTED' || status === 'ACCEPTED' || status === 'PENDING');
+  const accepted = status === 'ACCEPTED';
   const total = Number(quotation?.totalAmount) || 0;
 
-  if (submitted) {
+  if (liveQuote) {
+    if (accepted) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-full px-3 py-2">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Quotation {total > 0 ? `${fmtMoney(total)} ` : ''}accepted — work has started
+        </span>
+      );
+    }
     return (
       <>
         <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-300 rounded-full px-3 py-2">
@@ -500,14 +558,28 @@ function QuotationActionButtons({ quotation, busy, onQuote }) {
     );
   }
 
+  // Submission is gated behind arrival (phase ARRIVED): the provider must
+  // reach the customer before the quote can be sent. Rule 19 — never a bare
+  // disabled button, the provider is told exactly what unlocks it.
+  const arrivalPending = !arrived;
+
   return (
-    <button
-      onClick={onQuote}
-      disabled={busy}
-      className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
-    >
-      <Send className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Submit Quotation'}
-    </button>
+    <>
+      {arrivalPending && (
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+          <Navigation className="w-3.5 h-3.5" />
+          Arrive at the customer's location with GPS on to submit the quotation
+        </span>
+      )}
+      <button
+        onClick={onQuote}
+        disabled={busy || arrivalPending}
+        title={arrivalPending ? "Arrive at the customer's location first." : undefined}
+        className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 disabled:opacity-50"
+      >
+        <Send className="w-3.5 h-3.5" /> {busy ? 'Processing...' : 'Submit Quotation'}
+      </button>
+    </>
   );
 }
 
@@ -541,6 +613,7 @@ function EmptyInbox({ filter }) {
 }
 
 function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onComplete }) {
+  const { getBookingLocation } = useRealtime();
   const now = useNowTick(lead.status === 'NEW' || lead.status === 'VIEWED');
   const booking = lead.booking || {};
   const actionable = lead.status === 'NEW' || lead.status === 'VIEWED';
@@ -550,6 +623,11 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
   // Rule: the customer's number is only shown while the booking is live.
   // Once the customer cancels, the backend strips it and the UI never renders it.
   const canShowPhone = bookingStatus !== 'CANCELLED';
+
+  // Dispatch phase read live-first (socket/realtime) with the persisted value
+  // from GET /leads as the reload fallback.
+  const providerPhase = getBookingLocation(booking.id)?.providerPhase || booking.providerPhase || null;
+  const arrived = providerPhase === 'ARRIVED';
 
   useEffect(() => {
     onOpen();
@@ -661,7 +739,12 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
             </button>
           </>
         ) : bookingStatus === 'CONFIRMED' ? (
-          <QuotationActionButtons quotation={booking.quotation} busy={busy} onQuote={onQuote} />
+          <QuotationActionButtons
+            quotation={booking.quotation || (Array.isArray(booking.quotations) ? booking.quotations[0] : null)}
+            busy={busy}
+            onQuote={onQuote}
+            arrived={arrived}
+          />
         ) : bookingStatus === 'ONGOING' ? (
           <button
             onClick={onComplete}
@@ -720,7 +803,7 @@ function ProviderLocationShare({ bookingId }) {
       (pos) => {
         setStatusText('Live · sharing position');
         setTone('emerald');
-        shareProviderLocation(bookingId, pos.coords.latitude, pos.coords.longitude);
+        shareProviderLocation(bookingId, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
       },
       (err) => {
         const msg =
@@ -767,27 +850,63 @@ function ProviderLocationShare({ bookingId }) {
  * Dispatch lifecycle controls for a confirmed/ongoing booking: the provider
  * signals "On My Way" (→ ON_THE_WAY) then "Arrived" (→ ARRIVED). The customer
  * sees the phase update live on their tracking screen.
+ *
+ * "On My Way" is optional — the provider may jump straight to "Arrived".
+ * "Arrived" gating (Plan B):
+ * - GPS path: only actionable once a TRUSTED fix (accuracy ≤ 300 m) is within
+ *   1 km of the destination pin. The destination prefers the live echo and
+ *   falls back to the booking's service coordinates shipped in GET /leads.
+ * - Manual path: when no trustworthy fix exists (no fix / permission denied /
+ *   poor accuracy), the provider never gets stuck — a "Arrive & Confirm"
+ *   dialog lets them signal arrival with source='manual' and records
+ *   `arrivedSource` for audit.
  */
 function ProviderDispatchControls({ booking }) {
   const { getBookingLocation, setProviderDispatchPhase } = useRealtime();
   const [busy, setBusy] = useState(false);
+  const [manualConfirm, setManualConfirm] = useState(false);
 
   const live = getBookingLocation(booking.id);
   const phase = live?.providerPhase || booking.providerPhase || null;
   const arrived = phase === 'ARRIVED';
 
-  const fire = async (nextPhase) => {
+  const liveFix =
+    live?.latitude != null && live?.longitude != null
+      ? { latitude: live.latitude, longitude: live.longitude }
+      : null;
+  const destination =
+    live?.destination?.latitude != null && live?.destination?.longitude != null
+      ? { latitude: live.destination.latitude, longitude: live.destination.longitude }
+      : booking.serviceLatitude != null && booking.serviceLongitude != null
+        ? { latitude: Number(booking.serviceLatitude), longitude: Number(booking.serviceLongitude) }
+        : null;
+  const distanceM = haversineMeters(liveFix, destination);
+
+  const accuracy = live?.accuracy != null ? Number(live.accuracy) : null;
+  // Trust the fix only when accuracy is known-good; missing accuracy falls back
+  // to trusting it (fix present = reasonable signal).
+  const fixTrusted = liveFix != null && (accuracy == null || accuracy <= ARRIVAL_ACCURACY_M);
+  const withinArrivalRadius = distanceM != null && distanceM <= ARRIVAL_RADIUS_M;
+  const canAutoArrive = fixTrusted && withinArrivalRadius;
+  const gpsUnavailable = liveFix == null || !fixTrusted;
+
+  const fire = async (nextPhase, source) => {
     setBusy(true);
     try {
-      const res = await setProviderDispatchPhase(booking.id, nextPhase);
+      const res = await setProviderDispatchPhase(booking.id, nextPhase, source);
       if (!res?.ok) console.warn('Dispatch update failed:', res?.error || res?.message);
     } finally {
       setBusy(false);
     }
   };
 
+  const arrivalHint =
+    distanceM != null
+      ? `${(distanceM / 1000).toFixed(1)} km away — be within 1 km to mark arrival`
+      : 'Enable GPS sharing to mark arrival';
+
   return (
-    <div className="flex items-center gap-2 mr-auto">
+    <div className="flex items-center gap-2 mr-auto flex-wrap">
       {!arrived && phase !== 'ON_THE_WAY' && (
         <button
           type="button"
@@ -799,22 +918,88 @@ function ProviderDispatchControls({ booking }) {
           On My Way
         </button>
       )}
-      {!arrived && (
+      {!arrived && canAutoArrive && (
         <button
           type="button"
           disabled={busy}
-          onClick={() => fire('ARRIVED')}
+          onClick={() => fire('ARRIVED', 'gps')}
           className="px-3 py-2 text-xs font-bold rounded-xl transition-all border bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 flex items-center gap-1.5 disabled:opacity-50"
         >
           <UserCheck className="w-3.5 h-3.5" />
           Arrived
         </button>
       )}
+      {!arrived && gpsUnavailable && (
+        <>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setManualConfirm(true)}
+            className="px-3 py-2 text-xs font-bold rounded-xl transition-all border bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            Arrive &amp; Confirm
+          </button>
+          <span className="text-[10px] font-semibold text-amber-700 inline-flex items-center gap-1">
+            <MapPin className="w-3 h-3" />
+            {liveFix == null
+              ? 'GPS unavailable — confirm arrival manually'
+              : `GPS accuracy is low (${Math.round(accuracy)} m) — confirm you're at the address`}
+          </span>
+        </>
+      )}
+      {!arrived && !gpsUnavailable && !canAutoArrive && (
+        <>
+          <button
+            type="button"
+            disabled
+            title={arrivalHint}
+            className="px-3 py-2 text-xs font-bold rounded-xl border bg-slate-50 text-slate-400 border-slate-200 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            Arrived
+          </button>
+          <span className="text-[10px] font-semibold text-slate-400 inline-flex items-center gap-1">
+            <MapPin className="w-3 h-3" /> {arrivalHint}
+          </span>
+        </>
+      )}
       {arrived && (
         <span className="px-3 py-2 text-xs font-bold rounded-xl border bg-emerald-600/10 text-emerald-700 border-emerald-200 flex items-center gap-1.5">
           <UserCheck className="w-3.5 h-3.5" />
           Arrived at customer
         </span>
+      )}
+
+      {manualConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 max-w-sm w-full text-left">
+            <h4 className="text-sm font-extrabold text-slate-900">Confirm your arrival?</h4>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              We couldn't detect a reliable GPS fix. Confirm you are already at the customer's service address to
+              submit your quotation.
+            </p>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button
+                type="button"
+                onClick={() => setManualConfirm(false)}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl border bg-white hover:bg-slate-50 text-slate-700 border-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setManualConfirm(false);
+                  fire('ARRIVED', 'manual');
+                }}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400"
+              >
+                Confirm Arrival
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

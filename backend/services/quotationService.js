@@ -130,7 +130,7 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
           data: { bookingId, providerId, serviceFee: fee, items: cleanItems, totalAmount }
         });
 
-    return { booking, quotation };
+    return { booking, quotation, created: !existing };
   });
 }
 
@@ -355,29 +355,46 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
 
 /**
  * Re-open a lead whose quotation the customer declined so OTHER eligible
- * providers (never the declining provider) can pick it up. Existing
+ * providers (never the declining one) can pick it up. Existing
  * `redistributeLead` refuses ACCEPTED leads, so this is the dedicated path for
- * the customer "find another provider" decision. When no eligible provider
- * remains the booking is cancelled and the lead settled. Runs inside `client`'s
- * transaction.
+ * the customer "find another provider" decision.
+ *
+ * The booking model broadcasts a request to EVERY eligible provider at once
+ * (first-accept-wins), so all of the other eligible providers are already
+ * recorded in `LeadAssignmentHistory` as cancelled losers. Excluding the whole
+ * history would therefore empty the pool and the booking would cancel with
+ * "no other provider" every time — so this path re-broadcasts instead,
+ * excluding ONLY providers who previously reached an ACCEPTED assignment (their
+ * quotation was declined in an earlier round) plus the provider being declined
+ * right now. When no eligible provider remains the booking is cancelled and the
+ * lead settled. Runs inside `client`'s transaction.
  */
-async function redistributeAfterDecline({ booking, lead, providerIdToExclude, reason, client }) {
-  const tried = await client.leadAssignmentHistory.findMany({
-    where: { leadId: lead.id },
+export async function redistributeAfterDecline({ booking, lead, providerIdToExclude, reason, client }) {
+  // Providers whose quotation was declined before (they already accepted the
+  // booking) must never be re-offered. The status 'ACCEPTED' marker is kept on
+  // their assignment row across rounds so this exclusion accumulates correctly.
+  const neverAgain = await client.leadAssignmentHistory.findMany({
+    where: { leadId: lead.id, status: 'ACCEPTED' },
     select: { providerId: true }
   });
-  const triedIds = [...new Set(tried.map((t) => t.providerId).filter(Boolean))];
-  triedIds.push(providerIdToExclude);
+  const excludeIds = [...new Set([...neverAgain.map((t) => t.providerId), providerIdToExclude].filter(Boolean))];
 
   const candidates = await findEligibleProviders({
     serviceCategory: booking.serviceCategory,
     serviceId: booking.serviceId,
-    excludeProviderIds: triedIds,
+    excludeProviderIds: excludeIds,
     customerLat: booking.serviceLatitude ?? null,
     customerLng: booking.serviceLongitude ?? null,
     client
   });
 
+  // Close every dangling open offer before the re-broadcast. The ACCEPTED row
+  // is only de-currented (its status stays ACCEPTED so it never ends up in a
+  // later re-broadcast); every other outstanding offer is formally rejected.
+  await client.leadAssignmentHistory.updateMany({
+    where: { leadId: lead.id, isCurrent: true, status: 'ACCEPTED' },
+    data: { isCurrent: false }
+  });
   await client.leadAssignmentHistory.updateMany({
     where: { leadId: lead.id, isCurrent: true },
     data: { isCurrent: false, status: 'REJECTED', actionAt: new Date(), reason }
@@ -409,36 +426,46 @@ async function redistributeAfterDecline({ booking, lead, providerIdToExclude, re
     return { nextProvider: null, settled: true, cancelled: true, booking: updatedBooking };
   }
 
-  const next = candidates[0];
-  const expiryTime = new Date(Date.now() + 86400 * 1000);
-  await client.leadAssignmentHistory.create({
-    data: { leadId: lead.id, providerId: next.id, status: 'NEW', isCurrent: true, assignedAt: new Date() }
+  // Full re-broadcast — exactly the semantics of the original booking
+  // broadcast: every eligible provider gets an open offer; first-accept-wins.
+  // The top-ranked provider is recorded as the booking/lead owner until one of
+  // them accepts.
+  const now = new Date();
+  const expiryTime = new Date(now.getTime() + 86400 * 1000);
+  await client.leadAssignmentHistory.createMany({
+    data: candidates.map((p) => ({
+      leadId: lead.id,
+      providerId: p.id,
+      status: 'NEW',
+      isCurrent: true,
+      assignedAt: now
+    }))
   });
-  await client.leadTransferHistory.create({
-    data: {
+  await client.leadTransferHistory.createMany({
+    data: candidates.map((p) => ({
       leadId: lead.id,
       fromProviderId: providerIdToExclude,
-      toProviderId: next.id,
+      toProviderId: p.id,
       reason,
       details: { note: 'Re-broadcast after customer declined the quotation' }
-    }
+    }))
   });
   await client.lead.update({
     where: { id: lead.id },
     data: {
-      providerId: next.id,
+      providerId: candidates[0].id,
       status: 'NEW',
       expiryTime,
       acceptedAt: null,
       transferCount: { increment: 1 }
     }
   });
-  await recordLeadOffered(next.id, client);
+  for (const p of candidates) await recordLeadOffered(p.id, client);
 
   const updatedBooking = await client.booking.update({
     where: { id: booking.id },
     data: {
-      providerId: next.id,
+      providerId: candidates[0].id,
       status: 'PENDING',
       cancelledBy: null,
       cancelledReason: null,
@@ -453,5 +480,5 @@ async function redistributeAfterDecline({ booking, lead, providerIdToExclude, re
       note: 'Lead re-broadcast after customer declined the quotation.'
     }
   });
-  return { nextProvider: next, settled: false, cancelled: false, booking: updatedBooking };
+  return { nextProvider: candidates[0], providers: candidates, settled: false, cancelled: false, booking: updatedBooking };
 }

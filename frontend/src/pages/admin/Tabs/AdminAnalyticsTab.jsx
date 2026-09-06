@@ -1,18 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useData } from '../../../context/AppContext';
-import { api } from '../../../utils/apiClient';
-import { Loader2 } from 'lucide-react';
 
 export default function AdminAnalyticsTab() {
   const { bookings, providers, services } = useData();
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get('/admin/dashboard')
-      .then(response => { setMetrics(response.ok ? response.data : null); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
 
   // Booking status breakdown from AppContext
   const statusCounts = ['pending', 'confirmed', 'ongoing', 'completed', 'cancelled'].map(s => ({
@@ -29,35 +19,14 @@ export default function AdminAnalyticsTab() {
 
   const totalBookings = bookings.length || 1;
 
-  const statCards = loading || !metrics ? [] : [
-    { label: 'Total Providers', value: metrics.users?.providers ?? metrics.totalProviders ?? 0, color: 'text-indigo-700 bg-indigo-50 border-indigo-100' },
-    { label: 'Total Customers', value: metrics.users?.customers ?? metrics.totalCustomers ?? 0, color: 'text-teal-700 bg-teal-50 border-teal-100' },
-    { label: 'Active Bookings', value: metrics.bookings?.active ?? metrics.activeBookings ?? 0, color: 'text-amber-700 bg-amber-50 border-amber-100' },
-    { label: 'Completed This Month', value: metrics.bookings?.completedThisMonth ?? metrics.completedThisMonth ?? 0, color: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
-    { label: 'Pending Approvals', value: metrics.services?.pendingApprovals ?? metrics.pendingApprovals ?? 0, color: 'text-rose-700 bg-rose-50 border-rose-100' },
-    { label: 'Open Tickets', value: metrics.tickets?.open ?? metrics.openTickets ?? 0, color: 'text-slate-700 bg-slate-50 border-slate-200' },
-  ];
-
   return (
     <div className="space-y-8">
       <div>
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Platform Analytics</h2>
-        <p className="text-slate-500 text-xs">Live metrics from the platform.</p>
+        <p className="text-slate-500 text-xs">
+          Booking, service and provider insights. Platform totals (revenue, bookings, approvals, tickets) live on the Dashboard tab.
+        </p>
       </div>
-
-      {/* KPI Cards */}
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-400 text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Loading metrics...</div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {statCards.map(c => (
-            <div key={c.label} className={`rounded-2xl border p-4 text-center ${c.color}`}>
-              <span className="block text-2xl font-black">{c.value ?? '—'}</span>
-              <span className="block text-[10px] font-bold uppercase tracking-wide mt-1 opacity-70">{c.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Booking Status Breakdown */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">

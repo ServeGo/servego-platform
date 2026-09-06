@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
+import ProfilePhotoPicker from './ProfilePhotoPicker';
 
 export default function ProfileView({ user, onSave }) {
   const [editing, setEditing] = useState(false);
@@ -13,6 +14,9 @@ export default function ProfileView({ user, onSave }) {
     pincode: user?.pincode || user?.customerProfile?.pincode || '',
   });
 
+  const [photoUrl, setPhotoUrl] = useState(user?.avatar || '');
+  const [photoChanged, setPhotoChanged] = useState(false);
+
   const setField = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
   const startEditing = () => {
@@ -22,6 +26,8 @@ export default function ProfileView({ user, onSave }) {
       address: user?.address || user?.customerProfile?.address || '',
       pincode: user?.pincode || user?.customerProfile?.pincode || '',
     });
+    setPhotoUrl(user?.avatar || '');
+    setPhotoChanged(false);
     setError('');
     setSuccess('');
     setEditing(true);
@@ -35,9 +41,13 @@ export default function ProfileView({ user, onSave }) {
     }
     setSaving(true);
     setError('');
-    const res = await onSave?.(form);
+    const payload = {
+      ...form,
+      ...(photoChanged ? { avatar: photoUrl || null } : {})
+    };
+    const res = await onSave?.(payload);
     setSaving(false);
-    if (res?.success) {
+    if (res?.user || res?.success) {
       setSuccess('Profile updated successfully.');
       setEditing(false);
       setTimeout(() => setSuccess(''), 3000);
@@ -45,6 +55,9 @@ export default function ProfileView({ user, onSave }) {
       setError(res?.error || 'Could not update your profile. Please try again.');
     }
   };
+
+  const currentAvatar = photoUrl || user?.avatar;
+  const initial = String(user?.name || '?').trim().substring(0, 1).toUpperCase();
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs max-w-2xl mx-auto space-y-6 text-left">
@@ -63,6 +76,26 @@ export default function ProfileView({ user, onSave }) {
         )}
       </div>
 
+      {/* Current photo */}
+      <div className="flex items-center gap-4">
+        {currentAvatar ? (
+          <img
+            src={currentAvatar}
+            alt="Profile"
+            className="w-20 h-20 rounded-2xl object-cover border border-slate-200 shrink-0"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-20 h-20 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-black text-2xl shrink-0">
+            {initial}
+          </div>
+        )}
+        <div>
+          <p className="text-xs font-bold text-slate-800">{user?.name || 'Your account'}</p>
+          <p className="text-[10px] text-slate-500 font-medium mt-0.5">{user?.email}</p>
+        </div>
+      </div>
+
       {success && (
         <div className="text-[11px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 p-3 rounded-xl">✔ {success}</div>
       )}
@@ -71,7 +104,15 @@ export default function ProfileView({ user, onSave }) {
       )}
 
       {editing ? (
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-bold text-slate-700">
+        <form onSubmit={handleSubmit} className="space-y-5 text-xs font-bold text-slate-700">
+          <ProfilePhotoPicker
+            src={photoUrl || user?.avatar}
+            folder="servego/customers"
+            onChange={(url) => {
+              setPhotoUrl(url);
+              setPhotoChanged(true);
+            }}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <EditField label="Full Name" value={form.name} onChange={setField('name')} required />
             <EditField label="Contact Phone" value={form.phone} onChange={setField('phone')} />
@@ -92,7 +133,11 @@ export default function ProfileView({ user, onSave }) {
             </button>
             <button
               type="button"
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                setPhotoUrl(user?.avatar || '');
+                setPhotoChanged(false);
+                setEditing(false);
+              }}
               className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-2.5 rounded-xl transition-colors"
             >
               Cancel

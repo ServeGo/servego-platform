@@ -13,7 +13,7 @@ export default function CustomerBottomNav({
   activeTab,
   onNavigate,
   setCustomerActiveTab,
-  notificationsCount = 0,
+  alertsCount = 0,
 }) {
   const onDashboard = currentPage === 'dashboard-customer';
 
@@ -43,7 +43,7 @@ export default function CustomerBottomNav({
       icon: Bell,
       isActive: onDashboard && activeTab === 'notifications',
       onClick: () => goToTab('notifications'),
-      badge: notificationsCount,
+      badge: alertsCount,
     },
     {
       id: 'profile',
