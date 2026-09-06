@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
+import { randomUUID } from 'node:crypto';
 
 function round2(value) {
   return Number((value || 0).toFixed(2));
@@ -19,7 +20,7 @@ export async function ensurePerformance(providerId, client = prisma) {
  */
 async function insertBaseRow(client, providerId) {
   await client.$executeRaw`INSERT INTO "ProviderPerformance" ("id", "providerId", "updatedAt")
-    VALUES (${crypto.randomUUID()}, ${providerId}, ${new Date()})
+    VALUES (${randomUUID()}, ${providerId}, ${new Date()})
     ON CONFLICT ("providerId") DO NOTHING`;
 }
 

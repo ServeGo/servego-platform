@@ -40,12 +40,14 @@ export function useAdminPanelController() {
     name: '',
     description: '',
     popularIssuesText: '',
+    imageUrl: '',
   });
 
   const [editServiceForm, setEditServiceForm] = useState({
     name: '',
     description: '',
     popularIssuesText: '',
+    imageUrl: '',
   });
 
   const [serviceAddError, setServiceAddError] = useState('');
@@ -100,7 +102,7 @@ export function useAdminPanelController() {
   const openAddService = () => {
     setServiceAddError('');
     setServiceAddSuccess('');
-    setNewServiceForm({ name: '', description: '', popularIssuesText: '' });
+    setNewServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
     setIsAddingService(true);
   };
 
@@ -118,6 +120,7 @@ export function useAdminPanelController() {
       name: cat.name || '',
       description: cat.description || '',
       popularIssuesText: Array.isArray(cat.popularIssues) ? cat.popularIssues.join(', ') : '',
+      imageUrl: cat.image || '',
     });
     setIsEditingService(true);
   };
@@ -127,7 +130,7 @@ export function useAdminPanelController() {
     setEditServiceId(null);
     setServiceEditError('');
     setServiceEditSuccess('');
-    setEditServiceForm({ name: '', description: '', popularIssuesText: '' });
+    setEditServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
   };
 
   const submitNewService = async (e) => {
@@ -135,10 +138,50 @@ export function useAdminPanelController() {
     setServiceAddError('');
     setServiceAddSuccess('');
 
-    const { name, description, popularIssuesText } = newServiceForm;
+    const { name, description, popularIssuesText, imageUrl } = newServiceForm;
 
     if (!name.trim()) {
       setServiceAddError('Service name is required.');
+      return;
+    }
+    if (!imageUrl.trim()) {
+      setServiceAddError('A service photo is required — upload one before saving the service.');
+      return;
+    }
+
+    const popularIssues = popularIssuesText
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    const payload = {
+      role: 'admin',
+      name: name.trim(),
+      description: (description || '').trim(),
+      popularIssues,
+      image: imageUrl.trim(),
+    };
+
+    const resp = await createService(payload);
+
+    if (!resp?.id && !resp?.createdAt) {
+      setServiceAddError(resp?.message || resp?.error || 'Failed to create service.');
+      return;
+    }
+
+    setServiceAddSuccess('Service added successfully.');
+    setIsAddingService(false);
+    setNewServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
+  };
+
+  const submitEditService = async (e) => {
+    e.preventDefault();
+    setServiceEditError('');
+    setServiceEditSuccess('');
+
+    const { name, description, popularIssuesText, imageUrl } = editServiceForm;
+    if (!name.trim()) {
+      setServiceEditError('Service name is required.');
       return;
     }
 
@@ -153,17 +196,20 @@ export function useAdminPanelController() {
       description: (description || '').trim(),
       popularIssues,
     };
+    if (imageUrl.trim()) payload.image = imageUrl.trim();
 
-    const resp = await createService(payload);
+    const resp = await updateService(editServiceId, payload);
 
-    if (!resp?.id && !resp?.createdAt) {
-      setServiceAddError(resp?.error || 'Failed to create service.');
+    if (!resp?.service) {
+      setServiceEditError(resp?.message || resp?.error || 'Failed to update service.');
       return;
     }
 
-    setServiceAddSuccess('Service added successfully.');
-    setIsAddingService(false);
-    setNewServiceForm({ name: '', description: '', popularIssuesText: '' });
+    setServiceEditSuccess('Service updated successfully.');
+    setTimeout(() => {
+      setServiceEditSuccess('');
+      closeEditService();
+    }, 900);
   };
 
   return {
@@ -212,6 +258,7 @@ export function useAdminPanelController() {
     setNewServiceForm,
     setEditServiceForm,
     submitNewService,
+    submitEditService,
 
     partnerCountForService,
 

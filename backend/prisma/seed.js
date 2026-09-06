@@ -4,7 +4,7 @@ import { seedServicesIfEmpty } from '../seeders/servicesSeed.js';
 import { seedBusinessModelIfEmpty, getProviderLevelForJobs } from '../seeders/businessModelSeed.js';
 
 /*
- * Full demo seed for ServeGo.
+ * Full demo seed for servego24.
  *
  * Produces a coherent, cross-role dataset so customer / provider / admin
  * dashboards all render real, linked data out of the box:
@@ -58,14 +58,14 @@ async function createAdmin() {
   const password = await bcrypt.hash('servego@123', 10);
   return prisma.user.create({
     data: {
-      name: 'ServeGo Admin',
+      name: 'servego24 Admin',
       email: 'servego@gmail.com',
       phone: '18004198899',
       role: 'admin',
       password,
       status: 'ACTIVE',
       profileComplete: true,
-      avatar: avatarFor('ServeGo Admin'),
+      avatar: avatarFor('servego24 Admin'),
       referralCode: 'SERVEGO-ADMIN-001',
       referralsCount: 0,
       referralDiscountBalance: 0,

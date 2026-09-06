@@ -67,7 +67,7 @@ function normalizeConfigValue(schema, raw) {
   return raw;
 }
 
-export default function AdminServeGoTab() {
+export default function Adminservego24Tab() {
   const [tab, setTab] = useState('config');
 
   const tabs = [
@@ -82,7 +82,7 @@ export default function AdminServeGoTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">ServeGo Business Model</h2>
+        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">servego24 Business Model</h2>
         <p className="text-slate-500 text-xs">Lead marketplace configuration, level rules, and marketplace analytics.</p>
       </div>
 

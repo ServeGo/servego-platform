@@ -46,6 +46,7 @@ model User {
   authEvents              AuthEvent[]
   bookingsAsCustomer      Booking[]      @relation("CustomerBookings")
   notifications           Notification[]
+  alerts                  Alert[]
   providerProfile         Provider?
   customerProfile         Customer?
   reviews                 Review[]       @relation("ReviewerReviews")
@@ -60,7 +61,7 @@ model Customer {
   id        String   @id @default(cuid())
   userId    String   @unique
   address   String
-  pincode   String
+  pincode   String?
   preferences Json    @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -88,6 +89,25 @@ model Notification {
   @@index([userId, createdAt])
 
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// Temporary, action-required prompts (e.g. "new lead offered", "quotation
+// received"). An alert lives on the backend only until the recipient reviews
+// it — reviewing DELETES the row (see alertService.reviewAlert), so alerts are
+// read-once by design and never accumulate into history like notifications.
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("SYSTEM")
+  data      Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model Ticket {
@@ -207,6 +227,7 @@ model Service {
   name           String
   nameNormalized String?        @unique
   description    String?
+  image          String?
 
   popularIssues  Json           @default("[]")
   isHidden       Boolean        @default(false)
@@ -315,6 +336,10 @@ model Booking {
   // Independent of the booking state machine so tracking UX stays decoupled from
   // the CONFIRMED/ONGOING/COMPLETED status flow.
   providerPhase         String?
+
+  // How the provider signalled arrival: 'gps' (auto-detected within radius) or
+  // 'manual' (GPS unavailable — provider confirmed in-app). For audit/disputes.
+  arrivedSource         String?
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

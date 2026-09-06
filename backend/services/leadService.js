@@ -10,6 +10,7 @@ import { refreshProviderReputation } from './providerReputationService.js';
 import { debitWalletAllowNegative } from './walletService.js';
 import { getCommissionTiers, computeCommission, round2 } from './quotationService.js';
 import { normalizeBookingStatus } from '../utils/workflow.js';
+import { consumeAlertsByData } from './alertService.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
@@ -88,7 +89,8 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
           locationAddress: booking.locationAddress,
           city: booking.city,
           instructions: booking.instructions,
-          amount: booking.amount
+          amount: booking.amount,
+          providerPhase: booking.providerPhase
         }
       : null,
     provider: provider
@@ -100,8 +102,8 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
 /**
  * Rank a list of eligible providers using the recommended priority order:
  * Distance → Rating → Provider Level → Acceptance Rate → Cancellation Rate →
- * Response Rate → Experience → Reviews → Service Fee, with Premium-before-
- * General as the final tie-breaker and a deterministic createdAt fallback.
+ * Response Rate → Experience → Reviews → Service Fee, with a deterministic
+ * createdAt fallback.
  */
 function rankProviders(providers, distanceMap) {
   return [...providers].sort((a, b) => {
@@ -143,8 +145,6 @@ function rankProviders(providers, distanceMap) {
     const fb = Number(b.serviceFee ?? 0);
     if (fa !== fb) return fa - fb;
 
-    if (a.sector !== b.sector) return a.sector === 'PREMIUM' ? -1 : 1;
-
     return new Date(a.createdAt) - new Date(b.createdAt);
   });
 }
@@ -152,11 +152,19 @@ function rankProviders(providers, distanceMap) {
 /**
  * Find providers eligible for a new/transferred lead.
  *
- * Eligibility (rule 11): approved (account ACTIVE + verified), available (online
- * + accepting bookings), correct category + sector, inside the provider's
- * service radius (rule 6), not in cooldown, not busy with an active job.
+ * Eligibility criteria (rule 11):
+ *   - approved — account ACTIVE + verified,
+ *   - available — online + accepting bookings,
+ *   - has the service REGISTERED/approved (`ProviderService` link for the
+ *     requested service — the legacy `provider.category` fallback is removed,
+ *     a provider is only matchable for a service they actually registered),
+ *   - inside the provider's service radius (`maxRadiusKm` vs. customer pin),
+ *   - not in cooldown, not busy with an active job,
+ *   - wallet balance >= 0 — a negative balance blocks new leads until cleared.
+ *
  * Providers receive leads without any subscription or quota blockers (rule 3).
- * Returns providers sorted by the ranking algorithm (rule 7).
+ * Returns providers sorted by the ranking algorithm (rule 7), each annotated
+ * with the customer distance (`distanceKm`) so callers can persist it.
  *
  * The pipeline is "progressively cheaper":
  *   1. PostgreSQL does the filtering — every hard eligibility rule (including
@@ -201,18 +209,12 @@ export async function findEligibleProviders({
     acceptingBookings: true,
     // Not busy with an active job.
     bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
-    ...(serviceId
-      ? { providerServices: { some: { serviceId } } }
-      : {
-          OR: [
-            { category: { equals: serviceCategory, mode: 'insensitive' } },
-            {
-              providerServices: {
-                some: { service: { name: { equals: serviceCategory, mode: 'insensitive' } } }
-              }
-            }
-          ]
-        })
+    // The requested service must be registered (approved `ProviderService`).
+    providerServices: {
+      some: serviceId
+        ? { serviceId }
+        : { service: { name: { equals: serviceCategory, mode: 'insensitive' } } }
+    }
   };
 
   const where = {
@@ -302,14 +304,16 @@ export async function findEligibleProviders({
     return true;
   });
 
-  return rankProviders(eligible, distanceMap);
+  const ranked = rankProviders(eligible, distanceMap);
+  for (const p of ranked) p.distanceKm = distanceMap.get(p.id) ?? null;
+  return ranked;
 }
 
 /** Diagnose why a specific preferred provider is not in the eligible pool. */
 async function diagnoseProvider(providerId, { serviceId = null, serviceCategory = null }, client) {
   const provider = await client.provider.findUnique({
     where: { id: providerId },
-    include: { performance: true, user: { select: { status: true } } }
+    include: { performance: true, user: { select: { status: true, wallet: true } } }
   });
   if (!provider) return { code: 'PROVIDER_NOT_FOUND', message: 'Provider not found.' };
   if (!provider.isVerified) return { code: 'NOT_VERIFIED', message: 'This provider has not been verified yet and cannot accept bookings.' };
@@ -319,27 +323,19 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
   if (provider.isOnline === false || provider.acceptingBookings === false) {
     return { code: 'PROVIDER_UNAVAILABLE', message: 'This provider is not currently accepting new bookings.' };
   }
+  if (provider.user?.wallet && Number(provider.user.wallet.balance) < 0) {
+    return { code: 'WALLET_BELOW_ZERO', message: 'Clear your outstanding balance to start receiving new bookings.' };
+  }
   if (provider.performance?.cooldownUntil && new Date(provider.performance.cooldownUntil) > new Date()) {
     return { code: 'PROVIDER_IN_COOLDOWN', message: 'This provider is temporarily paused due to repeated cancellations.' };
   }
   if (serviceId || serviceCategory) {
-    const categoryMatches = serviceCategory
-      ? String(provider.category || '').trim().toLowerCase() === categoryKey
-      : true;
-    const approved = serviceId
-      ? await client.providerService.findFirst({
-          where: { providerId, serviceId },
-          select: { id: true }
-        })
-      : categoryMatches
-        ? { id: true }
-        : await client.providerService.findFirst({
-            where: {
-              providerId,
-              service: { name: { equals: serviceCategory, mode: 'insensitive' } }
-            },
-            select: { id: true }
-          });
+    const approved = await client.providerService.findFirst({
+      where: serviceId
+        ? { providerId, serviceId }
+        : { providerId, service: { name: { equals: serviceCategory, mode: 'insensitive' } } },
+      select: { id: true }
+    });
     if (!approved) {
       return { code: 'SERVICE_NOT_APPROVED', message: 'This provider is not approved for the requested service.' };
     }
@@ -464,6 +460,7 @@ export async function createBookingWithLead({
         serviceId: serviceId || null,
         serviceCategory,
         status: 'NEW',
+        distanceKm: assignedProvider.distanceKm ?? null,
         notes: notes || null
       }
     });
@@ -660,13 +657,31 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
 
         const responseTimeMs = Date.now() - new Date(lead.createdAt).getTime();
         await recordLeadAccepted(providerId, responseTimeMs, tx);
-        accepted = await tx.lead.findUnique({ where: { id: lead.id } });
+        accepted = await tx.lead.findUnique({
+          where: { id: lead.id },
+          include: { provider: { select: { userId: true } } }
+        });
       }
     }
 
     const booking = await tx.booking.findUnique({ where: { id: bookingId } });
     return { booking, lead: accepted, cancelledProviders };
   });
+
+  // The provider accepting the lead IS their review of the action-required
+  // "new lead" alert — consume it immediately so no orphan row is left behind
+  // (alerts are read-once; see alertService). Never awaited / never throws.
+  if (result?.lead?.id && result?.lead?.provider?.userId) {
+    await consumeAlertsByData({
+      userId: result.lead.provider.userId,
+      type: 'LEAD',
+      key: 'leadId',
+      value: result.lead.id,
+      client
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -740,7 +755,7 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
 
     // Per-booking platform charges take the form of a commission on the
     // accepted quotation total (tiered, admin-configurable). The customer pays
-    // the provider DIRECTLY (cash/offline) — ServeGo is not part of that
+    // the provider DIRECTLY (cash/offline) — servego24 is not part of that
     // exchange — so the platform's 15% cut is charged as a wallet DEBIT to the
     // provider. If the wallet has no cover the balance runs NEGATIVE: that
     // outstanding amount must be cleared before the provider receives any new
@@ -889,7 +904,7 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, e
 
   const updatedLead = await client.lead.update({
     where: { id: leadId },
-    data: { providerId: nextProvider.id, status: 'NEW', expiryTime, transferCount: { increment: 1 } }
+    data: { providerId: nextProvider.id, status: 'NEW', expiryTime, transferCount: { increment: 1 }, distanceKm: nextProvider.distanceKm ?? null }
   });
 
   await recordLeadOffered(nextProvider.id, client);
@@ -1083,6 +1098,16 @@ export async function markLeadViewed({ leadId, providerId, client = prisma }) {
       data: { status: 'VIEWED', actionAt: new Date() }
     });
   }
+  // The provider opening the lead IS their review of the "new lead" alert —
+  // consume it (read-once, advisory, never throws).
+  try {
+    const providerUser = await client.provider?.findUnique?.({ where: { id: providerId }, select: { userId: true } });
+    if (providerUser?.userId) {
+      await consumeAlertsByData({ userId: providerUser.userId, type: 'LEAD', key: 'leadId', value: leadId, client });
+    }
+  } catch {
+    /* alert cleanup is advisory */
+  }
   return client.lead.findUnique({ where: { id: leadId } });
 }
 
@@ -1132,6 +1157,9 @@ export async function listProviderLeads(providerId, client = prisma) {
           city: true,
           instructions: true,
           amount: true,
+          providerPhase: true,
+          serviceLatitude: true,
+          serviceLongitude: true,
           createdAt: true,
           quotations: { orderBy: { createdAt: 'desc' }, take: 1 }
         }
@@ -1140,9 +1168,28 @@ export async function listProviderLeads(providerId, client = prisma) {
     orderBy: { createdAt: 'desc' }
   });
 
-  // Cancelled booking → strip the customer's phone before it leaves the API so
-  // a provider viewing a closed/cancelled lead never sees the number.
+  // The provider inbox consumes a single latest quotation (`booking.quotation`),
+  // matching the customer-side serializer — normalize the array the query
+  // returns into that stable shape and drop the raw list from the payload.
   return leads.map((lead) => {
+    if (lead.booking) {
+      const latest = lead.booking.quotations?.[0] || null;
+      lead.booking = {
+        ...lead.booking,
+        quotation: latest
+          ? {
+              id: latest.id,
+              serviceFee: latest.serviceFee,
+              items: latest.items,
+              totalAmount: latest.totalAmount,
+              status: latest.status,
+              createdAt: latest.createdAt,
+              updatedAt: latest.updatedAt
+            }
+          : null
+      };
+      delete lead.booking.quotations;
+    }
     if (lead.booking?.status === 'CANCELLED' && lead.customer) {
       lead.customer = { ...lead.customer, phone: null };
     }

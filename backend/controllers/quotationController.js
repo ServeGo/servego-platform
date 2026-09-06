@@ -9,7 +9,8 @@ import {
 import {
   notifyQuotationReceived,
   notifyQuotationAccepted,
-  notifyQuotationDeclined
+  notifyQuotationDeclined,
+  notifyNewLead
 } from '../services/notificationService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { buildLeadPayload } from '../services/leadService.js';
@@ -56,14 +57,14 @@ export const QuotationController = {
         return sendApiError(res, 403, 'PROVIDER_BLOCKED', 'Blocked providers cannot manage bookings.');
       }
 
-      const { booking, quotation } = await submitQuotation({
+      const { booking, quotation, created } = await submitQuotation({
         bookingId: id,
         providerId: provider.id,
         items: req.body?.items || []
       });
 
       const io = req.app.get('socketio');
-      await notifyQuotationReceived(io, booking, quotation, provider.userId);
+      await notifyQuotationReceived(io, booking, quotation, provider.userId, { isEdit: !created });
 
       return sendApiSuccess(res, 200, { booking, quotation });
     } catch (err) {
@@ -113,9 +114,17 @@ export const QuotationController = {
       const providerUserId = await getProviderUserId(result.booking?.providerId);
 
       if (result.nextProvider && result.booking) {
+        const reoffered = result.providers?.length ? result.providers : [result.nextProvider];
         const payload = buildLeadPayload(result.lead, result.booking, result.nextProvider);
         await notifyQuotationDeclined(io, result.booking, result.quotation, providerUserId, false);
         if (io) {
+          // Real-time re-offers — same broadcast pattern as a fresh booking:
+          // every eligible provider gets a `newLead` event; first-accept-wins.
+          void Promise.allSettled(
+            reoffered.map((provider) =>
+              notifyNewLead(io, provider.user?.id, buildLeadPayload(result.lead, result.booking, provider))
+            )
+          );
           io.to(`user:${result.booking.customerId}`).emit('booking:statusChanged', { bookingId: result.booking.id, status: 'PENDING' });
         }
         return sendApiSuccess(res, 200, { ...result, payload });

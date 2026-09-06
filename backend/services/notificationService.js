@@ -1,5 +1,6 @@
 import prisma from '../prisma/client.js';
 import { enqueueJob, isQueueEnabled } from './queue/queueService.js';
+import { createAlert, replaceAlertsByData } from './alertService.js';
 
 function generateNotificationId() {
   return `ntf_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
@@ -124,13 +125,22 @@ export async function notifyServiceDenied(providerUserId, serviceName, reason) {
 
 /**
  * Notify the customer that a provider submitted a quotation for a CONFIRMED
- * booking — prompt them to confirm or cancel it.
+ * booking — prompt them to confirm or cancel it. When the provider EDITS an
+ * already-submitted quotation (`isEdit`), the previous unread "Quotation
+ * Received" alert for the same booking is superseded (deleted + replaced) so
+ * the customer never stacks duplicates, and the copy reads "Quotation Updated".
  */
-export async function notifyQuotationReceived(io, booking, quotation, providerUserId) {
+export async function notifyQuotationReceived(io, booking, quotation, providerUserId, { isEdit = false } = {}) {
+  const amount = quotation.totalAmount;
+  const title = isEdit ? 'Quotation Updated' : 'Quotation Received';
+  const message = isEdit
+    ? `Your provider updated their quotation to ₹${amount}. Review it to confirm or cancel.`
+    : `Your provider has submitted a quotation of ₹${amount}. Review it to confirm or cancel.`;
+
   const notification = await createNotification(
     booking.customerId,
-    'Quotation Received',
-    `Your provider has submitted a quotation of ₹${quotation.totalAmount}. Review it to confirm or cancel.`,
+    title,
+    message,
     'BOOKING'
   );
   emitToUserRoom(io, booking.customerId, 'notification', notification);
@@ -144,6 +154,22 @@ export async function notifyQuotationReceived(io, booking, quotation, providerUs
       });
     }
   }
+  // An edit supersedes the previous unread quotation alert for this booking —
+  // the customer sees one current alert, never a stacked "Received" list.
+  if (isEdit) {
+    await replaceAlertsByData({ userId: booking.customerId, type: 'QUOTATION', key: 'bookingId', value: booking.id, io });
+  }
+  // Action-required alert: the customer must confirm or cancel the quotation.
+  await createAlert({
+    userId: booking.customerId,
+    title,
+    message: isEdit
+      ? `${booking.serviceCategory || 'Your provider'} updated their quotation to ₹${amount}. Confirm it to start work or ask for another provider.`
+      : `${booking.serviceCategory || 'Your provider'} submitted a quotation of ₹${amount}. Confirm it to start work or ask for another provider.`,
+    type: 'QUOTATION',
+    data: { bookingId: booking.id, quotationId: quotation.id, totalAmount: amount },
+    io
+  });
 }
 
 /**
@@ -179,6 +205,18 @@ export async function notifyQuotationDeclined(io, booking, quotation, providerUs
       bookingId: booking.id, quotation: { id: quotation.id, totalAmount: quotation.totalAmount, status: quotation.status }
     });
   }
+  // Action-required alert: when the customer picked "find another provider",
+  // they are waiting for a fresh offer to confirm.
+  if (!cancelBooking) {
+    await createAlert({
+      userId: booking.customerId,
+      title: 'Finding You Another Provider',
+      message: `Your ${booking.serviceCategory || 'service'} request is being re-offered to other providers. Keep an eye on your inbox.`,
+      type: 'BOOKING',
+      data: { bookingId: booking.id, quotationId: quotation.id },
+      io
+    });
+  }
 }
 
 /**
@@ -195,7 +233,7 @@ export async function notifyReviewPublished(userId) {
 }
 
 // ============================================================
-// ServeGo Business Model — Lead / Promotion events
+// servego24 Business Model — Lead / Promotion events
 // ============================================================
 
 /**
@@ -222,6 +260,15 @@ export async function notifyNewLead(io, providerUserId, leadPayload) {
     emitToUserRoom(io, providerUserId, 'newLead', leadPayload ?? notification);
     emitToUserRoom(io, providerUserId, 'notification', notification);
   }
+  // Action-required alert: the provider must accept or decline the offer.
+  await createAlert({
+    userId: providerUserId,
+    title: 'New Booking Request',
+    message: `A new ${leadPayload?.serviceCategory || 'service'} request has arrived in your inbox. Accept it before it expires.`,
+    type: 'LEAD',
+    data: { leadId: leadPayload?.leadId, bookingId: leadPayload?.bookingId, serviceCategory: leadPayload?.serviceCategory },
+    io
+  });
   return notification;
 }
 
@@ -243,7 +290,7 @@ export async function notifyLeadReminder(io, providerUserId, payload) {
 
 /** Provider accepted the lead — inform the customer. */
 export async function notifyLeadAccepted(io, customerId, payload) {
-  return pushNotification(
+  const notification = await pushNotification(
     io,
     customerId,
     'Booking Confirmed',
@@ -252,6 +299,17 @@ export async function notifyLeadAccepted(io, customerId, payload) {
     'leadAccepted',
     payload
   );
+  // Action-required alert: the customer should watch for the provider's
+  // quotation and confirm or cancel it.
+  await createAlert({
+    userId: customerId,
+    title: 'Booking Confirmed',
+    message: `Your ${payload?.booking?.serviceCategory || 'service'} request was accepted by ${payload?.provider?.name || 'a provider'}. Review the quotation when it arrives.`,
+    type: 'BOOKING',
+    data: { bookingId: payload?.booking?.id ?? payload?.bookingId, providerId: payload?.provider?.id },
+    io
+  });
+  return notification;
 }
 
 /** Provider rejected the lead — inform the customer a new provider is being found. */

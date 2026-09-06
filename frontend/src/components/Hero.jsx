@@ -19,7 +19,7 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
         </h1>
         
         <p className="mt-5 text-slate-300 text-sm sm:text-base max-w-2xl font-medium leading-relaxed">
-          Search the catalog and share your location — ServeGo broadcasts your request to every eligible
+          Search the catalog and share your location — servego24 broadcasts your request to every eligible
           specialist in your area, and the first to accept gets the job. Verified providers, live tracking,
           and admin-backed support.
         </p>

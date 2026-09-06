@@ -9,7 +9,7 @@ import { getErrorInfo } from '../utils/errorMessages';
 import DashboardHeader from '../components/DashboardHeader';
 import BookingCard from '../components/BookingCard';
 import TicketsView from '../components/TicketsView';
-import NotificationsView from '../components/NotificationsView';
+import AlertsView from '../components/AlertsView';
 import ProfileView from '../components/ProfileView';
 import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
@@ -21,7 +21,8 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const {
     bookings, updateBookingStatus, submitReview, refreshBooking,
     tickets, submitSupportTicket,
-    notifications, markNotificationAsRead, getCustomerLoyaltyTier, sendChatMessage
+    getCustomerLoyaltyTier, sendChatMessage,
+    alerts, reviewAlert, reviewAllAlerts
   } = useData();
 
   const [internalActiveTab, setInternalActiveTab] = useState('bookings');
@@ -86,7 +87,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   // Memoized data
   const userBookings = useMemo(() => bookings.filter(b => b.customerId === currentUser?.id), [bookings, currentUser]);
   const userTickets = useMemo(() => tickets.filter(t => t.email === currentUser?.email), [tickets, currentUser]);
-  const userNotifications = useMemo(() => notifications.filter(n => n.userId === currentUser?.id), [notifications, currentUser]);
+  const userAlerts = useMemo(() => alerts.filter(a => a.userId === currentUser?.id), [alerts, currentUser]);
 
   const [permanentCount, setPermanentCount] = useState(0);
   const fetchPermanentCount = useCallback(async () => {
@@ -169,10 +170,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
   const handleSaveProfile = (form) => updateUserProfile(currentUser?.id, form);
 
-  const handleMarkAllRead = () => {
-    userNotifications.filter(n => !n.read).forEach(n => markNotificationAsRead(n.id));
-  };
-
   const handleCopyCode = () => {
     const code = currentUser?.referralCode || `SERVEGO-CUST-${currentUser?.id.substring(currentUser?.id.length - 3).toUpperCase()}`;
     navigator.clipboard.writeText(code);
@@ -206,7 +203,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           counts={{
             bookings: userBookings.length,
             tickets: userTickets.length,
-            notifications: userNotifications.length,
+            alerts: userAlerts.length,
             requests: permanentCount
           }}
         />
@@ -238,10 +235,10 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         )}
 
         {activeTab === 'notifications' && (
-          <NotificationsView 
-            notifications={userNotifications}
-            onMarkRead={markNotificationAsRead}
-            onMarkAllRead={handleMarkAllRead}
+          <AlertsView
+            alerts={userAlerts}
+            onReview={reviewAlert}
+            onReviewAll={reviewAllAlerts}
           />
         )}
 

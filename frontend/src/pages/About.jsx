@@ -12,7 +12,7 @@ export const About = () => {
           Uncompromised Quality. At Your Command.
         </h1>
         <p className="text-slate-600 text-base sm:text-lg mt-4 max-w-2xl mx-auto leading-relaxed">
-          ServeGo brings order to everyday home services. Built with the pace and precision of Hyderabad, we connect verified professionals with families—so you get reliable work, clear pricing, and quick resolution.
+          servego24 brings order to everyday home services. Built with the pace and precision of Hyderabad, we connect verified professionals with families—so you get reliable work, clear pricing, and quick resolution.
         </p>
       </div>
 
@@ -73,7 +73,7 @@ export const About = () => {
 
       {/* Core Pillars */}
       <div className="max-w-5xl mx-auto mb-20">
-        <h3 className="text-2xl font-bold text-center text-slate-900 mb-12 font-sans">The Pillars of the ServeGo Ecosystem</h3>
+        <h3 className="text-2xl font-bold text-center text-slate-900 mb-12 font-sans">The Pillars of the servego24 Ecosystem</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-sm">

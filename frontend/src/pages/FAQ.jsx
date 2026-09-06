@@ -12,7 +12,7 @@ export const FAQ = () => {
 
   const customerFAQs= [
     {
-      q: "How does the ServeGo background check work?",
+      q: "How does the servego24 background check work?",
       a: "Every provider on our platform passes a strict check: Aadhaar verification, local police record clearance verification, practical skills tests, and basic service standards. We only list verified experts."
     },
     {
@@ -35,7 +35,7 @@ export const FAQ = () => {
 
   const partnerFAQs= [
     {
-      q: "What is the fee model on ServeGo?",
+      q: "What is the fee model on servego24?",
       a: "We charge a flat 20% on the total service fee to support app server hosting, support, and marketing. The remaining 80% goes directly to your wallet."
     },
     {

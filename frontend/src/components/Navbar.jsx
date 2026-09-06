@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth, useData } from '../context/AppContext';
+import Logo from './Logo';
 import { Menu, X, Bell, User, ChevronDown, LogOut } from 'lucide-react';
 
 export default function Navbar({
@@ -218,11 +219,9 @@ export default function Navbar({
       >
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer select-none">
-            <div className="w-9 h-9 rounded-lg bg-indigo-650 flex items-center justify-center text-white font-extrabold text-sm tracking-tight shadow-md">
-              P⚙
-            </div>
+            <Logo className="w-9 h-9 rounded-lg" />
             <span className="font-extrabold text-white text-base tracking-tight">
-              ServeGo Partner
+              servego24 Partner
             </span>
           </div>
 
@@ -305,16 +304,32 @@ export default function Navbar({
                 onClick={() => setUserDropdownOpen((v) => !v)}
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all focus:outline-none"
               >
+                {currentUser?.avatar ? (
+                  <img src={currentUser.avatar} className="w-6 h-6 rounded-lg object-cover border border-white/10 shrink-0" alt="" />
+                ) : (
+                  <span className="w-6 h-6 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center text-[10px] font-black shrink-0">
+                    {String(currentUser?.name || 'P').substring(0, 1).toUpperCase()}
+                  </span>
+                )}
                 <span className="max-w-[100px] truncate">{currentUser?.name.split(' ')[0]}</span>
                 <ChevronDown className="w-3.5 h-3.5 opacity-60" />
               </button>
 
               {userDropdownOpen && (
                 <div className="absolute right-0 mt-3 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-50 text-xs space-y-2 text-left">
-                  <div className="pb-2 border-b border-slate-100">
-                    <span className="font-bold text-slate-950 block truncate leading-none">{currentUser?.name}</span>
-                    <span className="text-[10px] text-slate-400 font-mono block mt-1 truncate">
-                      {currentUser?.email}
+                  <div className="pb-2 border-b border-slate-100 flex items-center gap-2">
+                    {currentUser?.avatar ? (
+                      <img src={currentUser.avatar} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" alt="" />
+                    ) : (
+                      <span className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-xs font-black shrink-0">
+                        {String(currentUser?.name || 'P').substring(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="font-bold text-slate-950 block truncate leading-none">{currentUser?.name}</span>
+                      <span className="text-[10px] text-slate-400 font-mono block mt-1 truncate">
+                        {currentUser?.email}
+                      </span>
                     </span>
                   </div>
 
@@ -365,11 +380,9 @@ export default function Navbar({
             onClick={() => handleLinkClick('home')}
             className="flex items-center gap-2 cursor-pointer select-none"
           >
-            <div className="w-9 h-9 rounded-lg bg-teal-800 flex items-center justify-center text-white font-extrabold text-sm tracking-tight shadow-xs">
-              S⚙
-            </div>
+            <Logo className="w-9 h-9 rounded-lg" />
             <span className="font-extrabold text-slate-900 text-lg tracking-tight font-sans block h-5 leading-none">
-              ServeGo
+              servego24
             </span>
           </div>
 
@@ -441,15 +454,31 @@ export default function Navbar({
                 onClick={() => setUserDropdownOpen((v) => !v)}
                 className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all shadow-xs focus:outline-none"
               >
+                {currentUser?.avatar ? (
+                  <img src={currentUser.avatar} className="w-6 h-6 rounded-lg object-cover border border-white/20 shrink-0" alt="" />
+                ) : (
+                  <span className="w-6 h-6 rounded-lg bg-slate-700 border border-white/20 flex items-center justify-center text-[10px] font-black shrink-0">
+                    {String(currentUser?.name || 'C').substring(0, 1).toUpperCase()}
+                  </span>
+                )}
                 <span className="max-w-[100px] truncate">{currentUser?.name.split(' ')[0]}</span>
                 <ChevronDown className="w-3.5 h-3.5 opacity-60" />
               </button>
 
               {userDropdownOpen && (
                 <div className="absolute right-0 mt-3 w-52 bg-white border border-slate-200 rounded-xl shadow-xl p-3.5 z-50 text-xs space-y-2 text-left">
-                  <div className="pb-2 border-b border-slate-100 font-semibold">
-                    <span className="font-extrabold text-slate-900 block truncate leading-none">{currentUser?.name}</span>
-                    <span className="text-[9px] text-slate-400 font-mono block mt-1 truncate">{currentUser?.email}</span>
+                  <div className="pb-2 border-b border-slate-100 font-semibold flex items-center gap-2">
+                    {currentUser?.avatar ? (
+                      <img src={currentUser.avatar} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" alt="" />
+                    ) : (
+                      <span className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 text-xs font-black shrink-0">
+                        {String(currentUser?.name || 'C').substring(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="font-extrabold text-slate-900 block truncate leading-none">{currentUser?.name}</span>
+                      <span className="text-[9px] text-slate-400 font-mono block mt-1 truncate">{currentUser?.email}</span>
+                    </span>
                   </div>
 
                   <div className="space-y-1 font-semibold text-slate-700">
@@ -480,11 +509,9 @@ export default function Navbar({
     >
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         <div onClick={() => handleLinkClick('home')} className="flex items-center gap-2 cursor-pointer select-none">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-extrabold text-base tracking-tight shadow-xs">
-            S⚙
-          </div>
+          <Logo className="w-10 h-10 rounded-xl" />
           <div>
-            <span className="font-extrabold text-slate-900 text-lg tracking-tight font-sans block h-5 leading-none">ServeGo</span>
+            <span className="font-extrabold text-slate-900 text-lg tracking-tight font-sans block h-5 leading-none">servego24</span>
             <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-wider mt-0.5">Trusted Local Experts</span>
           </div>
         </div>

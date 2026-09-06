@@ -5,6 +5,7 @@ import { BookingController } from '../controllers/bookingController.js';
 import { QuotationController } from '../controllers/quotationController.js';
 import { TicketController } from '../controllers/ticketController.js';
 import { NotificationController } from '../controllers/notificationController.js';
+import { AlertController } from '../controllers/alertController.js';
 import { ReviewController } from '../controllers/reviewController.js';
 import { ServiceController } from '../controllers/serviceController.js';
 import { AdminProviderServiceController } from '../controllers/adminProviderServiceController.js';
@@ -90,6 +91,11 @@ apiRouter.patch('/notifications/read-all', requireAuth, NotificationController.r
 apiRouter.patch('/notifications/:id/read', requireAuth, NotificationController.read);
 apiRouter.delete('/notifications', requireAuth, NotificationController.clearAll);
 
+// --- Alerts (temporary, deleted once reviewed) ---
+apiRouter.get('/alerts', requireAuth, AlertController.getMine);
+apiRouter.delete('/alerts/:id', requireAuth, AlertController.review);
+apiRouter.delete('/alerts', requireAuth, AlertController.reviewAll);
+
 // --- Support Tickets ---
 apiRouter.get('/tickets', requireAuth, TicketController.getAll);
 apiRouter.post('/tickets', requireAuth, validate(createAuthenticatedTicketValidation), TicketController.create);
@@ -145,7 +151,7 @@ apiRouter.patch('/admin/providers/:id/status', requireAuth, requireRole('admin')
 // --- Image Upload (optionalAuth so providers can upload during signup) ---
 apiRouter.post('/images/upload', optionalAuth, uploadImage.single('image'), ImageController.upload);
 
-// --- Leads (ServeGo business model) ---
+// --- Leads (servego24 business model) ---
 apiRouter.get('/leads', requireAuth, LeadController.getMine);
 apiRouter.get('/leads/:id', requireAuth, LeadController.getById);
 apiRouter.patch('/leads/:id/view', requireAuth, requireRole('provider'), LeadController.view);

@@ -5,7 +5,7 @@ export default function DashboardHeader({ user, activeTab, setActiveTab, counts 
     { id: 'bookings', label: `My Bookings (${counts.bookings})` },
     { id: 'requests', label: `Requests (${counts.requests})` },
     { id: 'tickets', label: `Help Tickets (${counts.tickets})` },
-    { id: 'notifications', label: `Alerts (${counts.notifications})` },
+    { id: 'notifications', label: `Alerts (${counts.alerts})` },
     { id: 'wallet', label: '💰 Wallet' },
     { id: 'profile', label: 'My Profile' }
   ];
@@ -13,15 +13,23 @@ export default function DashboardHeader({ user, activeTab, setActiveTab, counts 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs mb-8 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center text-left">
       <div className="flex gap-4 items-center">
-        <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-extrabold text-base border border-indigo-500/20">
-          {user?.name?.substring(0, 2).toUpperCase() || 'CU'}
-        </div>
+        {user?.avatar ? (
+          <img
+            src={user.avatar}
+            alt={`${user?.name || 'User'} avatar`}
+            className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+          />
+        ) : (
+          <div className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center font-extrabold text-base border border-indigo-500/20">
+            {user?.name?.substring(0, 2).toUpperCase() || 'CU'}
+          </div>
+        )}
         <div>
           <span className="text-[9px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded uppercase font-extrabold tracking-wide">
             Active Resident Customer
           </span>
           <h2 className="text-lg font-extrabold text-slate-900 mt-1 leading-none">{user?.name || 'Guest Resident'}</h2>
-          <p className="text-slate-500 text-xs mt-1.5 font-medium">{user?.email} • Joined {user?.joinedDate}</p>
+          <p className="text-slate-500 text-xs mt-1.5 font-medium">{user?.email} • Joined {user?.joinedDate || (user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')}</p>
         </div>
       </div>
 

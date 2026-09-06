@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AppContext';
+import Logo from '../components/Logo';
 import { Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 
@@ -105,11 +106,9 @@ export function Login({ onNavigate }) {
         )}
 
         <div className="text-center mb-8">
-          <div className="inline-flex w-10 h-10 rounded-xl bg-slate-900 items-center justify-center text-white font-extrabold text-lg shadow-sm mb-3">
-            S⚙
-          </div>
+          <Logo className="w-12 h-12 rounded-2xl mx-auto mb-3 shadow-md" />
           <h2 className="text-2xl font-extrabold text-slate-950 tracking-tight font-sans">
-            Sign In to ServeGo
+            Sign In to servego24
           </h2>
           <p className="text-slate-500 text-xs mt-1.5 font-medium leading-relaxed">
             Enter your email and password to log safely into your account.
@@ -127,7 +126,7 @@ export function Login({ onNavigate }) {
               <input
                 type="email"
                 required
-                placeholder="anand.kumar@gmail.com"
+                placeholder="customer@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 focus:border-teal-600 focus:bg-white rounded-lg pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-800 transition-all outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
@@ -185,7 +184,7 @@ export function Login({ onNavigate }) {
           </button>
 
           <div className="text-center mt-6 pt-5 border-t border-slate-100">
-            <span className="text-slate-500 text-xs">New to ServeGo? </span>
+            <span className="text-slate-500 text-xs">New to servego24? </span>
             <button
               type="button"
               onClick={() => onNavigate('signup')}

@@ -57,7 +57,12 @@ export const jobHandlers = {
    * it can block for seconds and the recipient only needs the message once.
    */
   email: async ({ to, subject, text = null, html = null } = {}) => {
-    if (!to || !subject) throw new Error('email job requires "to" and "subject"');
+    // Missing fields is a PERMANENT failure — the payload can never be
+    // delivered and retrying only churns the queue (see queueService
+    // `err.permanent` handling). Dead-letter immediately.
+    if (!to || !subject) {
+      throw Object.assign(new Error('email job requires "to" and "subject"'), { permanent: true });
+    }
     return sendEmail({ to, subject, text, html });
   },
 

@@ -502,7 +502,8 @@ export const BookingController = {
       const result = await markProviderArrived({
         bookingId: req.params.id,
         providerUserId: req.user.id,
-        io: req.app.get('socketio')
+        io: req.app.get('socketio'),
+        source: req.body?.source
       });
       return sendApiSuccess(res, 200, result.payload);
     } catch (err) {

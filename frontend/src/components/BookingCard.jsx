@@ -316,7 +316,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-3">
         <div className="divide-y divide-slate-100">
           <div className="flex items-center justify-between px-4 py-2.5">
-            <span className="text-xs font-bold text-slate-600">ServeGo Service Fee</span>
+            <span className="text-xs font-bold text-slate-600">servego24 Service Fee</span>
             <span className="text-sm font-black text-teal-700">₹{Number(fee).toLocaleString('en-IN')}</span>
           </div>
           {items.length === 0 && (
@@ -383,7 +383,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
               className="mt-0.5 w-4 h-4 accent-teal-600"
             />
             <span className="text-xs font-semibold text-slate-700 leading-snug">
-              Ask ServeGo to find another specialist instead <span className="text-slate-400 font-medium">(₹{Number(fee).toLocaleString('en-IN')} fee still applies — please tell us why)</span>
+              Ask servego24 to find another specialist instead <span className="text-slate-400 font-medium">(₹{Number(fee).toLocaleString('en-IN')} fee still applies — please tell us why)</span>
             </span>
           </label>
           {anotherProvider && (

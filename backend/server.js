@@ -231,7 +231,8 @@ async function bootstrap() {
         const result = await markProviderArrived({
           bookingId: payload?.bookingId,
           providerUserId: socket.userId,
-          io
+          io,
+          source: payload?.source
         });
         if (typeof ack === 'function') ack({ ok: true, data: result.payload });
       } catch (err) {
@@ -264,7 +265,7 @@ async function bootstrap() {
   const PORT = resolvePort(process.env.PORT, 4000);
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log('===================================================');
-    console.log(`🚀 ServeGo Engine fully online on http://0.0.0.0:${PORT}`);
+    console.log(`🚀 servego24 Engine fully online on http://0.0.0.0:${PORT}`);
     console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');

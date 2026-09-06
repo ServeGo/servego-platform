@@ -180,6 +180,25 @@ export const normalizeNotifications = (payload) => {
   return Array.isArray(list) ? list.map(normalizeNotification) : [];
 };
 
+/**
+ * Canonical alert shape. Alerts arrive from `GET /alerts` as
+ * { id, userId, title, message, type, data, createdAt }; every alert that
+ * exists is unreviewed (reviewing deletes it), so `read` is always false.
+ */
+export function normalizeAlert(alert) {
+  if (!alert) return alert;
+  return {
+    ...alert,
+    read: false,
+    timestamp: alert.timestamp || alert.createdAt,
+  };
+}
+
+export const normalizeAlerts = (payload) => {
+  const list = Array.isArray(payload) ? payload : payload?.alerts;
+  return Array.isArray(list) ? list.map(normalizeAlert) : [];
+};
+
 function formatDate(value) {
   if (!value) return '';
   const d = new Date(value);

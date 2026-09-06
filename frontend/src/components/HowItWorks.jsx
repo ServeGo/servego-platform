@@ -32,7 +32,7 @@ export default function HowItWorks() {
           <span className="text-teal-700 font-bold uppercase tracking-[0.25em] text-[11px]">Simple Booking Flow</span>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">From request to completion in four steps</h2>
           <p className="text-slate-500 text-xs sm:text-sm mt-1.5 font-semibold">
-            Pick a service, share the details, and ServeGo broadcasts your job to every eligible specialist in your area.
+            Pick a service, share the details, and servego24 broadcasts your job to every eligible specialist in your area.
           </p>
         </div>
 

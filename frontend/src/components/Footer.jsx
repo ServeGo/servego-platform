@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckCircle2, MapPin, Instagram, Twitter, Linkedin } from 'lucide-react';
+import { MapPin, Instagram, Twitter, Linkedin } from 'lucide-react';
+import Logo from './Logo';
 
 export default function Footer() {
   const cities = [
@@ -21,10 +22,8 @@ export default function Footer() {
         <div className="flex flex-col items-center gap-10 border-b border-slate-800 pb-8 text-center lg:flex-row lg:items-start lg:justify-between lg:gap-16 lg:text-left">
           <div className="flex max-w-md flex-col items-center lg:items-start">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-500/15 text-teal-400 ring-1 ring-inset ring-teal-400/20">
-                <CheckCircle2 className="h-4 w-4" />
-              </span>
-              <p className="text-sm font-extrabold tracking-tight text-white">ServeGo</p>
+              <Logo className="h-8 w-8 rounded-lg" />
+              <p className="text-sm font-extrabold tracking-tight text-white">servego24</p>
             </div>
             <h2 className="mt-5 text-2xl font-extrabold leading-tight tracking-tight text-white">Reliable help, right where you live.</h2>
             <p className="mt-3 leading-relaxed text-slate-500">A verified local marketplace for getting everyday home services done.</p>
@@ -68,7 +67,7 @@ export default function Footer() {
         </div>
 
         <div className="flex flex-col items-center gap-3 text-center text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:text-left">
-          <span>© 2026 ServeGo. All rights reserved.</span>
+          <span>© 2026 servego24. All rights reserved.</span>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <a href="#" className="transition-colors hover:text-teal-400">Privacy policy</a>
             <a href="#" className="transition-colors hover:text-teal-400">Terms of service</a>

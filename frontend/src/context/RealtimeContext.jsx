@@ -38,6 +38,9 @@ export const RealtimeProvider = ({ children }) => {
     fetchServices,
     fetchProviderServiceRequests,
     addLiveNotification,
+    addLiveAlert,
+    removeAlertSilently,
+    clearAlertsSilently,
     patchBookingStatus,
     applyBookingSocketUpdate,
     refreshBooking,
@@ -184,6 +187,19 @@ export const RealtimeProvider = ({ children }) => {
         if (serverTs) advanceWatermark(currentUser.id, { notificationsAfter: serverTs });
       });
 
+      // Temporary alerts (read-once rows). The socket is the fast path — the
+      // DataContext dedupe + the FETCH on mount/reconnect are the reconciliation
+      // path, so a missed event is never silently lost (rule 23).
+      socket.on('alert', (alert) => {
+        if (alert?.userId === currentUser.id) addLiveAlert(alert);
+      });
+      socket.on('alert:reviewed', (payload) => {
+        if (payload?.alertId) removeAlertSilently(payload.alertId);
+      });
+      socket.on('alert:cleared', () => {
+        clearAlertsSilently();
+      });
+
       socket.on('connect', () => {
         setConnectionStatus('online');
         // CRITICAL (rule 23): without this emit the server never runs its
@@ -284,7 +300,7 @@ export const RealtimeProvider = ({ children }) => {
    * REST when the socket is not connected so tracking keeps working in degraded
    * mode. Returns { ok: false, dropped: true } when a tick was filtered out.
    */
-  const shareProviderLocation = useCallback(async (bookingId, latitude, longitude) => {
+  const shareProviderLocation = useCallback(async (bookingId, latitude, longitude, accuracy) => {
     if (!bookingId) return { ok: false, error: 'Booking ID is required.' };
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       return { ok: false, error: 'Valid coordinates are required.' };
@@ -310,6 +326,7 @@ export const RealtimeProvider = ({ children }) => {
               etaMinutes: ack.data.etaMinutes,
               distanceKm: ack.data.distanceKm,
               destination: ack.data.destination,
+              accuracy: accuracy ?? prev[bookingId]?.accuracy ?? null,
               routePolyline: ack.data.routePolyline || null,
               providerPhase: ack.data.providerPhase || prev[bookingId]?.providerPhase || null,
               status: ack.data.status
@@ -336,6 +353,7 @@ export const RealtimeProvider = ({ children }) => {
             etaMinutes: res.data.etaMinutes,
             distanceKm: res.data.distanceKm,
             destination: res.data.destination,
+            accuracy: accuracy ?? prev[bookingId]?.accuracy ?? null,
             routePolyline: res.data.routePolyline || null,
             providerPhase: res.data.providerPhase || prev[bookingId]?.providerPhase || null,
             status: res.data.status
@@ -353,14 +371,14 @@ export const RealtimeProvider = ({ children }) => {
    * Provider signals a dispatch lifecycle step ("on the way" / "arrived").
    * Mirrors shareProviderLocation: socket first, REST fallback.
    */
-  const setProviderDispatchPhase = useCallback(async (bookingId, phase) => {
+  const setProviderDispatchPhase = useCallback(async (bookingId, phase, source) => {
     if (!bookingId) return { ok: false, error: 'Booking ID is required.' };
     const event = phase === 'ARRIVED' ? 'provider:arrived' : 'provider:onTheWay';
     const socket = socketRef?.current;
     if (socket?.connected) {
       try {
         const ack = await new Promise((resolve) => {
-          socket.emit(event, { bookingId }, resolve);
+          socket.emit(event, { bookingId, source }, resolve);
           setTimeout(() => resolve({ ok: false, error: 'tracking:timeout' }), 5000);
         });
         if (ack?.ok && ack?.data) {
@@ -369,6 +387,7 @@ export const RealtimeProvider = ({ children }) => {
             [bookingId]: {
               ...(prev[bookingId] || {}),
               providerPhase: ack.data.providerPhase,
+              arrivedSource: ack.data.arrivedSource,
               status: ack.data.status || prev[bookingId]?.status || null
             }
           }));
@@ -381,13 +400,14 @@ export const RealtimeProvider = ({ children }) => {
     }
     try {
       const path = phase === 'ARRIVED' ? `/bookings/${bookingId}/arrived` : `/bookings/${bookingId}/on-the-way`;
-      const res = await apiClient.post(path, {});
+      const res = await apiClient.post(path, { source });
       if (res.ok && res.data) {
         setLocationUpdates((prev) => ({
           ...prev,
           [bookingId]: {
             ...(prev[bookingId] || {}),
             providerPhase: res.data.providerPhase,
+            arrivedSource: res.data.arrivedSource,
             status: res.data.status || prev[bookingId]?.status || null
           }
         }));

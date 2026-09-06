@@ -82,6 +82,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const [analytics, setAnalytics] = useState(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const load = useCallback(async ({ force = false } = {}) => {
     if (!providerId) return;
@@ -104,7 +105,9 @@ export default function ProviderLevelAnalytics({ providerId }) {
   }, [providerId]);
 
   useEffect(() => {
-    load();
+    // force bypasses the 30s request cache so opening the tab always shows
+    // the live snapshot instead of the dashboard's pre-warmed copy.
+    load({ force: true });
   }, [load]);
 
   // Live refresh when a promotion is pushed to this provider's room.
@@ -116,14 +119,41 @@ export default function ProviderLevelAnalytics({ providerId }) {
     return () => socket.off('promotion', handler);
   }, [socketRef, load]);
 
-  // Analytics — refetch whenever the time range changes.
+  // Resync whenever the provider's bookings change (work completed, accepted,
+  // cancelled...) or a job completes. Also self-heal periodically so the tab
+  // never shows stale numbers while left open.
+  useEffect(() => {
+    const socket = socketRef?.current;
+    const refresh = () => {
+      setRefreshTick((t) => t + 1);
+      load({ force: true }).catch(() => {});
+    };
+    if (socket) {
+      socket.on('bookingStatusChanged', refresh);
+      socket.on('bookingUpdated', refresh);
+      socket.on('jobCompleted', refresh);
+    }
+    const interval = setInterval(() => setRefreshTick((t) => t + 1), 20000);
+    return () => {
+      if (socket) {
+        socket.off('bookingStatusChanged', refresh);
+        socket.off('bookingUpdated', refresh);
+        socket.off('jobCompleted', refresh);
+      }
+      clearInterval(interval);
+    };
+  }, [socketRef, load]);
+
+  // Analytics — refetch whenever the time range changes or bookings change.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       setLoadingAnalytics(true);
       const result = await fetchProviderAnalytics(providerId, timeRange);
       if (!cancelled) {
-        setAnalytics(result);
+        // Keep the last successful snapshot on a transient failure instead of
+        // wiping the charts to zeros, which read as "analytics stopped".
+        if (result) setAnalytics(result);
         setLoadingAnalytics(false);
       }
     };
@@ -135,7 +165,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
     return () => {
       cancelled = true;
     };
-  }, [providerId, timeRange, fetchProviderAnalytics]);
+  }, [providerId, timeRange, refreshTick, fetchProviderAnalytics]);
 
   const handleAcknowledge = async (promotionId) => {
     try {
@@ -201,7 +231,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
             </p>
           </div>
           <button
-            onClick={load}
+            onClick={() => load({ force: true })}
             disabled={loading}
             className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
           >

@@ -195,7 +195,10 @@ export const UserController = {
         confirmPassword,
         address,
         pincode,
-        acceptedTerms
+        category,
+        latitude,
+        longitude,
+        imageUrl
       } = req.body;
 
       // Basic validation
@@ -217,14 +220,20 @@ export const UserController = {
         return sendApiError(res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters and include a lowercase letter and a number', passwordErrors);
       }
 
-      if (role !== 'customer') {
-        return sendApiError(res, 403, 'PUBLIC_PROVIDER_SIGNUP_DISABLED', 'Public provider registration is no longer available');
+      if (role !== 'customer' && role !== 'provider') {
+        return sendApiError(res, 400, 'INVALID_ROLE', 'Account type must be customer or provider');
       }
-      if (!address || !pincode) {
-        return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter your address and pincode');
-      }
-      if (!/^[0-9]{5,6}$/.test(String(pincode))) {
-        return sendApiError(res, 400, 'INVALID_PINCODE', 'Please enter a valid 5-6 digit pincode');
+
+      if (role === 'customer') {
+        if (!address) {
+          return sendApiError(res, 400, 'MISSING_FIELDS', 'Please enter your service address.');
+        }
+        if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+          return sendApiError(res, 400, 'MISSING_FIELDS', 'Please choose your service location on the map.');
+        }
+        if (pincode != null && pincode !== '' && !/^[0-9]{5,6}$/.test(String(pincode))) {
+          return sendApiError(res, 400, 'INVALID_PINCODE', 'Please enter a valid 5-6 digit pincode.');
+        }
       }
 
       const normalizedEmail = String(email).trim().toLowerCase();
@@ -235,7 +244,9 @@ export const UserController = {
 
       const hashedPassword = await bcrypt.hash(password, 12);
       const referralCode = `SERVEGO-${role === 'provider' ? 'PRO' : 'CUST'}-${name.substring(0, 3).toUpperCase().replace(/\s/g, 'X')}${Math.floor(10 + Math.random() * 90)}`;
-      const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
+      const avatar = (imageUrl && String(imageUrl).trim())
+        ? String(imageUrl).trim()
+        : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
       const verificationCode = role === 'customer' ? String(Math.floor(1000 + Math.random() * 9000)) : null;
 
       const newUser = await prisma.user.create({
@@ -247,8 +258,10 @@ export const UserController = {
           password: hashedPassword,
           avatar,
           status: 'ACTIVE',
-          address: role === 'customer' ? (address?.trim() || null) : null,
-          pincode: role === 'customer' ? String(pincode).trim() : null,
+          address: address?.trim() || null,
+          pincode: pincode ? String(pincode).trim() : null,
+          latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
+          longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
           referralCode,
           verificationCode,
           referralsCount: 0,
@@ -256,14 +269,78 @@ export const UserController = {
         }
       });
 
-      const customerProfile = await prisma.customer.create({
-        data: {
-          userId: newUser.id,
-          address: address.trim(),
-          pincode: String(pincode).trim(),
-          preferences: []
-        }
-      });
+      let customerProfile = null;
+      let providerProfile = null;
+
+      if (role === 'customer') {
+        customerProfile = await prisma.customer.create({
+          data: {
+            userId: newUser.id,
+            address: address.trim(),
+            pincode: pincode ? String(pincode).trim() : null,
+            preferences: []
+          }
+        });
+      } else {
+        // New providers start in the GENERAL sector (every provider stays
+        // GENERAL for now) and must be admin-verified with at least one
+        // approved service before they receive leads (see leadService).
+        const primaryCategory = category ? String(category).trim() : 'General';
+        const provider = await prisma.provider.create({
+          data: {
+            userId: newUser.id,
+            category: primaryCategory,
+            sector: 'GENERAL',
+            isOnline: true,
+            acceptingBookings: true,
+            maxRadiusKm: 50,
+            profileComplete: false,
+            isVerified: false,
+            accountStatus: 'ACTIVE',
+            specialties: [],
+            serviceAreas: [],
+            availableDays: [],
+            timeSlots: []
+          }
+        });
+
+        await prisma.user.update({ where: { id: newUser.id }, data: { providerId: provider.id } });
+
+        await prisma.wallet.create({ data: { userId: newUser.id } });
+
+        await prisma.providerLevelHistory.create({
+          data: { providerId: provider.id, level: 'BRONZE', reason: 'INITIAL', completedJobs: 0 }
+        });
+
+        // Kick off the admin approval flow for the primary service so the
+        // profile becomes bookable as soon as the request is approved.
+        const catalogService = await prisma.service.findFirst({
+          where: { name: { equals: primaryCategory, mode: 'insensitive' } },
+          select: { id: true }
+        });
+        await prisma.providerServiceRequest.create({
+          data: {
+            providerId: provider.id,
+            requestedServiceName: primaryCategory,
+            requestedServiceId: catalogService?.id ?? null,
+            description: `${primaryCategory} registration awaiting admin approval.`,
+            status: 'PENDING'
+          }
+        });
+
+        providerProfile = {
+          id: provider.id,
+          category: provider.category,
+          sector: provider.sector,
+          accountStatus: provider.accountStatus,
+          isVerified: provider.isVerified,
+          profileComplete: provider.profileComplete,
+          rating: provider.rating,
+          reviewCount: provider.reviewCount,
+          providerLevel: provider.providerLevel,
+          createdAt: provider.createdAt
+        };
+      }
 
       await prisma.authEvent.create({
         data: {
@@ -288,9 +365,9 @@ export const UserController = {
         address: newUser.address,
         pincode: newUser.pincode,
         verificationCode: newUser.verificationCode,
-        providerId: null,
+        providerId: role === 'provider' ? providerProfile?.id : null,
         customerProfile: customerProfile,
-        providerProfile: null,
+        providerProfile: providerProfile,
         referralCode: newUser.referralCode,
         referredBy: newUser.referredBy,
         referralsCount: newUser.referralsCount,
@@ -449,7 +526,7 @@ export const UserController = {
   updateProfile: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, phone, address, pincode } = req.body;
+      const { name, phone, address, pincode, avatar } = req.body;
 
       if (req.user?.role !== 'admin' && req.user?.id !== id) {
         return sendApiError(res, 403, 'FORBIDDEN', 'You can only update your own profile.');
@@ -466,7 +543,8 @@ export const UserController = {
           name: name?.trim() ?? user.name,
           phone: phone?.trim() ?? user.phone,
           address: address?.trim() ?? user.address,
-          pincode: pincode?.trim() ?? user.pincode
+          pincode: pincode?.trim() ?? user.pincode,
+          avatar: avatar !== undefined && avatar !== null ? String(avatar).trim() || null : user.avatar
         },
         include: {
           customerProfile: true,
