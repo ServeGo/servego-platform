@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Home,
   Inbox,
   Wrench,
   Wallet,
@@ -7,18 +8,17 @@ import {
   Star,
   BarChart3,
   Headphones,
-  User,
   X,
 } from 'lucide-react';
 
-const MORE_TABS = ['reviews', 'level', 'support', 'profile'];
+const MORE_TABS = ['reviews', 'analytics', 'wallet', 'support'];
 
 /**
  * Sticky bottom navigation for the Provider role on mobile (native-app feel).
  * Hidden from tablet/desktop (md+) where the top Navbar handles navigation.
  *
- * Primary items: Leads (badged), Services, Wallet.
- * "More" opens a bottom sheet for Reviews, Performance, Support, Profile.
+ * Primary items: Home, Leads (badged), Services.
+ * "More" opens a bottom sheet for Wallet, Reviews, Level, Support.
  */
 export default function ProviderBottomNav({
   currentPage,
@@ -42,6 +42,13 @@ export default function ProviderBottomNav({
 
   const items = [
     {
+      id: 'home',
+      label: 'Home',
+      icon: Home,
+      isActive: currentPage === 'provider-home',
+      onClick: () => onNavigate('provider-home'),
+    },
+    {
       id: 'leads',
       label: 'Leads',
       icon: Inbox,
@@ -56,20 +63,13 @@ export default function ProviderBottomNav({
       isActive: onDashboard && activeTab === 'services',
       onClick: () => goToTab('services'),
     },
-    {
-      id: 'wallet',
-      label: 'Wallet',
-      icon: Wallet,
-      isActive: onDashboard && activeTab === 'wallet',
-      onClick: () => goToTab('wallet'),
-    },
   ];
 
   const moreItems = [
+    { id: 'wallet', label: 'Wallet', icon: Wallet, onClick: () => goToTab('wallet') },
     { id: 'reviews', label: 'Reviews', icon: Star, onClick: () => goToTab('reviews') },
-    { id: 'level', label: 'Performance', icon: BarChart3, onClick: () => goToTab('level') },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3, onClick: () => goToTab('analytics') },
     { id: 'support', label: 'Support', icon: Headphones, onClick: () => goToTab('support') },
-    { id: 'profile', label: 'Profile', icon: User, onClick: () => goToTab('profile') },
   ];
 
   const moreActive = moreOpen || (onDashboard && MORE_TABS.includes(activeTab));

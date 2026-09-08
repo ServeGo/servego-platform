@@ -5,6 +5,7 @@ import './cursor.css';
 
 import { Home } from './pages/Home';
 import { CustomerHome } from './pages/CustomerHome';
+import { ProviderHome } from './pages/ProviderHome';
 import { About } from './pages/About';
 import { Services } from './pages/Services';
 import { Contact } from './pages/Contact';
@@ -47,7 +48,7 @@ import {
 } from 'lucide-react';
 
 
-const RESTRICTED_ROUTES = ['dashboard-customer', 'dashboard-provider', 'admin', 'customer-home'];
+const RESTRICTED_ROUTES = ['dashboard-customer', 'dashboard-provider', 'admin', 'customer-home', 'provider-home'];
 
 const getAdminTabFromRoute = (routeValue) => {
   const tab = routeValue || 'dashboard';
@@ -73,6 +74,8 @@ const getRoutePath = (page, tab = null) => {
       return '/';
     case 'customer-home':
       return '/customer-home';
+    case 'provider-home':
+      return '/provider-home';
     case 'about':
       return '/about';
     case 'services':
@@ -175,7 +178,7 @@ export function MainLayout() {
   const getDefaultDashboardForRole = (user) => {
     if (!user) return 'login';
     if (user.role === 'admin') return 'admin';
-    if (user.role === 'provider') return 'dashboard-provider';
+    if (user.role === 'provider') return 'provider-home';
     return 'dashboard-customer';
   };
   const isAllowedForCurrentUser = (page, user) => {
@@ -184,6 +187,7 @@ export function MainLayout() {
     if (page === 'dashboard-customer') return user.role === 'customer';
     if (page === 'customer-home') return user.role === 'customer';
     if (page === 'dashboard-provider') return user.role === 'provider';
+    if (page === 'provider-home') return user.role === 'provider';
     if (page === 'admin') return user.role === 'admin';
     return false;
   };
@@ -318,6 +322,8 @@ export function MainLayout() {
         return <Home onNavigate={handlePageTransition} />;
       case 'customer-home':
         return <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerActiveTabExternal(tab); handlePageTransition('dashboard-customer'); }} />;
+      case 'provider-home':
+        return <ProviderHome onGoToTab={(tab) => { setProviderActiveTabExternal(tab); handlePageTransition('dashboard-provider'); }} />;
       case 'about':
         return <About />;
       case 'services':
@@ -795,9 +801,9 @@ export function MainLayout() {
 
       <main className="flex-1">{renderContent()}</main>
 
-      {/* Footer only for public pages and customer dashboard (usually) */}
-      {currentPage !== 'login' && currentPage !== 'signup' && (!currentUser || currentUser.role === 'customer') && (
-        <div className={currentUser?.role === 'customer' ? 'pb-16 md:pb-0' : ''}>
+      {/* Footer for public pages, customer pages, and provider pages */}
+      {currentPage !== 'login' && currentPage !== 'signup' && (!currentUser || currentUser.role === 'customer' || (currentUser.role === 'provider' && (currentPage === 'provider-home' || currentPage === 'dashboard-provider'))) && (
+        <div className={currentUser?.role === 'customer' || currentUser?.role === 'provider' ? 'pb-16 md:pb-0' : ''}>
           <Footer onNavigate={handlePageTransition} />
         </div>
       )}

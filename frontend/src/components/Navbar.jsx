@@ -214,29 +214,43 @@ export default function Navbar({
     return (
       <header
         id="provider-navbar-comp"
-        className="sticky top-0 z-30 bg-slate-900 border-b border-slate-800 text-white"
+        className="sticky top-0 z-30 bg-white border-b border-slate-200"
       >
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer select-none">
             <Logo className="w-9 h-9 rounded-lg" />
-            <span className="font-extrabold text-white text-base tracking-tight">
-              servego24 Partner
+            <span className="font-extrabold text-slate-900 text-lg tracking-tight font-sans block h-5 leading-none">
+              servego24
             </span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-extrabold uppercase tracking-wider text-slate-300">
+          <nav className="hidden md:flex items-center gap-6 text-xs font-extrabold uppercase tracking-wider text-slate-600">
             <button
-              onClick={() => setProviderActiveTab('leads')}
-              className={`hover:text-white cursor-pointer ${
-                providerActiveTab === 'leads' ? 'text-indigo-400 border-b-2 border-indigo-400' : ''
+              onClick={() => handleLinkClick('provider-home')}
+              className={`hover:text-slate-900 cursor-pointer py-1 ${
+                currentPage === 'provider-home' ? 'text-indigo-700 border-b-2 border-indigo-700' : ''
+              }`}
+            >
+              Home
+            </button>
+            <button
+              onClick={() => {
+                setProviderActiveTab('leads');
+                handleLinkClick('dashboard-provider');
+              }}
+              className={`hover:text-slate-900 cursor-pointer py-1 ${
+                currentPage === 'dashboard-provider' ? 'text-indigo-700 border-b-2 border-indigo-700' : ''
               }`}
             >
               Dashboard
             </button>
             <button
-              onClick={() => setProviderActiveTab('reviews')}
-              className={`hover:text-white cursor-pointer ${
-                providerActiveTab === 'reviews' ? 'text-indigo-400 border-b-2 border-indigo-400' : ''
+              onClick={() => {
+                setProviderActiveTab('reviews');
+                handleLinkClick('dashboard-provider');
+              }}
+              className={`hover:text-slate-900 cursor-pointer py-1 ${
+                currentPage === 'dashboard-provider' && providerActiveTab === 'reviews' ? 'text-indigo-700 border-b-2 border-indigo-700' : ''
               }`}
             >
               Reviews
@@ -244,15 +258,15 @@ export default function Navbar({
           </nav>
 
           <div className="flex items-center gap-3">
-            <div className="relative text-slate-800" ref={notifDropdownRef}>
+            <div className="relative" ref={notifDropdownRef}>
               <button
                 onClick={() => setNotifDropdownOpen((v) => !v)}
-                className="p-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 relative focus:outline-none"
+                className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 relative focus:outline-none"
                 aria-label="Notifications"
               >
                 <Bell className="w-4.5 h-4.5" />
                 {unreadNotifications.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border-2 border-slate-900 flex items-center justify-center text-[8px] font-black text-white">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border-2 border-white flex items-center justify-center text-[8px] font-black text-white">
                     {unreadNotifications.length}
                   </span>
                 )}
@@ -298,15 +312,15 @@ export default function Navbar({
               )}
             </div>
 
-            <div className="relative text-slate-850" ref={userDropdownRef}>
+            <div className="relative" ref={userDropdownRef}>
               <button
                 onClick={() => setUserDropdownOpen((v) => !v)}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white border border-white/10 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all focus:outline-none"
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all shadow-xs focus:outline-none"
               >
                 {currentUser?.avatar ? (
-                  <img src={currentUser.avatar} className="w-6 h-6 rounded-lg object-cover border border-white/10 shrink-0" alt="" />
+                  <img src={currentUser.avatar} className="w-6 h-6 rounded-lg object-cover border border-white/20 shrink-0" alt="" />
                 ) : (
-                  <span className="w-6 h-6 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center text-[10px] font-black shrink-0">
+                  <span className="w-6 h-6 rounded-lg bg-slate-700 border border-white/20 flex items-center justify-center text-[10px] font-black shrink-0">
                     {String(currentUser?.name || 'P').substring(0, 1).toUpperCase()}
                   </span>
                 )}

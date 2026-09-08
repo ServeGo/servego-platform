@@ -139,40 +139,40 @@ export default function ProviderWalletAmbassador({ provider }) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        <div className="md:col-span-7 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden">
+        <div className="md:col-span-7 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 rounded-3xl p-5 sm:p-8 text-white relative overflow-hidden">
           <div className="absolute -top-14 -right-14 w-52 h-52 rounded-full bg-teal-500/20 blur-3xl" />
           <div className="absolute -bottom-20 -left-10 w-56 h-56 rounded-full bg-indigo-600/25 blur-3xl" />
-          <div className="absolute right-6 top-6 bg-indigo-500 text-white text-[11px] font-black uppercase px-3 py-1 rounded-full shadow-md">Wallet Credits</div>
+          <div className="absolute right-4 sm:right-6 top-4 sm:top-6 bg-indigo-500 text-white text-[10px] sm:text-[11px] font-black uppercase px-2.5 sm:px-3 py-1 rounded-full shadow-md">Wallet Credits</div>
           <div className="relative z-10">
-          <div className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-widest">
-            <Wallet className="w-4 h-4 text-indigo-400" /> Available Balance
+          <div className="flex items-center gap-2 text-slate-300 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
+            <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400" /> Available Balance
           </div>
-          <div className="mt-3 text-4xl sm:text-5xl font-black">{fmtMoney(balance)}</div>
-          <p className="text-slate-400 text-[11px] font-semibold mt-2">Earnings land here instantly when a booking is completed. Withdraw once approved by the admin.</p>
+          <div className="mt-2 sm:mt-3 text-3xl sm:text-5xl font-black">{fmtMoney(balance)}</div>
+          <p className="text-slate-400 text-[10px] sm:text-[11px] font-semibold mt-1.5 sm:mt-2">Earnings land here instantly when a booking is completed. Withdraw once approved by the admin.</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-8">
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
-              <span className="text-[10px] text-slate-300 font-black uppercase block">Total Earned</span>
-              <span className="text-lg font-black mt-1 block">{fmtMoney(wallet?.totalEarned)}</span>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-6 sm:mt-8">
+            <div className="bg-white/10 border border-white/10 rounded-2xl p-3 sm:p-4">
+              <span className="text-[9px] sm:text-[10px] text-slate-300 font-black uppercase block leading-tight">Total Earned</span>
+              <span className="text-sm sm:text-lg font-black mt-1 sm:mt-1.5 block leading-none truncate">{fmtMoney(wallet?.totalEarned)}</span>
             </div>
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
-              <span className="text-[10px] text-slate-300 font-black uppercase block">Withdrawn</span>
-              <span className="text-lg font-black mt-1 block">{fmtMoney(wallet?.totalWithdrawn)}</span>
+            <div className="bg-white/10 border border-white/10 rounded-2xl p-3 sm:p-4">
+              <span className="text-[9px] sm:text-[10px] text-slate-300 font-black uppercase block leading-tight">Withdrawn</span>
+              <span className="text-sm sm:text-lg font-black mt-1 sm:mt-1.5 block leading-none truncate">{fmtMoney(wallet?.totalWithdrawn)}</span>
             </div>
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-4">
-              <span className="text-[10px] text-slate-300 font-black uppercase block">Ledger Entries</span>
-              <span className="text-lg font-black mt-1 block">{wallet?.transactionCount ?? 0}</span>
+            <div className="bg-white/10 border border-white/10 rounded-2xl p-3 sm:p-4">
+              <span className="text-[9px] sm:text-[10px] text-slate-300 font-black uppercase block leading-tight">Ledger Entries</span>
+              <span className="text-sm sm:text-lg font-black mt-1 sm:mt-1.5 block leading-none truncate">{wallet?.transactionCount ?? 0}</span>
             </div>
           </div>
           </div>
         </div>
 
-        <div className="md:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs">
+        <div className="md:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs flex flex-col">
           <div className="flex items-center gap-2">
             <Send className="w-4 h-4 text-indigo-600" />
             <h4 className="text-lg font-black text-slate-900 leading-none">Request Payout</h4>
           </div>
-          <form onSubmit={submitWithdrawal} className="mt-5 space-y-3">
+          <form onSubmit={submitWithdrawal} className="mt-5 space-y-3 flex-1 flex flex-col">
             <div>
               <label className="text-[10px] uppercase tracking-widest font-black text-slate-400 block mb-1">Amount (₹)</label>
               <input
@@ -241,7 +241,7 @@ export default function ProviderWalletAmbassador({ provider }) {
             <button
               type="submit"
               disabled={submitting || balance < Number(config.minimumWithdrawal || 0)}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-black p-3.5 rounded-xl shadow-sm outline-none transition-all flex items-center justify-center gap-2"
+              className="mt-auto w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-black p-3.5 rounded-xl shadow-sm outline-none transition-all flex items-center justify-center gap-2"
             >
               <Banknote className="w-4 h-4" /> {submitting ? 'Submitting...' : 'Request Withdrawal'}
             </button>
