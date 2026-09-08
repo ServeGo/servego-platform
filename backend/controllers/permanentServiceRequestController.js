@@ -25,6 +25,58 @@ function parseOptionalInt(value) {
 export const PermanentServiceRequestController = {
   create: async (req, res) => {
     try {
+      const requestType = String(req.body.requestType || 'PERMANENT').trim().toUpperCase();
+      if (!['PERMANENT', 'CUSTOM'].includes(requestType)) {
+        return sendApiError(res, 400, 'VALIDATION_ERROR', 'Request type must be PERMANENT or CUSTOM.');
+      }
+
+      const locationAddress = req.body.locationAddress ? String(req.body.locationAddress).trim() : null;
+      const serviceLocation = {
+        locationAddress,
+        serviceLatitude: req.body.serviceLatitude != null ? Number(req.body.serviceLatitude) : null,
+        serviceLongitude: req.body.serviceLongitude != null ? Number(req.body.serviceLongitude) : null
+      };
+
+      if (requestType === 'CUSTOM') {
+        // Custom service request — a service not in the catalog. Only a name
+        // and a description are required; permanent/contract fields stay empty.
+        const customServiceName = String(req.body.customServiceName || '').trim();
+        const customDescription = String(req.body.customDescription || '').trim();
+        if (!customServiceName) {
+          return sendApiError(res, 400, 'VALIDATION_ERROR', 'Service name is required for a custom service request.');
+        }
+        if (!customDescription) {
+          return sendApiError(res, 400, 'VALIDATION_ERROR', 'Please describe the service you need.');
+        }
+
+        const request = await prisma.permanentServiceRequest.create({
+          data: {
+            customerId: req.user.id,
+            requestType: 'CUSTOM',
+            customServiceName,
+            customDescription,
+            serviceCategory: customServiceName,
+            additionalInfo: req.body.additionalInfo ? String(req.body.additionalInfo).trim() : null,
+            status: 'PENDING',
+            ...serviceLocation
+          },
+          include: REQUEST_INCLUDE
+        });
+
+        await notifyPermanentServiceRequestSubmitted(req.user.id, 'CUSTOM');
+        const io = req.app.get('socketio');
+        if (io) {
+          await notifyAdminPermanentServiceRequest(io, {
+            requestId: request.id,
+            serviceCategory: customServiceName,
+            requestType: 'CUSTOM',
+            customerId: req.user.id
+          });
+        }
+
+        return sendApiSuccess(res, 201, request);
+      }
+
       const {
         serviceCategory,
         engagementType,
@@ -32,10 +84,7 @@ export const PermanentServiceRequestController = {
         contractDurationYears,
         contractDurationDays,
         monthlyBudget,
-        additionalInfo,
-        locationAddress,
-        serviceLatitude,
-        serviceLongitude
+        additionalInfo
       } = req.body;
 
       const engagement = String(engagementType || '').trim().toUpperCase();
@@ -62,6 +111,7 @@ export const PermanentServiceRequestController = {
       const request = await prisma.permanentServiceRequest.create({
         data: {
           customerId: req.user.id,
+          requestType: 'PERMANENT',
           serviceCategory: String(serviceCategory || '').trim(),
           engagementType: engagement,
           startDate: parsedStart,
@@ -69,20 +119,19 @@ export const PermanentServiceRequestController = {
           contractDurationDays: contractDays,
           monthlyBudget: budget,
           additionalInfo: additionalInfo ? String(additionalInfo).trim() : null,
-          locationAddress: locationAddress ? String(locationAddress).trim() : null,
-          serviceLatitude: serviceLatitude != null ? Number(serviceLatitude) : null,
-          serviceLongitude: serviceLongitude != null ? Number(serviceLongitude) : null,
-          status: 'PENDING'
+          status: 'PENDING',
+          ...serviceLocation
         },
         include: REQUEST_INCLUDE
       });
 
-      await notifyPermanentServiceRequestSubmitted(req.user.id);
+      await notifyPermanentServiceRequestSubmitted(req.user.id, 'PERMANENT');
       const io = req.app.get('socketio');
       if (io) {
         await notifyAdminPermanentServiceRequest(io, {
           requestId: request.id,
           serviceCategory: request.serviceCategory,
+          requestType: 'PERMANENT',
           customerId: req.user.id
         });
       }
@@ -132,9 +181,10 @@ export const PermanentServiceRequestController = {
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
       const skip = (page - 1) * limit;
-      const { status } = req.query;
+      const { status, requestType } = req.query;
       const where = {};
       if (status) where.status = String(status).toUpperCase();
+      if (requestType) where.requestType = String(requestType).toUpperCase();
 
       const [requests, total] = await Promise.all([
         prisma.permanentServiceRequest.findMany({
@@ -194,10 +244,10 @@ export const PermanentServiceRequestController = {
 
       const io = req.app.get('socketio');
       if (nextStatus === 'APPROVED') {
-        await notifyPermanentServiceRequestApproved(existing.customerId, { requestId: id, assignedProviderId: providerId });
+        await notifyPermanentServiceRequestApproved(existing.customerId, { requestId: id, assignedProviderId: providerId, requestType: existing.requestType });
         if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:approved', { requestId: id, status: 'APPROVED' });
       } else {
-        await notifyPermanentServiceRequestRejected(existing.customerId, { requestId: id, status: 'REJECTED', adminNote: updated.adminNote });
+        await notifyPermanentServiceRequestRejected(existing.customerId, { requestId: id, status: 'REJECTED', adminNote: updated.adminNote, requestType: existing.requestType });
         if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:rejected', { requestId: id, status: 'REJECTED' });
       }
 

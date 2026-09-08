@@ -516,41 +516,46 @@ export async function notifyAdminProviderPromoted(io, payload) {
   return notifyAdmin(io, 'Provider Promoted', 'A provider reached a new level.', { ...payload, type: 'PROVIDER_PROMOTED' });
 }
 
-/** Admin — a customer submitted a permanent/contract service request. */
+/** Admin — a customer submitted a service request (permanent/contract or custom). */
 export async function notifyAdminPermanentServiceRequest(io, payload) {
-  return notifyAdmin(io, 'New Permanent Service Request', 'A customer submitted a permanent/contract service request for admin review.', { ...payload, type: 'PERMANENT_SERVICE_REQUEST' });
+  const label = payload.requestType === 'CUSTOM' ? 'Custom Service Request' : 'Permanent Service Request';
+  return notifyAdmin(io, `New ${label}`, 'A customer submitted a service request for admin review.', { ...payload, type: 'PERMANENT_SERVICE_REQUEST' });
 }
 
-/** Customer — permanent/contract request received by admin. */
-export async function notifyPermanentServiceRequestSubmitted(customerId) {
+/** Customer — service request received by admin. */
+export async function notifyPermanentServiceRequestSubmitted(customerId, requestType = 'PERMANENT') {
   return createNotification(
     customerId,
     'Request Received',
-    'We received your permanent/contract service request. Our team will review it and contact you.',
+    requestType === 'CUSTOM'
+      ? 'We received your custom service request. Our team will review it and contact you.'
+      : 'We received your permanent/contract service request. Our team will review it and contact you.',
     'SERVICE'
   );
 }
 
-/** Customer — permanent/contract request approved (admin assigned a provider). */
+/** Customer — service request approved (admin assigned a provider). */
 export async function notifyPermanentServiceRequestApproved(customerId, payload) {
+  const label = payload.requestType === 'CUSTOM' ? 'custom service request' : 'permanent/contract service request';
   return pushNotification(
     null,
     customerId,
     'Service Request Approved',
-    'Your permanent/contract service request was approved. Our team will be in touch with the assigned specialist.',
+    `Your ${label} was approved. Our team will be in touch with the assigned specialist.`,
     'SERVICE',
     'permanentRequest:approved',
     payload
   );
 }
 
-/** Customer — permanent/contract request rejected by admin. */
+/** Customer — service request rejected by admin. */
 export async function notifyPermanentServiceRequestRejected(customerId, payload) {
+  const label = payload.requestType === 'CUSTOM' ? 'custom service request' : 'permanent/contract service request';
   return pushNotification(
     null,
     customerId,
     'Service Request Update',
-    'Your permanent/contract service request could not be approved. Please check the admin note for details.',
+    `Your ${label} could not be approved. Please check the admin note for details.`,
     'SERVICE',
     'permanentRequest:rejected',
     payload

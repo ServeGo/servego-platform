@@ -58,8 +58,8 @@ export function Login({ onNavigate }) {
           try {
             const intent = JSON.parse(bookingIntentRaw);
             if (intent.catId) {
-              // Navigate back to service-details; the page will resume the modal
-              onNavigate('service-details', intent.catId);
+              // Navigate back to services; the page will resume the modal
+              onNavigate('services');
               return;
             }
           } catch {
@@ -71,7 +71,7 @@ export function Login({ onNavigate }) {
           // redirectParam is like "service-details/Electrician" — parse and navigate
           const parts = redirectParam.replace(/^\//, '').split('/');
           if (parts[0] === 'service-details' && parts[1]) {
-            onNavigate('service-details', decodeURIComponent(parts[1]));
+            onNavigate('services');
             return;
           }
         }

@@ -18,14 +18,14 @@ export default function BookingModal({
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-2xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
         
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
-          <div>
+        <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 mb-6">
+          <div className="min-w-0">
             <h3 className="text-xl font-bold text-slate-900">Temporary Service Booking</h3>
-            <p className="text-slate-500 text-xs font-medium">Your request goes to every eligible specialist in your area</p>
+            <p className="text-slate-500 text-xs font-medium mt-0.5 truncate">Your request goes to every eligible specialist in your area</p>
           </div>
           <button 
             onClick={onClose}
-            className="cursor-pointer p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
+            className="cursor-pointer shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
           >
             Exit
           </button>
@@ -104,9 +104,9 @@ export default function BookingModal({
 
 function BillRow({ label, value }) {
   return (
-    <div className="flex justify-between text-slate-600">
-      <span>{label}</span>
-      <span>{value}</span>
+    <div className="flex items-center justify-between gap-3 text-slate-600">
+      <span className="shrink-0">{label}</span>
+      <span className="flex-1 min-w-0 text-right">{value}</span>
     </div>
   );
 }

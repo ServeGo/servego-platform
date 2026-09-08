@@ -195,7 +195,6 @@ export const UserController = {
         confirmPassword,
         address,
         pincode,
-        category,
         latitude,
         longitude,
         imageUrl
@@ -283,13 +282,13 @@ export const UserController = {
         });
       } else {
         // New providers start in the GENERAL sector (every provider stays
-        // GENERAL for now) and must be admin-verified with at least one
-        // approved service before they receive leads (see leadService).
-        const primaryCategory = category ? String(category).trim() : 'General';
+        // GENERAL for now). They request their own service(s) from their
+        // dashboard after signup; a provider only receives leads once at
+        // least one service is admin-approved (see leadService).
         const provider = await prisma.provider.create({
           data: {
             userId: newUser.id,
-            category: primaryCategory,
+            category: 'General',
             sector: 'GENERAL',
             isOnline: true,
             acceptingBookings: true,
@@ -310,22 +309,6 @@ export const UserController = {
 
         await prisma.providerLevelHistory.create({
           data: { providerId: provider.id, level: 'BRONZE', reason: 'INITIAL', completedJobs: 0 }
-        });
-
-        // Kick off the admin approval flow for the primary service so the
-        // profile becomes bookable as soon as the request is approved.
-        const catalogService = await prisma.service.findFirst({
-          where: { name: { equals: primaryCategory, mode: 'insensitive' } },
-          select: { id: true }
-        });
-        await prisma.providerServiceRequest.create({
-          data: {
-            providerId: provider.id,
-            requestedServiceName: primaryCategory,
-            requestedServiceId: catalogService?.id ?? null,
-            description: `${primaryCategory} registration awaiting admin approval.`,
-            status: 'PENDING'
-          }
         });
 
         providerProfile = {

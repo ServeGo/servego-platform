@@ -665,18 +665,27 @@ model ProviderLevelHistory {
   @@index([changedAt])
 }
 
-// Permanent / contract service requests — customer submits details, admin
-// reviews and assigns a provider (no direct customer-provider interaction).
+// Service requests — customer submits details, admin reviews and assigns a
+// provider (no direct customer-provider interaction). Covers two request types
+// under one flow:
+//   PERMANENT — permanent/contract engagement (name, start date, budget).
+//   CUSTOM    — a service not in the catalog; only a service name + description.
 model PermanentServiceRequest {
   id                     String                     @id @default(cuid())
   customerId             String
-  serviceCategory        String
-  engagementType         PermanentEngagementType     @default(CONTRACT)
-  startDate              DateTime
+  requestType            ServiceRequestType          @default(PERMANENT)
+  serviceCategory        String?
+  engagementType         PermanentEngagementType?    @default(CONTRACT)
+  startDate              DateTime?
   contractDurationYears  Int?
   contractDurationDays   Int?
-  monthlyBudget          Float
+  monthlyBudget          Float?
   additionalInfo         String?
+
+  // Custom service request fields (requestType = CUSTOM).
+  customServiceName      String?
+  customDescription      String?
+
   status                 PermanentRequestStatus      @default(PENDING)
   assignedProviderId     String?
   adminNote              String?
@@ -696,6 +705,11 @@ model PermanentServiceRequest {
 
   customer         User     @relation("CustomerServiceRequests", fields: [customerId], references: [id])
   assignedProvider Provider? @relation("PermanentServiceAssignments", fields: [assignedProviderId], references: [id])
+}
+
+enum ServiceRequestType {
+  PERMANENT
+  CUSTOM
 }
 
 enum PermanentEngagementType {

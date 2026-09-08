@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useAuth, useData } from '../context/AppContext';
+import React, { useState } from 'react';
+import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import Logo from '../components/Logo';
 import LocationPicker from '../components/LocationPicker';
@@ -9,7 +9,6 @@ import {
   Phone,
   User,
   Sparkles,
-  Wrench,
   Camera,
   ImagePlus,
   MapPin,
@@ -34,7 +33,6 @@ function FieldIcon({ icon: Icon }) {
 
 export function Signup({ onNavigate }) {
   const { registerUser } = useAuth();
-  const { services } = useData();
 
   const [role, setRole] = useState('customer');
   const isProvider = role === 'provider';
@@ -47,8 +45,6 @@ export function Signup({ onNavigate }) {
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
   const [locationError, setLocationError] = useState('');
-
-  const [category, setCategory] = useState('');
 
   const [imageUrl, setImageUrl] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
@@ -64,19 +60,6 @@ export function Signup({ onNavigate }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  const serviceOptions = useMemo(() => {
-    const seen = new Set();
-    const opts = [];
-    for (const s of services || []) {
-      const n = String(s?.name || '').trim();
-      if (n && !seen.has(n.toLowerCase())) {
-        seen.add(n.toLowerCase());
-        opts.push(n);
-      }
-    }
-    return opts.sort((a, b) => a.localeCompare(b));
-  }, [services]);
 
   const uploadAvatar = async (file) => {
     if (!file) return;
@@ -131,11 +114,6 @@ export function Signup({ onNavigate }) {
     return null;
   };
 
-  const validateProvider = () => {
-    if (!category.trim()) return 'Please select the service you provide.';
-    return null;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -152,14 +130,6 @@ export function Signup({ onNavigate }) {
       setErrorMsg('Please complete your service location.');
       return;
     }
-    if (isProvider) {
-      const providerError = validateProvider();
-      if (providerError) {
-        setErrorMsg(providerError);
-        return;
-      }
-    }
-
     setIsLoading(true);
 
     const payload = {
@@ -175,9 +145,6 @@ export function Signup({ onNavigate }) {
       acceptedTerms,
       ...(imageUrl ? { imageUrl } : {})
     };
-    if (isProvider) {
-      payload.category = category.trim();
-    }
 
     const result = await registerUser(payload);
 
@@ -190,7 +157,7 @@ export function Signup({ onNavigate }) {
 
     setSuccessMsg(
       isProvider
-        ? `Welcome aboard, ${fullName.split(' ')[0]}! Your professional account is pending admin verification. You'll start receiving leads once a service is approved.`
+        ? `Welcome aboard, ${fullName.split(' ')[0]}! Your professional account is pending admin verification. Request a service from your dashboard to start receiving work.`
         : `Welcome to servego24, ${fullName.split(' ')[0]}! Your account has been registered successfully. Getting things ready...`
     );
 
@@ -353,26 +320,6 @@ export function Signup({ onNavigate }) {
               </div>
             </div>
 
-            {isProvider && (
-              <div>
-                <label className={labelClass}>Service You Provide *</label>
-                <div className="relative">
-                  <FieldIcon icon={Wrench} />
-                  <select
-                    required
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Select your service</option>
-                    {serviceOptions.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
             {/* Mandatory location for both roles */}
             <div>
               <label className={labelClass}>
@@ -402,8 +349,8 @@ export function Signup({ onNavigate }) {
               <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-[11px] text-teal-800 font-medium leading-relaxed flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  Admin verifies every professional before they appear in search. You'll be notified once your profile
-                  and service are approved.
+                  Admin verifies every professional before they appear in search. After signup, request your
+                  service from your dashboard — you'll be notified once it's approved.
                 </span>
               </div>
             )}

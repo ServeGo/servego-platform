@@ -41,10 +41,10 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   const alertCount = (alerts || []).filter((a) => a.userId === currentUser?.id).length;
 
   const goBook = (serviceId) => {
-    // Same intent handoff the Services page uses: the service page auto-opens
-    // the temporary/permanent choice for this category.
+    // Intent handoff to the Services page: it auto-opens the temporary/permanent
+    // choice for this category on arrival.
     sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId: serviceId }));
-    onNavigate('service-details', serviceId);
+    onNavigate('services');
   };
 
   const quickTiles = [

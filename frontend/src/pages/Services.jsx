@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, PackageSearch, SearchX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
 
 // Components
 import ServiceHeader from '../components/ServiceHeader';
 import ServiceCard from '../components/ServiceCard';
 import SkeletonLoader from '../components/SkeletonLoader';
+import ServiceRequestChoice from '../components/ServiceRequestChoice';
+import ServiceEngagementChoice from '../components/ServiceEngagementChoice';
+import PermanentServiceRequestModal from '../components/PermanentServiceRequestModal';
+import CustomServiceRequestModal from '../components/CustomServiceRequestModal';
+import PermanentRequestSuccess from '../components/PermanentRequestSuccess';
+import BookingModal from '../components/BookingModal';
+import BookingSuccess from '../components/BookingSuccess';
 
 // Live search only fires after the user pauses typing (see the search effect
 // below) — typing "plum → plumb → plumbe → plumber" sends one request, not four.
@@ -23,7 +30,7 @@ export const Services = ({ onNavigate }) => {
     selectedArea,
     setArea,
   } = useUI();
-  const { searchServices } = useData();
+  const { searchServices, createBooking, bookings, getCustomerLoyaltyTier } = useData();
   const { currentUser } = useAuth();
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
@@ -31,6 +38,25 @@ export const Services = ({ onNavigate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const gridRef = useRef(null);
+
+  // Request-a-service flow (can't find what you need)
+  const [showRequestChoice, setShowRequestChoice] = useState(false);
+  const [showPermanentRequest, setShowPermanentRequest] = useState(false);
+  const [showCustomRequest, setShowCustomRequest] = useState(false);
+  const [requestSuccess, setRequestSuccess] = useState(null);
+
+  // Booking flow ("Book Now" on a service card) — opened directly on this page,
+  // there is no separate service-details page anymore.
+  const [bookingServiceId, setBookingServiceId] = useState(null);
+  const [showEngagementChoice, setShowEngagementChoice] = useState(false);
+  const [permanentServiceName, setPermanentServiceName] = useState('');
+  const [bookingStep, setBookingStep] = useState(0); // 0: browse, 1: checkout, 2: processing, 3: success
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
+  const [instructions, setInstructions] = useState('');
+  const [errorText, setErrorText] = useState('');
+  const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
 
   const debounceTimerRef = useRef(null);
   const searchAbortRef = useRef(null);
@@ -93,20 +119,140 @@ export const Services = ({ onNavigate }) => {
 
   const handleSelectCategory = (catId) => {
     setCategory(catId);
-    // "Book Now" goes straight into the booking flow: the service page auto-opens
-    // the temporary/permanent choice and the request is broadcast to all eligible
-    // specialists — providers are never listed for selection.
-    sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId }));
     if (currentUser?.role === 'customer') {
-      onNavigate('service-details', catId);
+      // Open the temporary/permanent choice right here — no navigation needed.
+      setBookingServiceId(catId);
+      setShowEngagementChoice(true);
     } else {
+      // Store the intent so the login page can resume it after sign-in.
+      sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId }));
       onNavigate('login');
+    }
+  };
+
+  // Resume a stored booking intent (set when an unauthenticated user tapped
+  // Book Now, or from the customer home) — open the engagement choice straight
+  // away on this page.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'customer') return;
+    const raw = sessionStorage.getItem('servego_booking_intent');
+    if (!raw) return;
+    try {
+      const intent = JSON.parse(raw);
+      sessionStorage.removeItem('servego_booking_intent');
+      if (intent.catId) {
+        setCategory(intent.catId);
+        setBookingServiceId(intent.catId);
+        setShowEngagementChoice(true);
+      }
+    } catch {
+      sessionStorage.removeItem('servego_booking_intent');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  // Best-effort service name: prefer the catalog entry, fall back to a readable
+  // form of the id (matching the old schedule/details page behaviour).
+  const resolveServiceName = (id) => {
+    const found = (results || []).find(
+      (s) => String(s.id) === String(id) || String(s.name || '').toLowerCase() === String(id).toLowerCase()
+    );
+    if (found?.name) return found.name;
+    return id ? String(id).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Service';
+  };
+  const bookingServiceName = bookingServiceId ? resolveServiceName(bookingServiceId) : '';
+
+  const customerCompletedBookingsCount = (bookings || []).filter(
+    (b) => b.customerId === currentUser?.id && b.status === 'completed'
+  ).length;
+  const loyaltyTier = getCustomerLoyaltyTier(customerCompletedBookingsCount);
+
+  const handleChooseTemporary = () => {
+    setShowEngagementChoice(false);
+    setAddress('');
+    setLatitude(null);
+    setLongitude(null);
+    setInstructions('');
+    setErrorText('');
+    setBookingStep(1);
+  };
+
+  const handleChoosePermanent = () => {
+    setShowEngagementChoice(false);
+    setBookingServiceId(null);
+    setPermanentServiceName(bookingServiceName);
+    setShowPermanentRequest(true);
+  };
+
+  const handleCloseEngagementChoice = () => {
+    setShowEngagementChoice(false);
+    setBookingServiceId(null);
+  };
+
+  const handleCompleteCheckout = async (e) => {
+    e.preventDefault();
+
+    if (!latitude || !longitude || !address.trim()) {
+      setErrorText('Please select your service location on the map');
+      return;
+    }
+
+    setBookingStep(2);
+
+    try {
+      // No providerId — the backend broadcasts this request to every eligible
+      // specialist and the first one to accept gets the job.
+      const created = await createBooking({
+        serviceCategory: bookingServiceName,
+        locationAddress: address,
+        serviceLatitude: latitude,
+        serviceLongitude: longitude,
+        city: 'Hyderabad',
+        instructions
+      });
+
+      if (!created || created.error) {
+        setErrorText(created?.error || 'Could not complete the booking. Please try again.');
+        setBookingStep(1);
+        return;
+      }
+
+      if (!created.id) {
+        setErrorText('Could not complete the booking. Please try again.');
+        setBookingStep(1);
+        return;
+      }
+
+      setConfirmedBookingDetails(created);
+      setBookingStep(3);
+    } catch {
+      setErrorText('Could not complete the booking. Please try again.');
+      setBookingStep(1);
     }
   };
 
   const handleIssueClick = (issue) => {
     setInputSearch(issue);
     setSearchQuery(issue);
+  };
+
+  const handleRequestService = () => setShowRequestChoice(true);
+
+  const handleRequestPermanent = () => {
+    setShowRequestChoice(false);
+    setPermanentServiceName('');
+    setShowPermanentRequest(true);
+  };
+
+  const handleRequestCustom = () => {
+    setShowRequestChoice(false);
+    setShowCustomRequest(true);
+  };
+
+  const handleRequestSuccess = (request) => {
+    setShowPermanentRequest(false);
+    setShowCustomRequest(false);
+    setRequestSuccess(request);
   };
 
   // --- Client-side pagination ---------------------------------------------
@@ -139,6 +285,77 @@ export const Services = ({ onNavigate }) => {
   return (
     <div id="services-page" className="bg-slate-50 min-h-screen py-6 sm:py-12 px-4">
       <div className="max-w-6xl mx-auto">
+        {showRequestChoice && (
+          <ServiceRequestChoice
+            onPermanent={handleRequestPermanent}
+            onCustom={handleRequestCustom}
+            onClose={() => setShowRequestChoice(false)}
+          />
+        )}
+
+        {showPermanentRequest && (
+          <PermanentServiceRequestModal
+            serviceName={permanentServiceName}
+            onClose={() => setShowPermanentRequest(false)}
+            onSuccess={handleRequestSuccess}
+          />
+        )}
+
+        {showCustomRequest && (
+          <CustomServiceRequestModal
+            onClose={() => setShowCustomRequest(false)}
+            onSuccess={handleRequestSuccess}
+          />
+        )}
+
+        {requestSuccess && (
+          <PermanentRequestSuccess
+            request={requestSuccess}
+            onDashboard={() => onNavigate('dashboard-customer')}
+            onBrowse={() => { setRequestSuccess(null); }}
+          />
+        )}
+
+        {showEngagementChoice && bookingServiceId && (
+          <ServiceEngagementChoice
+            serviceName={bookingServiceName}
+            onTemporary={handleChooseTemporary}
+            onPermanent={handleChoosePermanent}
+            onClose={handleCloseEngagementChoice}
+          />
+        )}
+
+        {bookingStep === 1 && (
+          <BookingModal
+            onClose={() => setBookingStep(0)}
+            errorText={errorText}
+            address={address} setAddress={setAddress}
+            latitude={latitude} longitude={longitude}
+            setLatitude={setLatitude} setLongitude={setLongitude}
+            instructions={instructions} setInstructions={setInstructions}
+            loyaltyTier={loyaltyTier}
+            onSubmit={handleCompleteCheckout}
+          />
+        )}
+
+        {bookingStep === 2 && (
+          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-xl border border-slate-200 flex flex-col items-center">
+              <div className="w-12 h-12 rounded-full border-t-4 border-indigo-600 animate-spin mb-6" />
+              <h4 className="text-base font-extrabold text-slate-900 uppercase tracking-tight">Processing Secure Booking</h4>
+              <p className="text-slate-500 text-xs mt-2 font-medium">Broadcasting your request to eligible specialists. Please wait...</p>
+            </div>
+          </div>
+        )}
+
+        {bookingStep === 3 && confirmedBookingDetails && (
+          <BookingSuccess
+            details={confirmedBookingDetails}
+            onDashboard={() => onNavigate('dashboard-customer')}
+            onBrowse={() => { setConfirmedBookingDetails(null); setBookingStep(0); }}
+          />
+        )}
+
         <ServiceHeader
           selectedArea={selectedArea}
           inputSearch={inputSearch}
@@ -147,6 +364,23 @@ export const Services = ({ onNavigate }) => {
           onSearchChange={handleSearchChange}
           onQuick={handleIssueClick}
         />
+
+        <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-extrabold text-slate-900">Can't find the service you need?</p>
+            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+              Request a permanent, contract, or custom service — our team will add it and arrange a specialist.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRequestService}
+            className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Request a Service
+          </button>
+        </div>
 
         {!isLoading && results.length > 0 && (
           <div ref={gridRef} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-4 px-1 text-left scroll-mt-24">

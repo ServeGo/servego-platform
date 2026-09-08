@@ -54,7 +54,7 @@ const CODE_COPY = {
   NOT_ASSIGNED: { message: 'This lead is not assigned to you anymore.', action: 'Refresh leads' },
   ACCEPT_RACE: { message: 'Another provider accepted this lead just before you.', action: 'Refresh leads' },
   NO_CHANGE: { message: 'This lead has already been handled.', action: 'Refresh leads' },
-  CUSTOMER_BUSY: { message: 'The customer already has a provider assigned.', action: 'Refresh leads' },
+  CUSTOMER_BUSY: { message: 'You already have an active booking for this service. Complete or cancel it before booking the same service again.', action: 'View bookings' },
 
   // --- bookings ---
   BOOKING_NOT_FOUND: { message: 'This booking could not be found.', action: 'View bookings' },
