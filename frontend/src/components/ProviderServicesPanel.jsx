@@ -8,7 +8,7 @@ function FilterButton({ label, active, onClick }) {
       type="button"
       onClick={onClick}
       className={
-        `px-3 py-1.5 text-xs font-black rounded-xl border transition-colors ` +
+        `shrink-0 whitespace-nowrap px-3.5 py-2 text-xs font-black rounded-xl border transition-colors ` +
         (active
           ? 'bg-slate-900 text-white border-slate-900'
           : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800')
@@ -24,10 +24,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const [servicesError, setServicesError] = useState('');
   const [loadingMyServices, setLoadingMyServices] = useState(false);
 
-  const [query, setQuery] = useState(''); // search within my services
-
-
-  const [servicesFilter, setServicesFilter] = useState('ALL'); // ALL | APPROVED | PENDING | DENIED
+  const [servicesFilter, setServicesFilter] = useState('APPROVED'); // APPROVED | PENDING | DENIED
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [serviceInterestedOption, setServiceInterestedOption] = useState('');
@@ -59,19 +56,8 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
     if (servicesFilter === 'PENDING') arr = arr.filter(sv => sv.approvalStatus === 'PENDING');
     if (servicesFilter === 'DENIED') arr = arr.filter(sv => sv.approvalStatus === 'DENIED');
 
-    const q = query.trim().toLowerCase();
-    if (q) {
-      arr = arr.filter(sv => {
-        const hay = [sv.name, sv.description]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
-
     return arr;
-  }, [myServices, servicesFilter, query]);
+  }, [myServices, servicesFilter]);
 
   const fetchProviderServices = async () => {
     if (!providerId) return;
@@ -122,8 +108,15 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
       return;
     }
 
-    if (experienceYears === '' || experienceYears === null || experienceYears === undefined) {
-      setServicesError('Please select your experience years.');
+    const expNum = Number(experienceYears);
+    if (
+      experienceYears === '' ||
+      experienceYears === null ||
+      experienceYears === undefined ||
+      !Number.isFinite(expNum) ||
+      expNum < 0
+    ) {
+      setServicesError('Please enter your experience in years.');
       return;
     }
 
@@ -161,8 +154,8 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start text-left">
-      <div className="md:col-span-7 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-5">
+    <div className="space-y-8 text-left">
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight">My Services</h3>
@@ -183,24 +176,17 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
 
         {/* Filter buttons */}
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap gap-2">
-            <FilterButton label="All services" active={servicesFilter === 'ALL'} onClick={() => setServicesFilter('ALL')} />
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar flex-nowrap -mx-1 px-1">
             <FilterButton label="Approved services" active={servicesFilter === 'APPROVED'} onClick={() => setServicesFilter('APPROVED')} />
             <FilterButton label="Denied services" active={servicesFilter === 'DENIED'} onClick={() => setServicesFilter('DENIED')} />
             <FilterButton label="Pending services" active={servicesFilter === 'PENDING'} onClick={() => setServicesFilter('PENDING')} />
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search services by name or description..."
-              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
-            />
-            {loadingMyServices && (
-              <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
-            )}
-          </div>
+          {loadingMyServices && (
+            <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+            </div>
+          )}
 
         </div>
 
@@ -214,13 +200,9 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
         {filteredServices.length === 0 ? (
           <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-200">
             <div className="text-slate-500 text-xs font-semibold">
-              {servicesFilter === 'ALL'
-                ? 'No registered services yet.'
-                : `No ${servicesFilter === 'APPROVED' ? 'approved' : servicesFilter === 'PENDING' ? 'pending' : 'denied'} services yet.`}
+              {`No ${servicesFilter === 'APPROVED' ? 'approved' : servicesFilter === 'PENDING' ? 'pending' : 'denied'} services yet.`}
             </div>
-            {servicesFilter === 'ALL' && (
-              <div className="text-slate-400 text-[11px] mt-2 font-medium">Click Register to add your service.</div>
-            )}
+            <div className="text-slate-400 text-[11px] mt-2 font-medium">Click Register to add your service.</div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -268,17 +250,6 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
         )}
       </div>
 
-      <div className="md:col-span-5 bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-3xs">
-        <h4 className="font-bold text-slate-800 text-sm">How it works</h4>
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-semibold text-slate-700">
-          <ol className="list-decimal list-inside space-y-2">
-            <li>Select a service from the list.</li>
-            <li>Add your experience years and a short description.</li>
-            <li>Submit for review. Admin approval will move it to the approved list.</li>
-          </ol>
-        </div>
-      </div>
-
       {isRegisterOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
@@ -314,16 +285,18 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Experience (years) *</label>
-                <select
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="e.g. 5"
                   value={experienceYears}
                   onChange={(e) => setExperienceYears(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none"
-                >
-                  <option value="">Select experience</option>
-                  {Array.from({ length: 25 }, (_, i) => i + 1).map((i) => (
-                    <option key={i} value={i}>{i} {i === 1 ? 'Year' : 'Years'}</option>
-                  ))}
-                </select>
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                <p className="text-[10px] text-slate-400 font-semibold mt-1">Enter the number of years you've worked in this field.</p>
               </div>
 
 

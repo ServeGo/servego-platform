@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Inbox,
-  RefreshCw,
   Clock,
   MapPin,
   User,
@@ -116,7 +115,6 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('actionable');
-  const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState('');
   const [actionErrorAction, setActionErrorAction] = useState(null);
@@ -252,16 +250,11 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
       const bs = l.booking?.status;
       return bs === 'CONFIRMED' || bs === 'ONGOING';
     });
+    // Closed = jobs actually finished. Cancelled/expired/rejected/transferred
+    // leads stay reachable only via the "All" tab.
     const closed = leads.filter((l) => {
       const bs = l.booking?.status;
-      return (
-        bs === 'COMPLETED' ||
-        bs === 'CANCELLED' ||
-        l.status === 'EXPIRED' ||
-        l.status === 'REJECTED' ||
-        l.status === 'TRANSFERRED' ||
-        l.status === 'COMPLETED'
-      );
+      return bs === 'COMPLETED' || l.status === 'COMPLETED';
     });
     return { actionable, active, closed };
   }, [leads]);
@@ -283,26 +276,8 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     else if (filter === 'closed') arr = categorized.closed;
     else arr = leads;
 
-    const q = query.trim().toLowerCase();
-    if (q) {
-      arr = arr.filter((l) => {
-        const hay = [
-          l.serviceCategory,
-          l.customer?.name,
-          l.booking?.locationAddress,
-          l.booking?.city,
-          l.booking?.instructions,
-          l.id,
-          l.booking?.id
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
     return [...arr].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [leads, categorized, filter, query]);
+  }, [leads, categorized, filter]);
 
   const markViewed = useCallback(
     async (lead) => {
@@ -419,52 +394,28 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-slate-200 rounded-3xl p-5">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight text-left">Lead Inbox</h3>
-            <p className="text-xs text-slate-500 font-semibold mt-1">
-              Review requests fast — leads expire and pass to the next provider when you decline or wait too long.
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 lg:justify-between">
-            <div className="flex flex-wrap gap-1.5 lg:flex-nowrap lg:gap-2 bg-slate-50 border border-slate-200 p-1 rounded-2xl">
-              {[
-                { id: 'actionable', label: 'Action Required' },
-                { id: 'active', label: 'Active Duty' },
-                { id: 'closed', label: 'Closed' },
-                { id: 'all', label: 'All' }
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setFilter(t.id)}
-                  className={`px-3 lg:px-4 py-2 text-xs font-black rounded-xl transition-all ${
-                    filter === t.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-800'
-                  }`}
-                >
-                  {t.label}
-                  {counts[t.id] > 0 && <span className="opacity-70"> ({counts[t.id]})</span>}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 items-center">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by client, category, address, ID..."
-                className="w-full sm:w-64 lg:w-80 bg-slate-50 border border-slate-200 focus:border-teal-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
-              />
-              <button
-                onClick={() => fetchLeads()}
-                disabled={loading}
-                className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
-          </div>
-        </div>
+      <div className="flex flex-wrap gap-1 bg-white border border-slate-200 p-1.5 rounded-2xl w-full sm:w-fit">
+        {[
+          { id: 'actionable', label: 'Action Required' },
+          { id: 'active', label: 'Active Duty' },
+          { id: 'closed', label: 'Closed' },
+          { id: 'all', label: 'All' }
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setFilter(t.id)}
+            className={`flex-1 sm:flex-none px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all text-center ${
+              filter === t.id
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            <span className="text-[10px] sm:text-xs font-black leading-tight whitespace-nowrap">
+              {t.label}
+              {counts[t.id] > 0 && <span className="ml-1 opacity-70">({counts[t.id]})</span>}
+            </span>
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -595,7 +546,7 @@ function EmptyInbox({ filter }) {
     },
     closed: {
       title: 'Nothing closed yet',
-      desc: 'Completed, cancelled, and expired leads will be archived here.'
+      desc: 'Jobs you have finished will be archived here.'
     },
     all: {
       title: 'No leads yet',

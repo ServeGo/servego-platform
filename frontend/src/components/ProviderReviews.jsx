@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Star } from 'lucide-react';
+import React, { useMemo, useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
+
+const PER_PAGE = 3;
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -42,20 +44,16 @@ function RatingBar({ value, max, label }) {
 }
 
 export default function ProviderReviews({ rating, reviews }) {
-  const [sort, setSort] = useState('newest'); // newest | highest | lowest
-  const [category, setCategory] = useState('all');
-  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
 
   const safeReviews = useMemo(() => (Array.isArray(reviews) ? reviews : []), [reviews]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [safeReviews.length]);
+
   const computed = useMemo(() => {
     const list = safeReviews;
-
-    const byCategory = new Map();
-    for (const r of list) {
-      const cat = (r.serviceCategory || 'Other').toString();
-      byCategory.set(cat, (byCategory.get(cat) || 0) + 1);
-    }
 
     let avg = 0;
     if (typeof rating === 'number' && !Number.isNaN(rating)) {
@@ -72,66 +70,23 @@ export default function ProviderReviews({ rating, reviews }) {
       ratingCounts[bucket]++;
     }
 
-    return {
-      avg,
-      count: list.length,
-      ratingCounts,
-      categories: Array.from(byCategory.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, count]) => ({ name, count }))
-    };
+    return { avg, count: list.length, ratingCounts };
   }, [safeReviews, rating]);
 
-  const categories = useMemo(() => [{ name: 'all', count: computed.count }, ...computed.categories], [computed]);
-
-  const filteredSorted = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    let arr = [...safeReviews];
-
-    if (category !== 'all') {
-      arr = arr.filter(r => (r.serviceCategory || 'Other').toString() === category);
-    }
-
-    if (q) {
-      arr = arr.filter(r => {
-        const hay = [
-          r.reviewerName,
-          r.comment,
-          r.serviceCategory,
-          r.bookingId,
-          r.id
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
-
+  // All reviews, newest first — no filters, just direct pagination.
+  const sorted = useMemo(() => {
     const toTime = (r) => {
       if (!r?.date) return 0;
       const d = new Date(r.date);
       return !Number.isNaN(d.getTime()) ? d.getTime() : 0;
     };
+    return [...safeReviews].sort((a, b) => toTime(b) - toTime(a));
+  }, [safeReviews]);
 
-    arr.sort((a, b) => {
-      if (sort === 'highest') {
-        const diff = (a.rating || 0) - (b.rating || 0);
-        if (diff !== 0) return -diff;
-        return toTime(b) - toTime(a);
-      }
-      if (sort === 'lowest') {
-        const diff = (a.rating || 0) - (b.rating || 0);
-        if (diff !== 0) return diff;
-        return toTime(b) - toTime(a);
-      }
-      // newest (default)
-      return toTime(b) - toTime(a);
-    });
-
-    return arr;
-  }, [safeReviews, category, query, sort]);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const startIdx = (currentPage - 1) * PER_PAGE;
+  const pageItems = sorted.slice(startIdx, startIdx + PER_PAGE);
 
   return (
     <div className="space-y-6 text-left">
@@ -167,73 +122,22 @@ export default function ProviderReviews({ rating, reviews }) {
           </div>
         </div>
 
-        {/* Controls + list */}
+        {/* List */}
         <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-5">
-            <div className="flex flex-col lg:flex-row lg:items-end gap-4 justify-between">
-              <div>
-                <div className="text-xs font-black text-slate-900 uppercase tracking-wide">Filters</div>
-                <div className="text-[11px] text-slate-500 font-semibold mt-1">Narrow by service category and keywords.</div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-                <div className="flex-1">
-                  <label className="block text-[10px] text-slate-400 font-black uppercase tracking-wide mb-1">Search</label>
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Name, comment, category..."
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-bold outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-400 font-black uppercase tracking-wide mb-1">Sort</label>
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-xl px-4 py-2 text-xs font-black outline-none"
-                  >
-                    <option value="newest">Newest</option>
-                    <option value="highest">Highest rating</option>
-                    <option value="lowest">Lowest rating</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="flex flex-wrap gap-2">
-                {categories.map((c) => (
-                  <button
-                    key={c.name}
-                    onClick={() => setCategory(c.name)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${
-                      category === c.name
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-600 border-slate-200 hover:text-slate-800 hover:border-slate-300'
-                    }`}
-                  >
-                    {c.name === 'all' ? 'All' : c.name} <span className="text-[10px]">({c.count})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {filteredSorted.length === 0 ? (
+          {sorted.length === 0 ? (
             <div className="bg-white p-10 rounded-3xl border border-slate-200 text-center text-xs text-slate-400 italic font-semibold">
-              No matching reviews found.
+              No reviews yet.
             </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-black text-slate-900">Showing {filteredSorted.length} reviews</div>
-                <div className="text-[10px] font-bold text-slate-500">Tip: filter by category for targeted insights.</div>
+                <div className="text-xs font-black text-slate-900">
+                  {sorted.length} {sorted.length === 1 ? 'review' : 'reviews'}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {filteredSorted.map((rev, idx) => {
+                {pageItems.map((rev, idx) => {
                   const comment = rev.comment ? String(rev.comment) : '';
                   return (
                     <div key={rev.id || idx} className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3 text-xs shadow-3xs">
@@ -270,6 +174,33 @@ export default function ProviderReviews({ rating, reviews }) {
                   );
                 })}
               </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-3">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-black border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Prev
+                  </button>
+                  <div className="text-[11px] font-bold text-slate-500 text-center">
+                    Page {currentPage} of {totalPages}
+                    <span className="text-slate-400 block sm:inline sm:ml-1">
+                      · Showing {startIdx + 1}–{Math.min(startIdx + PER_PAGE, sorted.length)} of {sorted.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-black border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all disabled:opacity-40"
+                  >
+                    Next <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -277,4 +208,3 @@ export default function ProviderReviews({ rating, reviews }) {
     </div>
   );
 }
-

@@ -31,8 +31,8 @@ export const ProviderAnalyticsController = {
       const providerId = req.params.id;
       const { range = '90d' } = req.query || {};
 
-      if (!['7d', '30d', '90d'].includes(range)) {
-        return sendApiError(res, 400, 'INVALID_RANGE', 'range must be one of: 7d, 30d, 90d.');
+      if (!['7d', '30d', '90d', 'all'].includes(range)) {
+        return sendApiError(res, 400, 'INVALID_RANGE', 'range must be one of: 7d, 30d, 90d, all.');
       }
 
       const provider = await prisma.provider.findUnique({
@@ -49,7 +49,7 @@ export const ProviderAnalyticsController = {
       if (range === '7d') since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       else if (range === '30d') since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       else if (range === '90d') since = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      else since = null;
+      else since = null; // 'all' — lifetime, from the provider's joining date
 
       const whereBookings = {
         providerId,

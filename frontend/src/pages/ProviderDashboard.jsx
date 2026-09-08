@@ -12,14 +12,14 @@ import ProviderLevelAnalytics from '../components/ProviderLevelAnalytics';
 
 import ProviderServicesPanel from '../components/ProviderServicesPanel';
 import ProviderReviews from '../components/ProviderReviews';
-import ProviderProfileView from '../components/ProviderProfileView';
+import ProfileView from '../components/ProfileView';
 import ProviderSupport from '../components/ProviderSupport';
 import ProviderWalletAmbassador from '../components/ProviderWalletAmbassador';
 
 
 export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
 
-  const { currentUser } = useAuth();
+  const { currentUser, updateUserProfile } = useAuth();
   const {
     providers, bookings, services, tickets,
     myProviderSummary,
@@ -126,7 +126,15 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         {isPending && <PendingBanner />}
 
         {!isPending && activeProvider && (
-          <ProviderHeader provider={activeProvider} completedJobs={completedCount} totalJobs={allocatedBookings.length} approvedServices={approvedServices} loadingServices={loadingServices} />
+          <ProviderHeader
+            provider={activeProvider}
+            email={currentUser?.email || activeProvider?.email}
+            joinedDate={currentUser?.joinedDate || activeProvider?.user?.joinedDate || activeProvider?.createdAt}
+            completedJobs={completedCount}
+            totalJobs={allocatedBookings.length}
+            approvedServices={approvedServices}
+            loadingServices={loadingServices}
+          />
         )}
 
         <TabList activeTab={activeTab} setActiveTab={setActiveTab} leadsCount={activeLeads.length} reviewsCount={activeProvider?.reviews?.length || 0} />
@@ -135,7 +143,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           <ProviderLeadsInbox providerId={activeProvider?.id} updateBookingStatus={updateBookingStatus} />
         )}
 
-        {activeTab === 'level' && (
+        {activeTab === 'analytics' && (
           <ProviderLevelAnalytics providerId={activeProvider?.id} />
         )}
 
@@ -165,8 +173,11 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           <ProviderWalletAmbassador provider={activeProvider} />
         )}
 
-        {activeTab === 'profile' && activeProvider && (
-          <ProviderProfileView />
+        {activeTab === 'profile' && (
+          <ProfileView
+            user={currentUser}
+            onSave={(form) => updateUserProfile(currentUser?.id, form)}
+          />
         )}
 
       </div>
@@ -195,14 +206,14 @@ function TabList({ activeTab, setActiveTab, leadsCount, reviewsCount }) {
     { id: 'leads', label: `Leads (${leadsCount})` },
     { id: 'services', label: 'My Services' },
     { id: 'reviews', label: `Reviews (${reviewsCount})` },
-    { id: 'level', label: 'Performance & Analytics' },
+    { id: 'analytics', label: 'Analytics' },
     { id: 'wallet', label: 'Wallet & Ambassador' },
     { id: 'support', label: 'Support' },
     { id: 'profile', label: 'Profile' }
   ];
 
   return (
-    <div className="sticky top-16 z-20 -mx-4 mb-8 bg-slate-50/95 backdrop-blur px-4 pb-1 md:mx-0 md:px-0 md:bg-transparent md:backdrop-blur-none md:pb-0">
+    <div className="hidden md:block sticky top-16 z-20 mb-8">
       <div className="flex gap-1 bg-white border border-slate-200 p-1.5 rounded-2xl overflow-x-auto hide-scrollbar flex-nowrap w-full sm:w-fit">
         {tabs.map(t => (
           <button
