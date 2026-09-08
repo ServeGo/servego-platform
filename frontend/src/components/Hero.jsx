@@ -1,63 +1,29 @@
 import React from 'react';
-import { MapPin, Search, ArrowRight, ShieldCheck, RadioTower, Star, LifeBuoy, Download } from 'lucide-react';
+import { ArrowRight, Download, MapPin, Search, ShieldCheck, Star, RadioTower } from 'lucide-react';
 import { HYDERABAD_NEIGHBORHOODS } from '../data';
 
-export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setInputQuery, onQuickSearch }) {
-  return (
-    <section className="relative isolate overflow-hidden bg-slate-950 text-white min-h-[100vh] py-12 lg:py-20 px-4 border-b border-slate-800 flex items-center">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(129,140,248,0.18),_transparent_25%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size,80px_80px] opacity-20" />
-      
-      <div className="max-w-6xl mx-auto flex flex-col items-center text-center relative z-10 h-full w-full">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-500/10 text-teal-300 text-xs font-bold uppercase tracking-[0.25em] rounded-full border border-teal-500/20 mb-6 shadow-lg shadow-teal-500/10">
-          <ShieldCheck className="w-4 h-4" />
-          <span>Verified Home Services for Hyderabad</span>
-        </div>
-
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight max-w-4xl leading-[0.95]">
-          Book Trusted Home Experts <span className="text-teal-400">in Minutes</span>
-        </h1>
-        
-        <p className="mt-5 text-slate-300 text-sm sm:text-base max-w-2xl font-medium leading-relaxed">
-          Search the catalog and share your location — servego24 broadcasts your request to every eligible
-          specialist in your area, and the first to accept gets the job. Verified providers, live tracking,
-          and admin-backed support.
-        </p>
-
-        <div className="mt-8 w-full max-w-3xl rounded-[24px] border border-slate-200/80 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/20 backdrop-blur">
-          <form onSubmit={onSearch} className="flex flex-col md:flex-row gap-2">
-            <div className="relative flex items-center bg-slate-100 rounded-2xl px-3 py-2 md:w-1/3 text-slate-800">
-              <MapPin className="w-4 h-4 text-teal-700 mr-2 shrink-0" />
-              <div className="text-left w-full">
-                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Your Location</label>
-                <select value={selectedArea} onChange={(e) => setArea(e.target.value)} className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1">
-                  <option value="">All Hyderabad Area</option>
-                  {HYDERABAD_NEIGHBORHOODS.map(area => <option key={area} value={area}>{area}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="relative flex-1 flex items-center bg-slate-100 rounded-2xl px-3 py-2 text-slate-800">
-              <Search className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
-              <div className="text-left w-full">
-                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Find a Service</label>
-                <input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Electrician, plumber, painter, cleaner..." className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1" />
-              </div>
-            </div>
-            <button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-2xl text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"><span>Search Services</span><ArrowRight className="w-3.5 h-3.5" /></button>
+export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setInputQuery }) {
+  return <section className="bg-[#f4fbfb] text-slate-900">
+    <div className="relative isolate overflow-hidden bg-[#042e3d]">
+      <div className="absolute inset-0 bg-[url('/images/public-home-hero.png')] bg-cover bg-[position:40%_center] bg-no-repeat sm:bg-[position:68%_center]" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#032d3b_0%,rgba(3,45,59,.98)_32%,rgba(3,45,59,.72)_49%,rgba(3,45,59,.08)_75%,rgba(3,45,59,.12)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(0,214,197,.16),transparent_30%)]" />
+      <div className="relative z-10 mx-auto max-w-[1440px] px-5 pb-[116px] pt-8 sm:px-8 sm:pt-12 lg:px-10 lg:pb-[128px]">
+        <div className="max-w-[650px]">
+          <h1 className="mt-4 text-[2.45rem] font-black leading-[.98] tracking-[-.055em] text-white sm:text-5xl lg:text-[3.75rem]">Your Home. Our Experts. <span className="block text-[#00d4c3]">One Simple Booking.</span></h1>
+          <p className="mt-4 max-w-[585px] text-sm leading-relaxed text-slate-100 sm:text-[15px]">Choose a service, share your location, and connect with a <span className="font-bold text-white">verified local expert</span>. Get a fast response, transparent service, live updates, and support from booking to completion.</p>
+          <form onSubmit={onSearch} className="mt-5 flex max-w-[700px] flex-col gap-2 rounded-2xl bg-white p-2 shadow-[0_18px_35px_-17px_rgba(0,0,0,.8)] sm:flex-row">
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[#f3f7fb] px-3 py-2.5 sm:max-w-[220px]"><MapPin className="h-5 w-5 shrink-0 text-[#009a92]" /><span className="min-w-0 flex-1"><span className="block text-[9px] font-black uppercase tracking-[.13em] text-[#7486a5]">Your location</span><select value={selectedArea} onChange={(e) => setArea(e.target.value)} className="w-full truncate bg-transparent text-xs font-bold text-[#152747] outline-none"><option value="">All Hyderabad Area</option>{HYDERABAD_NEIGHBORHOODS.map((area) => <option key={area} value={area}>{area}</option>)}</select></span></label>
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[#f3f7fb] px-3 py-2.5"><Search className="h-5 w-5 shrink-0 text-[#466285]" /><span className="min-w-0 flex-1"><span className="block text-[9px] font-black uppercase tracking-[.13em] text-[#7486a5]">Find a service</span><input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Electrician, plumber, painter, cleaner..." className="w-full bg-transparent text-xs font-medium text-slate-800 outline-none placeholder:text-[#8294b4]" /></span></label>
+            <button type="submit" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#009b91] px-5 py-3 text-sm font-extrabold text-white shadow-md transition hover:bg-[#00847b]">Search Services <ArrowRight className="h-4 w-4" /></button>
           </form>
-        </div>
-        <a href="/apk/servego.apk" download="servego.apk" className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 transition-all hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"><Download className="w-4 h-4" />Download Android App</a>
-        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
-          <TrustIndicator icon={<ShieldCheck className="w-4 h-4" />} title="Verified Providers" desc="Profile-approved experts" />
-          <TrustIndicator icon={<RadioTower className="w-4 h-4" />} title="Broadcast Booking" desc="Offered to every eligible specialist" />
-          <TrustIndicator icon={<Star className="w-4 h-4" />} title="Rated Professionals" desc="Reviews after every completed job" colorClass="text-emerald-400" bgColorClass="bg-emerald-500/20" />
-          <TrustIndicator icon={<LifeBuoy className="w-4 h-4" />} title="Admin Support" desc="Tickets & platform oversight" colorClass="text-rose-400" bgColorClass="bg-rose-500/20" />
+          <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#00bfb2] px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_12px_25px_-14px_rgba(0,232,210,.95)] transition hover:bg-[#00ab9f]"><Download className="h-4 w-4" /> Download Android App</button>
         </div>
       </div>
-    </section>
-  );
+    </div>
+  </section>;
 }
 
-function TrustIndicator({ icon, title, desc, colorClass = "text-teal-400", bgColorClass = "bg-teal-500/20" }) {
-  return <div className="bg-white/8 border border-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center gap-2.5 hover:-translate-y-0.5 transition-transform"><div className={`p-2 rounded-xl ${bgColorClass} ${colorClass}`}>{icon}</div><div><h4 className="font-bold text-white">{title}</h4><p className="text-[10px] text-slate-400 mt-0.5 font-medium">{desc}</p></div></div>;
+function HeroStat({ icon, eyebrow, value }) {
+  return <div className="flex items-center gap-3 border-b border-[#e3edf3] px-5 py-3.5 last:border-b-0 sm:[&:nth-child(2)]:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ebfffc] text-[#009b91]">{React.cloneElement(icon, { className: 'h-5 w-5' })}</span><span><span className="block text-[9px] font-black uppercase tracking-[.14em] text-[#7d91b4]">{eyebrow}</span><span className="block text-sm font-extrabold text-[#132242]">{value}</span></span></div>;
 }

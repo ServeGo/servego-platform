@@ -11,9 +11,34 @@ export default function ServiceCard({
   category,
   providers,
   onSelect,
-  onIssueClick,
 }) {
   const safeProviders = Array.isArray(providers) ? providers : [];
+  const localServiceImages = {
+    electrician: '/images/electrician-service.png',
+    plumber: '/images/plumber-service.png',
+    'ac repair': '/images/ac-repair-service.png',
+'home cleaning': '/images/home-cleaning-service.png',
+    'deep cleaning': '/images/deep-cleaning-service.png',
+    'modular kitchen': '/images/Modular%20Kitchen.png',
+    painting: '/images/painting-service.png',
+    'appliance repair': '/images/appliance-repair-service.png',
+    'appliance installation': '/images/Appliance%20Installation.png',
+    carpentry: '/images/carpentry-service.png',
+    cooking: '/images/Cooking.png',
+    'cctv installation': '/images/CCTV%20Installation.png',
+    'geyser & water heater': '/images/geyser-water-heater-service.png',
+    'home maintenance': '/images/home-maintenance-service.png',
+    'interior design': '/images/Interior%20Design.png',
+    'packers & movers': '/images/packers-movers-service.png',
+    'pest control': '/images/Pest%20Control.png',
+    'salon at home': '/images/Salon%20at%20Home.png',
+'sofa cleaning': '/images/Sofa%20Cleaning.png',
+    'tile & grouting': '/images/tile-grouting-service.png',
+    'water tank cleaning': '/images/Water%20Tank%20Cleaning.png',
+  };
+const serviceName = (category?.name || '').toLowerCase();
+  const serviceImage = category?.image || localServiceImages[serviceName] || null;
+
   // Prefer server-derived count; fall back to client-side count
   const activeCount = typeof category.activeSpecialistCount === 'number'
     ? category.activeSpecialistCount
@@ -36,6 +61,18 @@ export default function ServiceCard({
     <article className="relative group flex flex-col justify-between bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-2xs hover:shadow-[0_26px_56px_-26px_rgba(15,23,42,0.35)] hover:-translate-y-1 hover:border-teal-300 transition-all text-left">
       {/* Accent bar appears on hover */}
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-500 via-indigo-500 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      {serviceImage ? (
+        <div className="relative block aspect-[16/10] w-full overflow-hidden border-b border-slate-100 bg-white">
+          <img
+            src={serviceImage}
+            alt={category.name}
+            className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${
+              serviceName === 'home maintenance' ? 'object-[50%_42%]' : 'object-center'
+            }`}
+          />
+        </div>
+      ) : null}
 
       <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
@@ -68,14 +105,12 @@ export default function ServiceCard({
             </span>
             <div className="flex flex-wrap gap-1.5">
               {issues.map((issue, idx) => (
-                <button
+                <span
                   key={idx}
-                  type="button"
-                  onClick={() => onIssueClick(issue)}
-                  className="bg-slate-50 hover:bg-teal-50 hover:text-teal-700 cursor-pointer text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full border border-slate-200/70 transition-colors"
+                  className="bg-slate-50 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full border border-slate-200/70 select-none"
                 >
                   {issue}
-                </button>
+                </span>
               ))}
             </div>
           </div>

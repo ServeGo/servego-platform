@@ -1,14 +1,28 @@
 import React, { useState } from 'react';
-import { MapPin, RadioTower, ShieldCheck, Sparkles } from 'lucide-react';
+import { Clock3, MapPin, RadioTower, ShieldCheck, Sparkles, Users, Zap } from 'lucide-react';
 import { useData, useUI } from '../context/AppContext';
 
 // Components
 import Hero from '../components/Hero';
 import CategoryGrid from '../components/CategoryGrid';
+import BannerCarousel from '../components/BannerCarousel';
 import HowItWorks from '../components/HowItWorks';
 import TrustBanner from '../components/TrustBanner';
 import RealtimeFeatures from '../components/RealtimeFeatures';
 import SkeletonLoader from '../components/SkeletonLoader';
+
+function StatusMetricCard({ icon, title, accent }) {
+  return (
+    <div className="flex items-center justify-center gap-3 border-b border-slate-100 px-3 py-4 text-center last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 md:px-6 md:py-5">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-[16px] md:h-16 md:w-16 ${accent}`}>
+        {icon}
+      </div>
+      <div className="text-left">
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 md:text-[12px] md:tracking-[0.16em]">{title}</p>
+      </div>
+    </div>
+  );
+}
 
 export const Home = ({ onNavigate }) => {
   const {
@@ -67,37 +81,27 @@ export const Home = ({ onNavigate }) => {
       />
 
       <section aria-label="servego24 marketplace status" className="relative z-10 -mt-7 px-4">
-        <div className="mx-auto grid max-w-6xl grid-cols-1 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] sm:grid-cols-3">
-          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:border-b-0 sm:border-r">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Live catalog</p>
-              <p className="mt-0.5 text-sm font-bold text-slate-900">{hasServices ? `${services.length} services ready` : 'Loading services'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:border-b-0 sm:border-r">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-              <RadioTower className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Ready to respond</p>
-              <p className="mt-0.5 text-sm font-bold text-slate-900">{providerCount || 'Verified'} specialists</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-                <MapPin className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Serving now</p>
-                <p className="mt-0.5 text-sm font-bold text-slate-900">{areaLabel}</p>
-              </div>
-            </div>
-            <ShieldCheck className="h-5 w-5 text-emerald-500" aria-label="Verified marketplace" />
-          </div>
+        <div className="mx-auto grid max-w-6xl grid-cols-2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] md:grid-cols-4">
+          <StatusMetricCard
+            icon={<Zap className="h-6 w-6" />}
+            title="Fast Booking"
+            accent="bg-[#e9f6ff] text-[#0f3f7f]"
+          />
+          <StatusMetricCard
+            icon={<ShieldCheck className="h-6 w-6" />}
+            title="Verified Professionals"
+            accent="bg-[#e8fff2] text-[#0b7a59]"
+          />
+          <StatusMetricCard
+            icon={<Users className="h-6 w-6" />}
+            title="Wide Service Categories"
+            accent="bg-[#eef8ff] text-[#0e5e7f]"
+          />
+          <StatusMetricCard
+            icon={<Clock3 className="h-6 w-6" />}
+            title="24/7 Support"
+            accent="bg-[#ecfff5] text-[#0d8d60]"
+          />
         </div>
       </section>
 
@@ -120,11 +124,67 @@ export const Home = ({ onNavigate }) => {
         />
       )}
 
-      <HowItWorks />
+      <div className="mt-8 sm:mt-10">
+        <BannerCarousel onNavigate={onNavigate} />
+      </div>
+
+      <div className="mt-10 sm:mt-14">
+        <HowItWorks />
+      </div>
 
       <TrustBanner onBrowse={() => onNavigate('services')} />
 
       <RealtimeFeatures />
+
+      <section aria-label="Serving Hyderabad" className="relative z-10 px-3 pb-7 sm:px-4 sm:pb-8 lg:px-4 lg:pb-10">
+        <div className="mx-auto max-w-6xl overflow-hidden rounded-[22px] border border-slate-200/80 bg-[#f3f7f6] shadow-[0_28px_70px_-50px_rgba(15,23,42,0.6)] sm:rounded-[24px]">
+          <div className="flex flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:px-6 lg:py-4">
+            <div className="w-full lg:w-[46%]">
+              <h2 className="text-[1.9rem] font-black tracking-[-0.06em] text-slate-900 sm:text-[2.3rem] lg:text-[3.4rem] lg:leading-[0.95]">
+                Serving Hyderabad
+              </h2>
+              <p className="mt-1 text-base font-medium text-slate-600 sm:text-lg lg:text-xl">
+                Quick. Reliable. Local.
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2 sm:mt-4 sm:gap-2.5 lg:gap-3">
+                {[
+                  'Across Hyderabad',
+                  'Local Experts',
+                  'Faster Service',
+                  'More Cities Coming Soon',
+                ].map((label) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur-sm sm:px-3.5 sm:text-sm lg:px-4 lg:text-[0.95rem]"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0f172a] text-[10px] text-white sm:h-6 sm:w-6">
+                      •
+                    </span>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative w-full overflow-hidden lg:w-[54%]">
+              <div className="relative flex min-h-[170px] items-end justify-end overflow-hidden rounded-[16px] bg-[radial-gradient(circle_at_15%_12%,rgba(255,255,255,0.9),rgba(139,190,229,0.35)_28%,rgba(11,162,163,0.12)_52%,transparent_62%)] sm:min-h-[200px] lg:min-h-[230px]">
+                <img
+                  src="/images/hyderbad image.png"
+                  alt="Hyderabad city illustration"
+                  className="h-[170px] w-full object-contain object-bottom sm:h-[200px] lg:h-[240px]"
+                />
+                <div className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full border border-slate-300 bg-white/75 px-2.5 py-1.5 shadow-sm backdrop-blur-sm sm:bottom-4 sm:right-4 sm:gap-2.5 sm:px-3 sm:py-1.5 lg:bottom-5 lg:right-5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0f172a] text-[10px] font-bold text-white sm:h-7 sm:w-7 lg:h-8 lg:w-8">
+                    •
+                  </span>
+                  <span className="text-xs font-bold tracking-tight text-slate-800 sm:text-sm lg:text-lg">Hyderabad</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
     </div>
   );
