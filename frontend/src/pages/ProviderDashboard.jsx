@@ -177,7 +177,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
 function PendingBanner() {
   return (
-    <div className="mb-8 bg-amber-50 border border-amber-200 rounded-3xl p-6 sm:p-8 flex flex-col sm:row items-center gap-6 justify-between text-slate-800">
+    <div className="mb-8 bg-amber-50 border border-amber-200 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 justify-between text-slate-800">
       <div className="flex gap-4 items-start text-xs sm:text-sm text-left">
         <ShieldAlert className="w-8 h-8 text-amber-600 shrink-0" />
         <div>

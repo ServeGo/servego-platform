@@ -4,6 +4,7 @@ import { api } from '../utils/apiClient';
 import LocationPicker from './LocationPicker';
 
 export default function PermanentServiceRequestModal({ serviceName, onClose, onSuccess }) {
+  const [serviceNameInput, setServiceNameInput] = useState(serviceName || '');
   const [startDate, setStartDate] = useState('');
   const [engagementType, setEngagementType] = useState('PERMANENT');
   const [contractYears, setContractYears] = useState('');
@@ -20,6 +21,11 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
     e.preventDefault();
     setError('');
 
+    if (!serviceNameInput.trim()) {
+      setError('Please tell us which service you need.');
+      return;
+    }
+    const serviceCategory = serviceNameInput.trim();
     if (!latitude || !longitude || !address.trim()) {
       setError('Please select your service location on the map.');
       return;
@@ -41,7 +47,7 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
     setSubmitting(true);
     try {
       const res = await api.post('/permanent-service-requests', {
-        serviceCategory: serviceName,
+        serviceCategory,
         engagementType,
         startDate,
         contractDurationYears: contractYears ? Number(contractYears) : null,
@@ -88,6 +94,27 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+              Service Name <span className="text-rose-500">*</span>
+            </label>
+            {serviceName ? (
+              <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800">
+                {serviceName}
+              </div>
+            ) : (
+              <input
+                type="text"
+                maxLength={200}
+                placeholder="e.g. Cooking, Housekeeping, Driver"
+                value={serviceNameInput}
+                onChange={(e) => setServiceNameInput(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-800 outline-none"
+                required
+              />
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">

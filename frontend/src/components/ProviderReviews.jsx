@@ -143,7 +143,7 @@ export default function ProviderReviews({ rating, reviews }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Summary */}
         <div className="lg:col-span-4">
-          <div className="bg-slate-900 text-white p-6 rounded-2xl text-center space-y-2 border border-slate-800">
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white p-6 rounded-2xl text-center space-y-2 border border-slate-800">
             <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide block">Feedback Score</span>
             <span className="text-3xl font-black text-amber-400 block flex items-center gap-1 justify-center"><Star className="w-6 h-6" /> {(computed.count ? computed.avg : 0).toFixed(1)}</span>
             <span className="text-[10px] text-slate-400 block font-medium uppercase tracking-tight">{computed.count} Customer Audits</span>

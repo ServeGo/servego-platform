@@ -53,6 +53,7 @@ export default function PermanentRequestsView({ onNavigate }) {
   };
 
   const durationText = (r) => {
+    if (!r || r.requestType === 'CUSTOM') return null;
     if (r.engagementType === 'CONTRACT') {
       if (r.contractDurationYears) return `${r.contractDurationYears} year${r.contractDurationYears > 1 ? 's' : ''}`;
       if (r.contractDurationDays) return `${r.contractDurationDays} day${r.contractDurationDays > 1 ? 's' : ''}`;
@@ -64,7 +65,7 @@ export default function PermanentRequestsView({ onNavigate }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-900 text-left">Permanent / Contract Requests</h3>
+        <h3 className="text-lg font-bold text-slate-900 text-left">Service Requests</h3>
         <button
           onClick={fetchRequests}
           className="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors"
@@ -89,7 +90,7 @@ export default function PermanentRequestsView({ onNavigate }) {
           </div>
           <h4 className="text-base font-bold text-slate-900">No Requests Yet</h4>
           <p className="text-slate-500 text-xs mt-1 font-medium">
-            Request a permanent or contract-based service and our team will arrange everything for you.
+            Request a permanent, contract, or custom service and our team will arrange everything for you.
           </p>
           <button
             onClick={() => onNavigate('services')}
@@ -100,13 +101,18 @@ export default function PermanentRequestsView({ onNavigate }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {requests.map((r) => (
+          {requests.map((r) => {
+            const isCustom = r.requestType === 'CUSTOM';
+            const dur = durationText(r);
+            return (
             <div key={r.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs text-left">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-extrabold text-slate-900">{r.serviceCategory}</p>
+                  <p className="text-sm font-extrabold text-slate-900 capitalize">{isCustom ? r.customServiceName || r.serviceCategory : r.serviceCategory}</p>
                   <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
-                    {r.engagementType === 'CONTRACT' ? 'Contract' : 'Permanent'} · {durationText(r)} · {formatMoney(r.monthlyBudget)}/mo
+                    {isCustom
+                      ? 'Custom Service'
+                      : `${r.engagementType === 'CONTRACT' ? 'Contract' : 'Permanent'}${dur ? ` · ${dur}` : ''}${r.monthlyBudget ? ` · ${formatMoney(r.monthlyBudget)}/mo` : ''}`}
                   </p>
                 </div>
                 <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${STATUS_STYLES[r.status] || 'bg-slate-100 border-slate-300 text-slate-600'}`}>
@@ -114,8 +120,16 @@ export default function PermanentRequestsView({ onNavigate }) {
                 </span>
               </div>
 
+              {isCustom && r.customDescription && (
+                <p className="mt-3 text-[11px] text-slate-600 font-medium leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-2.5">
+                  {r.customDescription}
+                </p>
+              )}
+
               <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-semibold">
-                <InfoRow label="Start Date" value={formatDate(r.startDate)} />
+                {!isCustom && r.startDate && (
+                  <InfoRow label="Start Date" value={formatDate(r.startDate)} />
+                )}
                 <InfoRow label="Submitted" value={formatDate(r.createdAt)} />
                 {r.locationAddress && (
                   <InfoRow label="Service Location" value={r.locationAddress} />
@@ -167,7 +181,8 @@ export default function PermanentRequestsView({ onNavigate }) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

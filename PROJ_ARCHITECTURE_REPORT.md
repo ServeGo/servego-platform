@@ -360,9 +360,12 @@ React Router 7, socket.io-client, MapLibre GL (OSM tiles, keyless) for maps.
   leads, wallet, admin data; optimistic-but-reconciled mutations for safe ops only),
   `RealtimeContext` (socket lifecycle + watermarked resync per rule 23), `UIContext`,
   `ToastContext`.
-- Pages: Home, Services, ServiceDetails (booking flow), CustomerDashboard,
-  ProviderDashboard, AdminPanel, Signup (role toggle customer/provider with service
-  category + LocationPicker), Login, Forgot/ResetPassword, About, Contact, FAQ.
+- Pages: Home, Services (booking flow lives here — engagement choice, checkout,
+  and success overlays open directly from "Book Now" on a service card),
+  CustomerDashboard,
+  ProviderDashboard, AdminPanel, Signup (role toggle customer/provider with
+  LocationPicker — providers request their own service after signup), Login,
+  Forgot/ResetPassword, About, Contact, FAQ.
 - `utils/apiClient.js` — base URL, token storage, 401 refresh retry; `errorMessages.js`
   maps backend codes → friendly copy; `reconnectWatermark.js` (reconnect resync);
   `normalizeAdminData.js`/`normalizeCustomerData.js`/`requestCache.js`/`exportExcel.js`.

@@ -281,13 +281,29 @@ export const BookingController = {
       });
       if (!customer) return sendApiError(res, 404, 'NOT_FOUND', 'Customer not found.');
 
-      // One booking at a time — customer
-      const customerActiveBooking = await prisma.booking.findFirst({
+      // A customer can run several bookings but only ONE per service: while a
+      // booking for service s1 is active (PENDING/CONFIRMED/ONGOING), the same
+      // service cannot be requested again until it is completed or cancelled.
+      // Different services (s2) are allowed in parallel.
+      const customerActiveBookings = await prisma.booking.findMany({
         where: { customerId, status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } },
-        select: { id: true }
+        select: { id: true, serviceId: true, serviceCategory: true }
       });
-      if (customerActiveBooking) {
-        return sendApiError(res, 409, 'CUSTOMER_BUSY', 'You already have an active booking. Please complete or cancel it before booking another.');
+      const sameServiceActive = customerActiveBookings.some((b) => {
+        if (bookingData.serviceId && b.serviceId && b.serviceId === bookingData.serviceId) return true;
+        if (
+          b.serviceCategory &&
+          String(b.serviceCategory).toLowerCase() === String(bookingData.serviceCategory).toLowerCase()
+        ) {
+          return true;
+        }
+        return false;
+      });
+      if (sameServiceActive) {
+        return sendApiError(
+          res, 409, 'CUSTOMER_BUSY',
+          'You already have an active booking for this service. Please complete or cancel it before booking the same service again. You can still request other services.'
+        );
       }
 
       const result = await createBookingWithLead({

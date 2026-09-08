@@ -7,7 +7,6 @@ import { Home } from './pages/Home';
 import { CustomerHome } from './pages/CustomerHome';
 import { About } from './pages/About';
 import { Services } from './pages/Services';
-import { ServiceDetails } from './pages/ServiceDetails';
 import { Contact } from './pages/Contact';
 import { FAQ } from './pages/FAQ';
 import { CustomerDashboard } from './pages/CustomerDashboard';
@@ -68,7 +67,7 @@ const getAdminTabFromRoute = (routeValue) => {
   return 'dashboard';
 };
 
-const getRoutePath = (page, categoryId = null, tab = null) => {
+const getRoutePath = (page, tab = null) => {
   switch (page) {
     case 'home':
       return '/';
@@ -78,8 +77,6 @@ const getRoutePath = (page, categoryId = null, tab = null) => {
       return '/about';
     case 'services':
       return '/services';
-    case 'service-details':
-      return categoryId ? `/service-details/${encodeURIComponent(categoryId)}` : '/services';
     case 'contact':
       return '/contact';
     case 'faq':
@@ -103,8 +100,8 @@ const getRoutePath = (page, categoryId = null, tab = null) => {
   }
 };
 
-const updateBrowserRoute = (page, categoryId = null, tab = null) => {
-  const nextPath = getRoutePath(page, categoryId, tab);
+const updateBrowserRoute = (page, tab = null) => {
+  const nextPath = getRoutePath(page, tab);
   if (window.location.pathname !== nextPath) {
     window.history.pushState({}, '', nextPath);
   }
@@ -130,7 +127,6 @@ export function MainLayout() {
   ).length;
 
   const [currentPage, setCurrentPage] = useState('home');
-  const [selectedCategoryDetail, setSelectedCategoryDetail] = useState('electrician');
 
   const [customerActiveTabExternal, setCustomerActiveTabExternal] = useState('bookings');
   const [providerActiveTabExternal, setProviderActiveTabExternal] = useState('leads');
@@ -203,12 +199,6 @@ export function MainLayout() {
         return;
       }
 
-      if (segments[0] === 'service-details' && segments[1]) {
-        setSelectedCategoryDetail(decodeURIComponent(segments[1]));
-        setCurrentPage('service-details');
-        return;
-      }
-
       if (segments[0] === 'admin') {
         setCurrentPage('admin');
         setAdminActiveTabExternal(getAdminTabFromRoute(segments[1] || 'dashboard'));
@@ -258,7 +248,7 @@ export function MainLayout() {
     }
   }, [currentUser, currentPage]);
 
-  const handlePageTransition = (page, categoryId) => {
+  const handlePageTransition = (page) => {
     if (RESTRICTED_ROUTES.includes(page) && !currentUser) {
       setCurrentPage('login');
       updateBrowserRoute('login');
@@ -274,21 +264,13 @@ export function MainLayout() {
       return;
     }
 
-    if (categoryId) {
-      setSelectedCategoryDetail(categoryId);
-      updateBrowserRoute('service-details', categoryId);
-    } else if (page === 'admin') {
+    if (page === 'admin') {
       updateBrowserRoute('admin', null, adminActiveTabExternal);
     } else {
       updateBrowserRoute(page);
     }
     setCurrentPage(page);
     window.scrollTo(0, 0);
-  };
-
-  const handleViewPermanentRequests = () => {
-    setCustomerActiveTabExternal('requests');
-    handlePageTransition('dashboard-customer');
   };
 
   const handleSignOutAction = () => {
@@ -340,10 +322,6 @@ export function MainLayout() {
         return <About />;
       case 'services':
         return <Services onNavigate={handlePageTransition} />;
-      case 'service-details':
-        return (
-          <ServiceDetails catId={selectedCategoryDetail} onNavigate={handlePageTransition} onViewPermanentRequests={handleViewPermanentRequests} />
-        );
       case 'contact':
         return <Contact />;
       case 'faq':
@@ -494,7 +472,7 @@ export function MainLayout() {
               >
 
                 <ClipboardList className="w-4 h-4 shrink-0" />
-                <span>Permanent Hires</span>
+                <span>Permanent &amp; Custom</span>
               </button>
 
 
@@ -809,7 +787,6 @@ export function MainLayout() {
 
         onNavigate={handlePageTransition}
         currentPage={currentPage}
-        setSelectedCategoryDetail={setSelectedCategoryDetail}
         customerActiveTab={customerActiveTabExternal}
         setCustomerActiveTab={setCustomerActiveTabExternal}
         providerActiveTab={providerActiveTabExternal}

@@ -6,7 +6,6 @@ import { Menu, X, Bell, User, ChevronDown, LogOut } from 'lucide-react';
 export default function Navbar({
   onNavigate,
   currentPage,
-  setSelectedCategoryDetail,
   customerActiveTab,
   setCustomerActiveTab,
   providerActiveTab,
@@ -398,7 +397,7 @@ export default function Navbar({
             </button>
             <button
               onClick={() => handleLinkClick('services')}
-              className={`hover:text-teal-700 cursor-pointer py-1 ${['services', 'service-details'].includes(currentPage) ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
+              className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'services' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
             >
               Services
             </button>
@@ -518,7 +517,7 @@ export default function Navbar({
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-600 uppercase tracking-wider">
           <button onClick={() => handleLinkClick('home')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'home' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Home</button>
-          <button onClick={() => handleLinkClick('services')} className={`hover:text-teal-700 cursor-pointer py-1 ${['services', 'service-details'].includes(currentPage) ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Services</button>
+          <button onClick={() => handleLinkClick('services')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'services' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Services</button>
           <button onClick={() => handleLinkClick('about')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'about' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>About</button>
           <button onClick={() => handleLinkClick('contact')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'contact' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Contact</button>
         </nav>

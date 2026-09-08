@@ -34,7 +34,7 @@ export const Home = ({ onNavigate }) => {
 
   const handleCategoryClick = (catNameOrId) => {
     setCategory(catNameOrId);
-    onNavigate('service-details', catNameOrId);
+    onNavigate('services');
   };
 
   const handleQuickSearch = (term) => {

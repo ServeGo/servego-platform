@@ -139,8 +139,11 @@ export default function ProviderWalletAmbassador({ provider }) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        <div className="md:col-span-7 bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden">
+        <div className="md:col-span-7 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden">
+          <div className="absolute -top-14 -right-14 w-52 h-52 rounded-full bg-teal-500/20 blur-3xl" />
+          <div className="absolute -bottom-20 -left-10 w-56 h-56 rounded-full bg-indigo-600/25 blur-3xl" />
           <div className="absolute right-6 top-6 bg-indigo-500 text-white text-[11px] font-black uppercase px-3 py-1 rounded-full shadow-md">Wallet Credits</div>
+          <div className="relative z-10">
           <div className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-widest">
             <Wallet className="w-4 h-4 text-indigo-400" /> Available Balance
           </div>
@@ -160,6 +163,7 @@ export default function ProviderWalletAmbassador({ provider }) {
               <span className="text-[10px] text-slate-300 font-black uppercase block">Ledger Entries</span>
               <span className="text-lg font-black mt-1 block">{wallet?.transactionCount ?? 0}</span>
             </div>
+          </div>
           </div>
         </div>
 
