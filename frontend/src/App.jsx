@@ -6,7 +6,6 @@ import './cursor.css';
 import { Home } from './pages/Home';
 import { CustomerHome } from './pages/CustomerHome';
 import { ProviderHome } from './pages/ProviderHome';
-import { About } from './pages/About';
 import { Services } from './pages/Services';
 import { Contact } from './pages/Contact';
 import { FAQ } from './pages/FAQ';
@@ -77,7 +76,7 @@ const getRoutePath = (page, tab = null) => {
     case 'provider-home':
       return '/provider-home';
     case 'about':
-      return '/about';
+      return '/';
     case 'services':
       return '/services';
     case 'contact':
@@ -209,14 +208,23 @@ export function MainLayout() {
         return;
       }
 
+      if (segments[0] === 'about') {
+        window.history.replaceState({}, '', '/');
+        setCurrentPage('home');
+        return;
+      }
+
       const nextPage = segments[0];
       setCurrentPage(nextPage);
     };
 
-    const publicPages = ['forgot-password', 'reset-password'];
+    const publicPages = ['forgot-password', 'reset-password', 'login', 'signup'];
     const currentPath = (window.location.pathname || '/').split('?')[0].replace(/^\/+|\/+$/g, '');
     const currentSegment = currentPath ? currentPath.split('/')[0] : '';
-    if (!currentUser && !publicPages.includes(currentSegment)) {
+    // Only force anonymous visitors back to the marketing home when they land
+    // on an unrelated route — never tear them off the login/signup pages (the
+    // "Book Now → login" redirect must leave them on the login screen).
+    if (!currentUser && !publicPages.includes(currentSegment) && currentSegment !== '' && currentSegment !== 'home') {
       window.history.replaceState({}, '', '/');
       setCurrentPage('home');
     }
@@ -325,7 +333,7 @@ export function MainLayout() {
       case 'provider-home':
         return <ProviderHome onGoToTab={(tab) => { setProviderActiveTabExternal(tab); handlePageTransition('dashboard-provider'); }} />;
       case 'about':
-        return <About />;
+        return <Home onNavigate={handlePageTransition} />;
       case 'services':
         return <Services onNavigate={handlePageTransition} />;
       case 'contact':
@@ -801,11 +809,9 @@ export function MainLayout() {
 
       <main className="flex-1">{renderContent()}</main>
 
-      {/* Footer for public pages, customer pages, and provider pages */}
-      {currentPage !== 'login' && currentPage !== 'signup' && (!currentUser || currentUser.role === 'customer' || (currentUser.role === 'provider' && (currentPage === 'provider-home' || currentPage === 'dashboard-provider'))) && (
-        <div className={currentUser?.role === 'customer' || currentUser?.role === 'provider' ? 'pb-16 md:pb-0' : ''}>
-          <Footer onNavigate={handlePageTransition} />
-        </div>
+      {/* Footer for public (logged-out) pages only — hidden after login */}
+      {currentPage !== 'login' && currentPage !== 'signup' && !currentUser && (
+        <Footer onNavigate={handlePageTransition} />
       )}
 
       {/* Mobile sticky bottom navigation for the customer role (native-app feel) */}

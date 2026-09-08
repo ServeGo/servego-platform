@@ -29,9 +29,12 @@ export default function ServiceEngagementChoice({ serviceName, onTemporary, onPe
                 <CalendarClock className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-900">Temporary Service</p>
+                <p className="text-sm font-extrabold text-slate-900">One-Time Service (Instant Booking)</p>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
-                  One-time or occasional service. Your job is offered to every eligible specialist in your area — the first to accept gets booked directly.
+                  Need a quick fix?
+                </p>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
+                  Offered instantly to top local specialists — the first available pro accepts and books directly.
                 </p>
               </div>
             </div>
@@ -47,9 +50,12 @@ export default function ServiceEngagementChoice({ serviceName, onTemporary, onPe
                 <Briefcase className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-900">Permanent / Contract</p>
+                <p className="text-sm font-extrabold text-slate-900">Ongoing / Contract Service</p>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
-                  Ongoing or contract-based engagement. Share your requirements and our team will arrange everything for you.
+                  Need long-term support?
+                </p>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
+                  Share your project details, and our team will arrange and match the right specialist for you.
                 </p>
               </div>
             </div>

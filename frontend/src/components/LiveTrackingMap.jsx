@@ -18,6 +18,14 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 const fmtCoord = (v) => (v == null ? '—' : Number(v).toFixed(6));
 const fmtKm = (v) => (v == null ? '—' : `${Number(v).toFixed(1)} km`);
 
+// Free OSRM public routing endpoint (keyless, demo tier). Fine for development,
+// but it is rate-limited — self-host an OSRM instance for production and point
+// this constant at it. Used to draw a real road route instead of a straight
+// great-circle line from the provider's GPS fix to the destination.
+const OSRM_ROUTE_ENDPOINT = 'https://router.project-osrm.org/route/v1/driving';
+const OSRM_REFETCH_MIN_METERS = 50; // don't re-route for tiny GPS jitter
+const OSRM_REFETCH_MIN_MS = 10000; // cooldown between route requests
+
 // OpenStreetMap raster tiles (free, keyless). Swap in Google/MapTiler tiles by
 // changing this style object — the marker/route logic below is tile-agnostic.
 const OSM_STYLE = {
@@ -46,13 +54,22 @@ const OSM_STYLE = {
 export const LiveTrackingMap = ({ booking, liveLocation }) => {
   const [now, setNow] = useState(Date.now());
   const [mapReady, setMapReady] = useState(false);
+  const [osrmCoords, setOsrmCoords] = useState(null);
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({ provider: null, destination: null });
+  const osrmRef = useRef({ seq: 0, origin: null, dest: null, lastAt: 0, controller: null });
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
+  }, []);
+
+  // Abort any in-flight routing request when the map unmounts.
+  useEffect(() => {
+    return () => {
+      if (osrmRef.current.controller) osrmRef.current.controller.abort();
+    };
   }, []);
 
   // Latest fix: prefer the real-time socket payload; fall back to the last
@@ -100,6 +117,69 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
       }
     };
   }, [live, destination, hasLocation, hasDestination]);
+
+  // If the backend ships a road polyline already, it wins — no client routing.
+  const hasBackendRoute = useMemo(
+    () => Array.isArray(live?.routePolyline) && live.routePolyline.length >= 2,
+    [live]
+  );
+
+  // Fetch a real road route from the free OSRM service. Throttled so a stream
+  // of GPS fixes doesn't hammer the demo endpoint: re-route only when the
+  // provider moved >=50m, or the destination changed, or the cooldown elapsed.
+  useEffect(() => {
+    if (!hasLocation || !hasDestination || hasBackendRoute) return;
+
+    const origin = { lat: Number(live.latitude), lng: Number(live.longitude) };
+    const dest = { lat: Number(destination.latitude), lng: Number(destination.longitude) };
+    const ref = osrmRef.current;
+
+    const movedMeters =
+      ref.origin && ref.lastAt > 0
+        ? haversineKm(ref.origin.lat, ref.origin.lng, origin.lat, origin.lng) * 1000
+        : Infinity;
+    const destMovedMeters =
+      ref.dest && ref.lastAt > 0
+        ? haversineKm(ref.dest.lat, ref.dest.lng, dest.lat, dest.lng) * 1000
+        : Infinity;
+    const withinCooldown = Date.now() - ref.lastAt < OSRM_REFETCH_MIN_MS;
+    if (ref.lastAt > 0 && movedMeters < OSRM_REFETCH_MIN_METERS && destMovedMeters < 1 && withinCooldown) return;
+
+    const seq = ++ref.seq;
+    if (ref.controller) ref.controller.abort();
+    const controller = new AbortController();
+    ref.controller = controller;
+    ref.origin = origin;
+    ref.dest = dest;
+
+    const url =
+      `${OSRM_ROUTE_ENDPOINT}/${origin.lng},${origin.lat};${dest.lng},${dest.lat}` +
+      '?overview=full&geometries=geojson';
+    fetch(url, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (seq !== ref.seq) return;
+        const coords = data?.routes?.[0]?.geometry?.coordinates;
+        const pts = Array.isArray(coords)
+          ? coords.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+          : [];
+        ref.lastAt = Date.now();
+        setOsrmCoords(pts.length >= 2 ? pts : null);
+      })
+      .catch(() => {
+        // Failed/aborted routing — the straight-line fallback still renders.
+        if (seq === ref.seq) setOsrmCoords(null);
+      });
+  }, [live, destination, hasLocation, hasDestination, hasBackendRoute]);
+
+  // Prefer the OSRM road route; otherwise the backend polyline or the
+  // straight great-circle line.
+  const displayRoute = useMemo(() => {
+    if (Array.isArray(osrmCoords) && osrmCoords.length >= 2) {
+      return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: osrmCoords } };
+    }
+    return routeGeoJson;
+  }, [osrmCoords, routeGeoJson]);
 
   // Create the map when its container exists (the container only renders once
   // the provider has a GPS fix). Markers start on a valid default position so
@@ -159,12 +239,12 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
     }
 
     // Route line.
-    if (routeGeoJson && mapReady) {
+    if (displayRoute && mapReady) {
       const source = map.getSource('route');
       if (source) {
-        source.setData(routeGeoJson);
+        source.setData(displayRoute);
       } else {
-        map.addSource('route', { type: 'geojson', data: routeGeoJson });
+        map.addSource('route', { type: 'geojson', data: displayRoute });
         map.addLayer({
           id: 'route',
           type: 'line',
@@ -189,7 +269,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
       map.setCenter([Number(live.longitude), Number(live.latitude)]);
       map.setZoom(14);
     }
-  }, [live, destination, hasLocation, hasDestination, routeGeoJson, mapReady]);
+  }, [live, destination, hasLocation, hasDestination, displayRoute, mapReady]);
 
   const distanceKm =
     live?.distanceKm ??

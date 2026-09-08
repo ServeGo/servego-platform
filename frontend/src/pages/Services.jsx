@@ -19,8 +19,8 @@ import BookingSuccess from '../components/BookingSuccess';
 const SEARCH_DEBOUNCE_MS = 350;
 
 // Client-side pagination: the search endpoint returns the full catalog, so we
-// paginate right here — 10 per page regardless of screen size.
-const PAGE_SIZE = 9;
+// paginate right here — 12 per page (4 columns x 3 rows).
+const PAGE_SIZE = 12;
 
 export const Services = ({ onNavigate }) => {
   const {
@@ -365,20 +365,18 @@ export const Services = ({ onNavigate }) => {
           onQuick={handleIssueClick}
         />
 
-        <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-4">
+        <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-sm font-extrabold text-slate-900">Can't find the service you need?</p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Request a permanent, contract, or custom service — our team will add it and arrange a specialist.
-            </p>
+            <p className="text-sm font-extrabold text-slate-900">Can't find?</p>
+            <p className="text-[10px] text-slate-500 font-medium mt-0.5">Custom service</p>
           </div>
           <button
             type="button"
             onClick={handleRequestService}
-            className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm"
+            className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-2 rounded-xl text-[10px] transition-all shadow-sm"
           >
-            <PlusCircle className="w-4 h-4" />
-            Request a Service
+            <PlusCircle className="w-3.5 h-3.5" />
+            Request
           </button>
         </div>
 
@@ -396,8 +394,8 @@ export const Services = ({ onNavigate }) => {
         )}
 
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-            <SkeletonLoader type="card" count={6} />
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+            <SkeletonLoader type="card" count={12} />
           </div>
         ) : results.length === 0 ? (
           <div className="text-center py-14 sm:py-20 bg-white rounded-3xl border border-slate-200 shadow-2xs max-w-xl mx-auto px-6">
@@ -426,14 +424,13 @@ export const Services = ({ onNavigate }) => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+            <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
               {pageItems.map((cat) => (
                 <ServiceCard
                   key={cat.id}
                   category={cat}
                   providers={[]}
                   onSelect={(id) => handleSelectCategory(id)}
-                  onIssueClick={handleIssueClick}
                 />
               ))}
             </div>

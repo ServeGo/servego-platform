@@ -532,7 +532,6 @@ export default function Navbar({
         <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-600 uppercase tracking-wider">
           <button onClick={() => handleLinkClick('home')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'home' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Home</button>
           <button onClick={() => handleLinkClick('services')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'services' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Services</button>
-          <button onClick={() => handleLinkClick('about')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'about' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>About</button>
           <button onClick={() => handleLinkClick('contact')} className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'contact' ? 'text-teal-700 border-b-2 border-teal-700' : ''}`}>Contact</button>
         </nav>
 
@@ -552,7 +551,6 @@ export default function Navbar({
         <div className="md:hidden bg-white border-t border-slate-200 py-4 px-4 flex flex-col justify-between items-center text-xs font-bold text-slate-600 uppercase tracking-wider z-25 relative shadow-md w-full overflow-hidden">
           <button onClick={() => handleLinkClick('home')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Home</button>
           <button onClick={() => handleLinkClick('services')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Services</button>
-          <button onClick={() => handleLinkClick('about')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">About</button>
           <button onClick={() => handleLinkClick('contact')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full border-b border-slate-100">Contact</button>
           <button onClick={() => handleLinkClick('login')} className="hover:text-teal-700 cursor-pointer text-center py-1.5 w-full flex items-center justify-center gap-1">
             <User className="w-3.5 h-3.5" /> Login

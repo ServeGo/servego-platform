@@ -22,7 +22,7 @@ import { useAuth, useData, useUI } from '../context/AppContext';
  * A big "Explore Services" entry point goes to the Services catalogue; quick
  * tiles drop straight into the dashboard tabs.
  */
-const POPULAR_SERVICES = [
+const POPULAR_FALLBACKS = [
   { id: 'electrician', name: 'Electrician', icon: Wrench, tone: 'bg-amber-50 text-amber-600 border-amber-100' },
   { id: 'plumber', name: 'Plumber', icon: Droplets, tone: 'bg-sky-50 text-sky-600 border-sky-100' },
   { id: 'ac-repair', name: 'AC Repair', icon: Snowflake, tone: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
@@ -33,8 +33,37 @@ const POPULAR_SERVICES = [
 
 export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   const { currentUser } = useAuth();
-  const { alerts } = useData();
+  const { services, alerts } = useData();
   const { selectedArea } = useUI();
+
+  // Popular services come from the live catalog so the admin-uploaded service
+  // images show here too. Fall back to the static icon list only when the
+  // catalog is empty.
+  const popularServices = (() => {
+    const list = Array.isArray(services) ? services : [];
+    if (list.length === 0) return POPULAR_FALLBACKS;
+    const ranked = list
+      .filter((s) => s && s.isHidden !== true && s.hidden !== true)
+      .sort((a, b) => (b.activeSpecialistCount || 0) - (a.activeSpecialistCount || 0));
+    const popularity = (name) => POPULAR_FALLBACKS.findIndex((f) => f.name.toLowerCase() === (name || '').toLowerCase());
+    const preferred = ranked
+      .filter((s) => popularity(s.name) >= 0)
+      .sort((a, b) => popularity(a.name) - popularity(b.name))
+      .slice(0, POPULAR_FALLBACKS.length);
+    const rest = ranked
+      .filter((s) => !preferred.includes(s))
+      .slice(0, POPULAR_FALLBACKS.length - preferred.length);
+    return [...preferred, ...rest].map((s) => {
+      const fallback = POPULAR_FALLBACKS.find((f) => f.name.toLowerCase() === (s.name || '').toLowerCase());
+      return {
+        id: s.id,
+        name: s.name,
+        image: s.image || null,
+        icon: fallback?.icon || Wrench,
+        tone: fallback?.tone || 'bg-teal-50 text-teal-600 border-teal-100',
+      };
+    });
+  })();
 
   const firstName = (currentUser?.name || 'Customer').split(' ')[0];
   const areaLabel = selectedArea || 'Hyderabad';
@@ -153,7 +182,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
-          {POPULAR_SERVICES.map((s) => {
+          {popularServices.map((s) => {
             const Icon = s.icon;
             return (
               <button
@@ -162,9 +191,15 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 onClick={() => goBook(s.id)}
                 className="group bg-white border border-slate-200 rounded-2xl px-4 py-4 flex items-center gap-3 text-left transition-all hover:border-teal-300 hover:shadow-[0_14px_30px_-18px_rgba(15,23,42,0.4)] active:scale-[0.98]"
               >
-                <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${s.tone}`}>
-                  <Icon className="w-5 h-5" />
-                </span>
+                {s.image ? (
+                  <span className="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 bg-white shrink-0">
+                    <img src={s.image} alt={s.name} className="h-full w-full object-cover" />
+                  </span>
+                ) : (
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${s.tone}`}>
+                    <Icon className="w-5 h-5" />
+                  </span>
+                )}
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
                   <span className="mt-0.5 flex items-center gap-0.5 text-[9px] font-bold text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity">

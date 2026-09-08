@@ -18,6 +18,7 @@ export const SERVICE_CATEGORIES= [
     id: 'electrician',
     name: 'Electrician',
     iconName: 'Zap',
+    image: '/images/electrician-service.png',
     description: 'Certified electricians for wiring, fixtures, switchboards, and power failures.',
     popularIssues: ['Short circuit fixing', 'Fan installation', 'Switchboard repair', 'Complete home rewiring', 'Inverter setup']
   },
@@ -25,6 +26,7 @@ export const SERVICE_CATEGORIES= [
     id: 'plumber',
     name: 'Plumber',
     iconName: 'Droplet',
+    image: '/images/plumber-service.png',
     description: 'Expert plumbing for leakages, pipe blockages, taps, basin installs, and pumps.',
     popularIssues: ['Tap leakage repair', 'Drain blockage removal', 'Water meter install', 'Bathroom fittings', 'Water tank repair']
   },
@@ -32,6 +34,7 @@ export const SERVICE_CATEGORIES= [
     id: 'ac-repair',
     name: 'AC Repair',
     iconName: 'Wind',
+    image: '/images/ac-repair-service.png',
     description: 'Deep AC filter clean, gas charging, cooling restoration, and system installations.',
     popularIssues: ['AC deep servicing', 'Gas leakage refill', 'Cooling troubleshooting', 'AC uninstallation', 'Noise correction']
   },
@@ -39,6 +42,7 @@ export const SERVICE_CATEGORIES= [
     id: 'home-cleaning',
     name: 'Home Cleaning',
     iconName: 'Sparkles',
+    image: '/images/home-cleaning-service.png',
     description: 'Dusting, mopping, bathroom scrubbing, kitchen cleaning & trash handling.',
     popularIssues: ['Regular 2BHK cleaning', 'Regular 3BHK cleaning', 'Kitchen deep scrubbing', 'Bathroom disinfection']
   },
@@ -46,6 +50,7 @@ export const SERVICE_CATEGORIES= [
     id: 'deep-cleaning',
     name: 'Deep Cleaning',
     iconName: 'FlameKindling', // fallback or customized brush
+    image: '/images/deep-cleaning-service.png',
     description: 'Thorough sanitation, steam vacuuming, hard water stain removal, and sofa shampooing.',
     popularIssues: ['Full villa deep cleaning', 'Sofa & carpet shampoo', 'Balcony pressure wash', 'Move-out thorough cleaning']
   },
@@ -53,6 +58,7 @@ export const SERVICE_CATEGORIES= [
     id: 'painting',
     name: 'Painting',
     iconName: 'Paintbrush',
+    image: '/images/painting-service.png',
     description: 'Premium wall texture, wall putty, interior/exterior painting with free masking service.',
     popularIssues: ['Single accent wall design', 'Full apartment painting', 'Waterproofing & crack filling', 'Wall stencil art']
   },
@@ -60,6 +66,7 @@ export const SERVICE_CATEGORIES= [
     id: 'appliance-repair',
     name: 'Appliance Repair',
     iconName: 'Tv',
+    image: '/images/appliance-repair-service.png',
     description: 'Quick diagnostics and genuine spare parts for washing machines, TVs, and refrigerators.',
     popularIssues: ['Washing machine spin issue', 'Refrigerator not-cooling', 'Microwave oven healing', 'Chimney filter cleanup']
   },
@@ -67,6 +74,7 @@ export const SERVICE_CATEGORIES= [
     id: 'carpentry',
     name: 'Carpentry',
     iconName: 'Hammer',
+    image: '/images/carpentry-service.png',
     description: 'Woodwork repairs, hinge replacement, custom wardrobe design, and alignment fixes.',
     popularIssues: ['Door hinge replacement', 'Wardrobe latch repair', 'Custom shelves installation', 'Bed assembly / alignment']
   },
@@ -74,6 +82,7 @@ export const SERVICE_CATEGORIES= [
     id: 'home-maintenance',
     name: 'Home Maintenance',
     iconName: 'Wrench',
+    image: '/images/home-maintenance-service.png',
     description: 'General handyman tasks, wall mounting, lock replacements, and minor repairs.',
     popularIssues: ['TV wall mounting', 'Curtain rod installation', 'Door lock replacement', 'Mirror / painting hanging']
   }
