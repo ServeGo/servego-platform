@@ -388,13 +388,13 @@ export default function Navbar({
   if (currentUser?.role === 'customer') {
     return (
       <header id="customer-navbar-comp" className="sticky top-0 z-30 bg-white border-b border-slate-200">
-        <div className="mx-auto flex h-24 max-w-6xl items-center justify-between px-7 md:h-16 md:px-4">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-4">
           <div
             onClick={() => handleLinkClick('home')}
             className="flex items-center gap-2 cursor-pointer select-none"
           >
-            <Logo className="h-16 w-16 rounded-2xl md:h-9 md:w-9 md:rounded-lg" />
-            <span className="block h-6 font-sans text-[1.65rem] font-extrabold leading-none tracking-tight text-slate-900 md:h-5 md:text-lg">
+            <Logo className="h-9 w-9 rounded-lg" />
+            <span className="block h-5 font-sans text-lg font-extrabold leading-none tracking-tight text-slate-900">
               servego<span className="text-[#06aaa1]">24</span>
             </span>
           </div>
@@ -417,16 +417,16 @@ export default function Navbar({
             </button>
           </nav>
 
-          <div className="flex items-center gap-5 md:gap-3">
+          <div className="flex items-center gap-3">
             <div className="relative" ref={notifDropdownRef}>
               <button
                 onClick={() => setNotifDropdownOpen((v) => !v)}
-                className="relative rounded-2xl border border-slate-200 p-3 text-slate-500 hover:bg-slate-50 focus:outline-none md:rounded-xl md:p-1.5"
+                className="relative rounded-xl border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 focus:outline-none"
                 aria-label="Notifications"
               >
-                <Bell className="h-7 w-7 md:h-4.5 md:w-4.5" />
+                <Bell className="h-4.5 w-4.5" />
                 {unreadNotifications.length > 0 && (
-                  <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[11px] font-black leading-none text-white md:-right-1 md:-top-1 md:h-4 md:min-w-4 md:text-[8px]">
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black leading-none text-white">
                     {unreadNotifications.length}
                   </span>
                 )}
@@ -465,17 +465,17 @@ export default function Navbar({
             <div className="relative" ref={userDropdownRef}>
               <button
                 onClick={() => setUserDropdownOpen((v) => !v)}
-                className="flex items-center gap-3 rounded-2xl bg-[#101d35] px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-all hover:bg-slate-800 focus:outline-none md:gap-2 md:rounded-xl md:px-3.5 md:py-1.5 md:text-xs"
+                className="flex items-center gap-2 rounded-xl bg-[#101d35] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-slate-800 focus:outline-none"
               >
                 {currentUser?.avatar ? (
                   <img src={currentUser.avatar} className="w-6 h-6 rounded-lg object-cover border border-white/20 shrink-0" alt="" />
                 ) : (
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-slate-700 text-xs font-black md:h-6 md:w-6 md:rounded-lg md:text-[10px]">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-slate-700 text-[10px] font-black">
                     {String(currentUser?.name || 'CU').substring(0, 2).toUpperCase()}
                   </span>
                 )}
-                <span className="max-w-[150px] truncate md:max-w-[100px]">{currentUser?.name.split(' ')[0]}</span>
-                <ChevronDown className="h-5 w-5 opacity-60 md:h-3.5 md:w-3.5" />
+                <span className="max-w-[100px] truncate">{currentUser?.name.split(' ')[0]}</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               </button>
 
               {userDropdownOpen && (

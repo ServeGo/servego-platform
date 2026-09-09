@@ -84,7 +84,7 @@ export default function CustomerBottomNav({
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         aria-label="Primary"
       >
-        <div className="grid min-h-[112px] grid-cols-4">
+        <div className="grid min-h-[68px] grid-cols-4">
           {items.map((item) => {
             const Icon = item.icon;
             return (
@@ -93,12 +93,12 @@ export default function CustomerBottomNav({
                 type="button"
                 onClick={item.onClick}
                 aria-current={item.isActive ? 'page' : undefined}
-                className={`relative flex flex-col items-center justify-center gap-2 py-2.5 text-[13px] font-bold transition-colors cursor-pointer ${
+                className={`relative flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-bold transition-colors cursor-pointer ${
                   item.isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <span className="relative">
-                  <Icon className="h-8 w-8" strokeWidth={item.isActive ? 2.5 : 2} />
+                  <Icon className="h-5 w-5" strokeWidth={item.isActive ? 2.5 : 2} />
                   {item.badge > 0 && (
                     <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center">
                       {item.badge > 9 ? '9+' : item.badge}
@@ -115,11 +115,11 @@ export default function CustomerBottomNav({
             onClick={() => setMoreOpen((v) => !v)}
             aria-expanded={moreOpen}
             aria-current={moreActive ? 'page' : undefined}
-            className={`relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-bold transition-colors cursor-pointer ${
+            className={`relative flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-bold transition-colors cursor-pointer ${
               moreActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <MoreHorizontal className="h-8 w-8" />
+            <MoreHorizontal className="h-5 w-5" />
             <span className="uppercase tracking-wide">More</span>
           </button>
         </div>
@@ -135,7 +135,7 @@ export default function CustomerBottomNav({
           <div
             role="dialog"
             aria-label="More customer options"
-            className="md:hidden fixed bottom-[112px] inset-x-0 z-50 bg-white rounded-t-3xl shadow-[0_-12px_40px_rgba(15,23,42,0.14)]"
+            className="md:hidden fixed bottom-[68px] inset-x-0 z-50 bg-white rounded-t-3xl shadow-[0_-12px_40px_rgba(15,23,42,0.14)]"
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
               <span className="text-sm font-black uppercase tracking-wide text-slate-700">

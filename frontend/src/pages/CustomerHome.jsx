@@ -86,15 +86,15 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
     <div className="min-h-screen bg-[#f8fbfc] pb-24 text-[#112344]">
       {/* Mobile customer hero follows the product reference: editorial copy on the
           left, with the family visual anchored into the lower-right corner. */}
-      <div className="relative min-h-[408px] overflow-hidden bg-[#e9fbfb] px-5 pt-8 pb-5 sm:min-h-[420px] sm:px-8 lg:min-h-[450px] lg:px-10">
+      <div className="relative min-h-[330px] overflow-hidden bg-[#e9fbfb] px-5 pt-6 pb-4 sm:min-h-[380px] sm:px-8 lg:min-h-[450px] lg:px-10">
         <div
           className="absolute bottom-5 right-0 top-0 w-full bg-[url('/images/family.png')] bg-cover bg-center bg-no-repeat lg:bg-[length:62%_auto] lg:bg-right-bottom"
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(245,255,255,.98)_0%,rgba(245,255,255,.92)_28%,rgba(245,255,255,.3)_58%,rgba(245,255,255,0)_82%)]" />
 
-        <div className="relative z-10 flex min-h-[375px] w-[62%] flex-col sm:min-h-[387px] sm:w-[54%] lg:min-h-[417px] lg:w-[50%]">
+        <div className="relative z-10 flex min-h-[300px] w-[62%] flex-col sm:min-h-[347px] sm:w-[54%] lg:min-h-[417px] lg:w-[50%]">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#079c9a] sm:text-xs">servego24</p>
-          <h1 className="mt-4 text-[1.85rem] font-black leading-[1.08] tracking-[-0.045em] text-[#102244] sm:text-[2.25rem] lg:text-[2.65rem]">
+          <h1 className="mt-2.5 text-[1.6rem] font-black leading-[1.08] tracking-[-0.045em] text-[#102244] sm:mt-4 sm:text-[2.25rem] lg:text-[2.65rem]">
             Your Home.<br />
             Our Experts.<br />
             <span className="text-[#00a99f]">One Simple Booking.</span>
@@ -119,28 +119,28 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
       </div>
 
       {/* Explore Services — its own card, not part of the hero banner */}
-      <section aria-label="Explore services" className="relative z-20 -mt-8 px-4">
+      <section aria-label="Explore services" className="relative z-20 -mt-6 px-3 sm:-mt-8 sm:px-4">
         <button
           type="button"
           onClick={() => onNavigate('services')}
-          className="flex w-full items-center justify-between rounded-[1.8rem] border border-[#36c8c0]/50 bg-gradient-to-r from-[#10afa6] to-[#078d89] px-5 py-5 text-white shadow-[0_18px_35px_-16px_rgba(13,148,136,.7)] transition-all active:scale-[.98]"
+          className="flex w-full items-center justify-between rounded-2xl border border-[#36c8c0]/50 bg-gradient-to-r from-[#10afa6] to-[#078d89] px-3.5 py-3 text-white shadow-[0_18px_35px_-16px_rgba(13,148,136,.7)] transition-all active:scale-[.98] sm:rounded-[1.8rem] sm:px-5 sm:py-5"
         >
-          <span className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15">
-              <Sparkles className="h-5 w-5" />
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/15 sm:h-10 sm:w-10 sm:rounded-2xl">
+              <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
-            <span className="text-lg font-black">Explore Services</span>
+            <span className="truncate text-base font-black sm:text-lg">Explore Services</span>
           </span>
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 text-[11px] font-black text-[#146b6b]">
+          <span className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1.5 text-[9px] font-black text-[#146b6b] sm:gap-2 sm:px-4 sm:py-2 sm:text-[11px]">
             <span>BOOK NOW</span>
-            <span className="rounded-full bg-[#dffaf8] px-2 py-1 text-[10px] font-extrabold text-[#0b8a87]">₹199</span>
+            <span className="rounded-full bg-[#dffaf8] px-1.5 py-0.5 text-[9px] font-extrabold text-[#0b8a87] sm:px-2 sm:py-1 sm:text-[10px]">₹199</span>
           </span>
         </button>
       </section>
 
       {/* Quick action tiles */}
       <section aria-label="Quick actions" className="relative z-20 mt-5 px-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           {quickTiles.map((t) => {
             const Icon = t.icon;
             return (
@@ -148,14 +148,14 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 key={t.label}
                 type="button"
                 onClick={t.onClick}
-                className="relative flex h-[174px] flex-col justify-between rounded-[1.7rem] border border-[#e5ebf0] bg-white p-6 text-left shadow-[0_18px_35px_-24px_rgba(15,23,42,.4)] transition-all active:scale-[.98]"
+                className="relative flex h-[118px] flex-col justify-between rounded-2xl border border-[#e5ebf0] bg-white p-3.5 text-left shadow-[0_18px_35px_-24px_rgba(15,23,42,.4)] transition-all active:scale-[.98] sm:h-[174px] sm:rounded-[1.7rem] sm:p-6"
               >
-                <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${t.tone}`}>
-                  <Icon className="h-7 w-7" />
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${t.tone} sm:h-16 sm:w-16 sm:rounded-2xl`}>
+                  <Icon className="h-5 w-5 sm:h-7 sm:w-7" />
                 </div>
-                <div>
-                  <p className="text-base font-black text-[#13233f]">{t.label}</p>
-                  <p className="mt-1 text-xs font-medium text-[#8ca0ba]">{t.sub}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black text-[#13233f] sm:text-base">{t.label}</p>
+                  <p className="mt-0.5 truncate text-[10px] font-medium text-[#8ca0ba] sm:mt-1 sm:text-xs">{t.sub}</p>
                 </div>
                 {t.badge > 0 && (
                   <span className="absolute top-3 right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">

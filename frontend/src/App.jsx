@@ -807,7 +807,7 @@ export function MainLayout() {
         setProviderActiveTab={setProviderActiveTabExternal}
       />
 
-      <main className="flex-1">{renderContent()}</main>
+      <main className={`flex-1 ${currentUser ? 'pb-16 md:pb-0' : ''}`}>{renderContent()}</main>
 
       {/* Footer for public (logged-out) pages only — hidden after login */}
       {currentPage !== 'login' && currentPage !== 'signup' && !currentUser && (
