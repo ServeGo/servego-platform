@@ -6,6 +6,7 @@ import { QuotationController } from '../controllers/quotationController.js';
 import { TicketController } from '../controllers/ticketController.js';
 import { NotificationController } from '../controllers/notificationController.js';
 import { AlertController } from '../controllers/alertController.js';
+import { SavedAddressController } from '../controllers/savedAddressController.js';
 import { ReviewController } from '../controllers/reviewController.js';
 import { ServiceController } from '../controllers/serviceController.js';
 import { AdminProviderServiceController } from '../controllers/adminProviderServiceController.js';
@@ -26,7 +27,7 @@ import { FeatureFlagController } from '../controllers/featureFlagController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
-import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation } from '../middleware/validation.js';
+import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation, createSavedAddressValidation, updateSavedAddressValidation } from '../middleware/validation.js';
 
 const apiRouter = Router();
 
@@ -39,6 +40,12 @@ apiRouter.post('/auth/refresh', UserController.refreshToken);
 apiRouter.get('/auth/me', requireAuth, UserController.getMe);
 apiRouter.get('/users', requireAuth, requireRole('admin'), UserController.getUsers);
 apiRouter.patch('/users/:id/profile', requireAuth, validate(updateUserProfileValidation), UserController.updateProfile);
+
+// --- Saved addresses (customer booking shortcuts) ---
+apiRouter.get('/saved-addresses', requireAuth, SavedAddressController.getMine);
+apiRouter.post('/saved-addresses', requireAuth, validate(createSavedAddressValidation), SavedAddressController.create);
+apiRouter.patch('/saved-addresses/:id', requireAuth, validate(updateSavedAddressValidation), SavedAddressController.update);
+apiRouter.delete('/saved-addresses/:id', requireAuth, SavedAddressController.remove);
 
 // --- Service Providers (Partners) ---
 apiRouter.get('/providers', optionalAuth, ProviderController.getAll);

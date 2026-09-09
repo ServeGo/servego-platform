@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { ClipboardList, Clock3, Loader2 } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { normalizeBooking } from '../utils/normalizeCustomerData';
@@ -267,16 +267,24 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   );
 };
 
-function EmptyBookings({ onNavigate }) {
+function EmptyBookings({ onNavigate, title = 'No active bookings' }) {
   return (
-    <div className="text-center py-20 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
-      <h4 className="text-base font-bold text-slate-900">No Orders Found</h4>
-      <p className="text-slate-500 text-xs mt-1 font-medium">Book a service to get started.</p>
+    <div className="mx-auto flex max-w-sm flex-col items-center rounded-2xl bg-white px-3 py-7 text-center sm:py-8">
+      <div className="relative mb-4 flex h-28 w-40 items-center justify-center rounded-full bg-[#e8faf8]">
+        <ClipboardList className="h-16 w-16 text-[#42c9c0]" strokeWidth={1.5} />
+        <span className="absolute bottom-4 right-8 flex h-10 w-10 items-center justify-center rounded-full bg-[#16b5ae] text-white shadow-sm">
+          <Clock3 className="h-5 w-5" strokeWidth={2} />
+        </span>
+      </div>
+      <h4 className="text-xl font-black tracking-tight text-[#102244]">{title}</h4>
+      <p className="mt-1.5 max-w-xs text-sm font-medium leading-5 text-[#71839d]">
+        You don’t have any active service bookings<br className="hidden sm:block" /> right now.
+      </p>
       <button 
         onClick={() => onNavigate('services')} 
-        className="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition-colors"
+        className="mt-5 min-w-[190px] rounded-lg bg-[#0da69f] px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_22px_-12px_rgba(13,166,159,.9)] transition-colors hover:bg-[#078f89]"
       >
-        Browse Services
+        Book a Service
       </button>
     </div>
   );
@@ -436,14 +444,10 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
           </button>
         </div>
       ) : items.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
-          <p className="text-slate-500 text-xs font-medium">No {subTab} bookings.</p>
-          {subTab === 'pending' && (
-            <button onClick={() => onNavigate('services')} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition-colors">
-              Browse Services
-            </button>
-          )}
-        </div>
+        <EmptyBookings
+          onNavigate={onNavigate}
+          title={`No ${subTab} bookings`}
+        />
       ) : (
         <div className="space-y-6">
           {items.map(bk => (

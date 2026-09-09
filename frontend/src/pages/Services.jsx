@@ -327,6 +327,7 @@ export const Services = ({ onNavigate }) => {
 
         {bookingStep === 1 && (
           <BookingModal
+            serviceName={bookingServiceName}
             onClose={() => setBookingStep(0)}
             errorText={errorText}
             address={address} setAddress={setAddress}

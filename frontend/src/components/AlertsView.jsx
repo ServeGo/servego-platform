@@ -1,5 +1,5 @@
 import React from 'react';
-import { BellRing, CheckCircle2 } from 'lucide-react';
+import { Bell, BellRing, CheckCircle2 } from 'lucide-react';
 
 /**
  * Real-time "Alerts" tab content. An alert is a temporary, action-required
@@ -11,11 +11,16 @@ export default function AlertsView({ alerts = [], onReview, onReviewAll, loading
   return (
     <div className="space-y-4 text-left">
       <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900">Your Alerts</h3>
-          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-            Action required — handled alerts clear automatically.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#dff7f5] ring-1 ring-[#cfeee8]">
+            <Bell className="h-5 w-5 text-[#1ec5b7]" strokeWidth={2.2} />
+          </span>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Your Alerts</h3>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              Action required — handled alerts clear automatically.
+            </p>
+          </div>
         </div>
         {alerts.length > 0 && (
           <button

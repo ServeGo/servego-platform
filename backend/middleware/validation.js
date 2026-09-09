@@ -496,6 +496,64 @@ export const resetPasswordValidation = [
     .matches(/^(?=.*[a-z])(?=.*\d)/).withMessage('Password must contain a lowercase letter and a number')
 ];
 
+// ==================== Saved Address Validations ====================
+
+export const createSavedAddressValidation = [
+  body('label')
+    .trim()
+    .optional({ values: 'falsy' })
+    .isLength({ max: 50 }).withMessage('Label too long'),
+  body('address')
+    .trim()
+    .notEmpty().withMessage('Please enter an address')
+    .isLength({ max: 500 }).withMessage('Address too long')
+    .escape(),
+  body('latitude')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (Number.isNaN(n) || n < -90 || n > 90) throw new Error('Latitude must be between -90 and 90');
+      return true;
+    }),
+  body('longitude')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (Number.isNaN(n) || n < -180 || n > 180) throw new Error('Longitude must be between -180 and 180');
+      return true;
+    })
+];
+
+export const updateSavedAddressValidation = [
+  body('label')
+    .trim()
+    .optional({ values: 'falsy' })
+    .isLength({ max: 50 }).withMessage('Label too long'),
+  body('address')
+    .trim()
+    .optional({ values: 'falsy' })
+    .isLength({ max: 500 }).withMessage('Address too long')
+    .escape(),
+  body('latitude')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (Number.isNaN(n) || n < -90 || n > 90) throw new Error('Latitude must be between -90 and 90');
+      return true;
+    }),
+  body('longitude')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      if (value === null || value === undefined || value === '') return true;
+      const n = Number(value);
+      if (Number.isNaN(n) || n < -180 || n > 180) throw new Error('Longitude must be between -180 and 180');
+      return true;
+    })
+];
+
 // ==================== Parameter Validations ====================
 
 export const mongoIdParam = [

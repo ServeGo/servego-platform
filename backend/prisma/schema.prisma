@@ -55,6 +55,7 @@ model User {
   wallet                  Wallet?
   walletTransactions      WalletTransaction[]
   walletWithdrawalRequests WalletWithdrawalRequest[]
+  savedAddresses          SavedAddress[]
 }
 
 model Customer {
@@ -67,6 +68,24 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// Saved shortcuts used for faster booking (Home/Work/Office/etc.). A customer
+// can keep several named locations and reuse them when placing a booking.
+model SavedAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String   @default("Home")
+  address   String
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, label])
+  @@index([userId, createdAt])
 }
 
 model Notification {

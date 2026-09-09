@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowRight, Star, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowDown, ArrowRight, Star, Users } from 'lucide-react';
 import CategoryIcon from './CategoryIcon';
 
 /**
@@ -12,6 +12,7 @@ export default function ServiceCard({
   providers,
   onSelect,
 }) {
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const safeProviders = Array.isArray(providers) ? providers : [];
   const localServiceImages = {
     electrician: '/images/electrician-service.png',
@@ -94,25 +95,36 @@ const serviceName = (category?.name || '').toLowerCase();
         <h3 className="mt-4 text-lg font-extrabold text-slate-900 tracking-tight capitalize">
           {category.name}
         </h3>
-        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed font-medium line-clamp-3">
+        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed font-medium line-clamp-2 sm:line-clamp-3">
           {category.description}
         </p>
 
         {issues.length > 0 && (
           <div className="mt-4">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide block mb-2">
+            <button
+              type="button"
+              aria-expanded={issuesOpen}
+              onClick={() => setIssuesOpen((open) => !open)}
+              className="flex w-full items-center justify-between text-left sm:hidden"
+            >
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">
+                Popular requests
+              </span>
+              <ArrowDown className={`h-4 w-4 text-slate-400 transition-transform ${issuesOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <span className="hidden text-[10px] font-black text-slate-400 uppercase tracking-wide sm:block">
               Popular requests
             </span>
-            <div className="flex flex-wrap gap-1.5">
-              {issues.map((issue, idx) => (
-                <span
-                  key={idx}
-                  className="bg-slate-50 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full border border-slate-200/70 select-none"
-                >
-                  {issue}
-                </span>
-              ))}
-            </div>
+            <div className={`${issuesOpen ? 'flex' : 'hidden'} mt-2 flex-wrap gap-1.5 sm:flex`}>
+                {issues.map((issue, idx) => (
+                  <span
+                    key={idx}
+                    className="bg-slate-50 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full border border-slate-200/70 select-none"
+                  >
+                    {issue}
+                  </span>
+                ))}
+              </div>
           </div>
         )}
       </div>
@@ -123,7 +135,10 @@ const serviceName = (category?.name || '').toLowerCase();
           onClick={() => onSelect(category.id || category.name)}
           className="w-full bg-slate-900 hover:bg-teal-600 text-white font-black text-xs rounded-2xl py-3 flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
         >
-          Book Now
+          <span className="inline-flex items-center gap-2">
+            <span>Book Now</span>
+            <span className="rounded-full bg-white/12 px-2 py-0.5 text-[10px] font-bold text-[#dffaf8]">₹199</span>
+          </span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

@@ -822,6 +822,7 @@ export function MainLayout() {
           onNavigate={handlePageTransition}
           setCustomerActiveTab={setCustomerActiveTabExternal}
           alertsCount={unreadAlerts}
+          onLogout={handleSignOutAction}
         />
       )}
 
@@ -846,4 +847,3 @@ export default function App() {
     </AppProvider>
   );
 }
-

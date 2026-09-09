@@ -17,7 +17,7 @@ export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setI
             <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-[#f3f7fb] px-3 py-2.5"><Search className="h-5 w-5 shrink-0 text-[#466285]" /><span className="min-w-0 flex-1"><span className="block text-[9px] font-black uppercase tracking-[.13em] text-[#7486a5]">Find a service</span><input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Electrician, plumber, painter, cleaner..." className="w-full bg-transparent text-xs font-medium text-slate-800 outline-none placeholder:text-[#8294b4]" /></span></label>
             <button type="submit" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#009b91] px-5 py-3 text-sm font-extrabold text-white shadow-md transition hover:bg-[#00847b]">Search Services <ArrowRight className="h-4 w-4" /></button>
           </form>
-          <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#00bfb2] px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_12px_25px_-14px_rgba(0,232,210,.95)] transition hover:bg-[#00ab9f]"><Download className="h-4 w-4" /> Download Android App</button>
+          <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#00bfb2] px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_12px_25px_-14px_rgba(0,232,210,.95)] transition hover:bg-[#00ab9f]"><span>Book Now</span><span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-black">₹199</span></button>
         </div>
       </div>
     </div>

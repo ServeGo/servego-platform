@@ -131,7 +131,7 @@ export default function Footer({ onNavigate = () => {} }) {
         </div>
 
         <div className="mt-8 border-t border-slate-200 pt-4 text-center text-sm text-slate-500 sm:text-left">
-          © 2024 ServeGo24. All rights reserved.
+          © 2026 ServeGo24. All rights reserved.
         </div>
       </div>
     </footer>

@@ -65,7 +65,6 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
     });
   })();
 
-  const firstName = (currentUser?.name || 'Customer').split(' ')[0];
   const areaLabel = selectedArea || 'Hyderabad';
   const alertCount = (alerts || []).filter((a) => a.userId === currentUser?.id).length;
 
@@ -84,65 +83,64 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10">
-      {/* Hero — the visual anchor, distinct from the public Home */}
-      <div className="relative overflow-hidden bg-slate-950 rounded-b-[2.5rem] px-5 pt-7 pb-10 text-white">
-        <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-teal-500/25 blur-3xl" />
-        <div className="absolute -bottom-24 -left-10 w-64 h-64 rounded-full bg-indigo-600/30 blur-3xl" />
-        <div className="absolute top-10 right-8 w-3 h-3 rounded-full bg-teal-400/70 animate-ping" />
+    <div className="min-h-screen bg-[#f8fbfc] pb-24 text-[#112344]">
+      {/* Mobile customer hero follows the product reference: editorial copy on the
+          left, with the family visual anchored into the lower-right corner. */}
+      <div className="relative min-h-[408px] overflow-hidden bg-[#e9fbfb] px-5 pt-8 pb-5 sm:min-h-[420px] sm:px-8 lg:min-h-[450px] lg:px-10">
+        <div
+          className="absolute bottom-5 right-0 top-0 w-full bg-[url('/images/family.png')] bg-cover bg-center bg-no-repeat lg:bg-[length:62%_auto] lg:bg-right-bottom"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(245,255,255,.98)_0%,rgba(245,255,255,.92)_28%,rgba(245,255,255,.3)_58%,rgba(245,255,255,0)_82%)]" />
 
-        <div className="relative z-10 flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-teal-400">
-              servego24
-            </p>
-            <h1 className="mt-1.5 text-2xl font-extrabold tracking-tight leading-tight">
-              Hi {firstName} 👋
-            </h1>
-            <p className="mt-1 text-xs text-slate-400 font-medium">
-              What shall we fix, clean or install for you today?
-            </p>
-            <div className="mt-3 inline-flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3 py-1.5 text-[10px] font-bold text-slate-200">
-              <MapPin className="w-3 h-3 text-teal-400" />
-              {areaLabel}
-            </div>
-          </div>
-          {currentUser?.avatar ? (
-            <img
-              src={currentUser.avatar}
-              alt={`${currentUser.name} avatar`}
-              className="w-12 h-12 rounded-xl object-cover ring-2 ring-teal-400/40 shrink-0"
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-indigo-600 flex items-center justify-center font-black text-base ring-2 ring-white/10 shrink-0">
-              {firstName.substring(0, 2).toUpperCase()}
-            </div>
-          )}
+        <div className="relative z-10 flex min-h-[375px] w-[62%] flex-col sm:min-h-[387px] sm:w-[54%] lg:min-h-[417px] lg:w-[50%]">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#079c9a] sm:text-xs">servego24</p>
+          <h1 className="mt-4 text-[1.85rem] font-black leading-[1.08] tracking-[-0.045em] text-[#102244] sm:text-[2.25rem] lg:text-[2.65rem]">
+            Your Home.<br />
+            Our Experts.<br />
+            <span className="text-[#00a99f]">One Simple Booking.</span>
+          </h1>
+          <p className="mt-3 max-w-[19rem] text-xs font-medium leading-[1.55] text-[#526680] sm:max-w-[23rem] sm:text-[13px] lg:max-w-[29rem] lg:text-[15px]">
+            Choose a service, share your location,<br />
+            and connect with a verified local expert.<br />
+            Fast response, transparent service,<br />
+            live updates, and support from<br />
+            booking to completion.
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate('services')}
+            className="mt-4 inline-flex w-fit items-center gap-2 rounded-full bg-white/70 px-3 py-2 text-xs font-extrabold text-[#1a2b47] shadow-sm ring-1 ring-white/70"
+          >
+            <MapPin className="h-4 w-4 text-[#009c98]" />
+            Hyderabad
+            <ChevronRight className="h-4 w-4 text-[#009c98]" />
+          </button>
         </div>
-
-        {/* Trust strip removed — decoupled Explore Services to its own card below. */}
       </div>
 
       {/* Explore Services — its own card, not part of the hero banner */}
-      <section aria-label="Explore services" className="px-4 -mt-6 relative z-20">
+      <section aria-label="Explore services" className="relative z-20 -mt-8 px-4">
         <button
           type="button"
           onClick={() => onNavigate('services')}
-          className="w-full bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white font-black text-sm rounded-2xl py-4 px-5 flex items-center justify-between shadow-[0_18px_40px_-16px_rgba(13,148,136,0.55)] transition-all active:scale-[0.98] border border-teal-400/40"
+          className="flex w-full items-center justify-between rounded-[1.8rem] border border-[#36c8c0]/50 bg-gradient-to-r from-[#10afa6] to-[#078d89] px-5 py-5 text-white shadow-[0_18px_35px_-16px_rgba(13,148,136,.7)] transition-all active:scale-[.98]"
         >
           <span className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15">
+              <Sparkles className="h-5 w-5" />
             </span>
-            Explore Services
+            <span className="text-lg font-black">Explore Services</span>
           </span>
-          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1">BOOK NOW</span>
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 text-[11px] font-black text-[#146b6b]">
+            <span>BOOK NOW</span>
+            <span className="rounded-full bg-[#dffaf8] px-2 py-1 text-[10px] font-extrabold text-[#0b8a87]">₹199</span>
+          </span>
         </button>
       </section>
 
       {/* Quick action tiles */}
-      <section aria-label="Quick actions" className="px-4 mt-4 relative z-20">
-        <div className="grid grid-cols-2 gap-3">
+      <section aria-label="Quick actions" className="relative z-20 mt-5 px-4">
+        <div className="grid grid-cols-2 gap-4">
           {quickTiles.map((t) => {
             const Icon = t.icon;
             return (
@@ -150,13 +148,15 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 key={t.label}
                 type="button"
                 onClick={t.onClick}
-                className="relative bg-white border border-slate-200 rounded-2xl p-4 text-left shadow-[0_14px_34px_-22px_rgba(15,23,42,0.5)] transition-all active:scale-[0.98]"
+                className="relative flex h-[174px] flex-col justify-between rounded-[1.7rem] border border-[#e5ebf0] bg-white p-6 text-left shadow-[0_18px_35px_-24px_rgba(15,23,42,.4)] transition-all active:scale-[.98]"
               >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${t.tone}`}>
-                  <Icon className="w-4.5 h-4.5" />
+                <div className={`flex h-16 w-16 items-center justify-center rounded-2xl ${t.tone}`}>
+                  <Icon className="h-7 w-7" />
                 </div>
-                <p className="mt-3 text-xs font-black text-slate-900">{t.label}</p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400">{t.sub}</p>
+                <div>
+                  <p className="text-base font-black text-[#13233f]">{t.label}</p>
+                  <p className="mt-1 text-xs font-medium text-[#8ca0ba]">{t.sub}</p>
+                </div>
                 {t.badge > 0 && (
                   <span className="absolute top-3 right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
                     {t.badge > 9 ? '9+' : t.badge}
@@ -169,19 +169,19 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
       </section>
 
       {/* Popular services */}
-      <section aria-label="Popular services" className="px-4 mt-8">
+      <section aria-label="Popular services" className="mt-8 px-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Popular right now</h2>
+          <h2 className="text-xl font-black tracking-tight text-[#13233f]">Popular right now</h2>
           <button
             type="button"
             onClick={() => onNavigate('services')}
-            className="flex items-center gap-0.5 text-[11px] font-bold text-teal-600 hover:text-teal-700"
+            className="flex items-center gap-0.5 text-sm font-bold text-[#05a79e] hover:text-teal-700"
           >
             See all <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-4">
           {popularServices.map((s) => {
             const Icon = s.icon;
             return (
@@ -189,21 +189,20 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 key={s.id}
                 type="button"
                 onClick={() => goBook(s.id)}
-                className="group bg-white border border-slate-200 rounded-2xl px-4 py-4 flex items-center gap-3 text-left transition-all hover:border-teal-300 hover:shadow-[0_14px_30px_-18px_rgba(15,23,42,0.4)] active:scale-[0.98]"
+                className="group flex h-[114px] items-center gap-4 rounded-[1.5rem] border border-[#e5ebf0] bg-white px-6 text-left transition-all hover:border-teal-300 hover:shadow-[0_14px_30px_-18px_rgba(15,23,42,.4)] active:scale-[.98]"
               >
-                {s.image ? (
-                  <span className="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 bg-white shrink-0">
-                    <img src={s.image} alt={s.name} className="h-full w-full object-cover" />
-                  </span>
-                ) : (
-                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${s.tone}`}>
-                    <Icon className="w-5 h-5" />
-                  </span>
-                )}
-                <span className="min-w-0">
-                  <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
-                  <span className="mt-0.5 flex items-center gap-0.5 text-[9px] font-bold text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                    Book now <ArrowRight className="w-2.5 h-2.5" />
+                <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${s.tone}`}>
+                  <Icon className="h-7 w-7" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base font-black text-[#13233f]">{s.name}</span>
+                  <span className="mt-2 flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-teal-600">
+                      Book now <ArrowRight className="w-2.5 h-2.5" />
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-[#e8fbf8] px-1.5 py-0.5 text-[9px] font-black text-[#0a8d88]">
+                      ₹199
+                    </span>
                   </span>
                 </span>
               </button>

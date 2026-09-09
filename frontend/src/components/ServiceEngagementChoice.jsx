@@ -5,17 +5,17 @@ export default function ServiceEngagementChoice({ serviceName, onTemporary, onPe
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full relative shadow-2xl animate-fade-in text-left">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900">How would you like to hire?</h3>
-            <p className="text-slate-500 text-xs font-medium">{serviceName}</p>
-          </div>
+        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 mb-5">
           <button
             onClick={onClose}
             className="cursor-pointer p-1 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
           >
-            Exit
+            ← Back
           </button>
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold text-slate-900">How would you like to hire?</h3>
+            <p className="text-slate-500 text-xs font-medium">{serviceName}</p>
+          </div>
         </div>
 
         <div className="space-y-3">

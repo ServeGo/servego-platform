@@ -37,6 +37,7 @@ export const DataProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [savedAddresses, setSavedAddresses] = useState([]);
 
   // Ids of notifications already surfaced through any channel (socket event,
   // REST refresh, optimistic create). One notification is created once with a
@@ -614,6 +615,87 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  const fetchSavedAddresses = useCallback(async () => {
+    if (!currentUser?.id) {
+      setSavedAddresses([]);
+      return [];
+    }
+    try {
+      const res = await api(`${API_BASE_URL}/saved-addresses`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data?.savedAddresses || [];
+      setSavedAddresses(list);
+      return list;
+    } catch (err) {
+      console.error('Failed to fetch saved addresses:', err);
+      setSavedAddresses([]);
+      return [];
+    }
+  }, [currentUser?.id]);
+
+  // Load the logged-in user's saved addresses once identity settles (covers
+  // initial login and localStorage restores), so profile & booking modals can
+  // offer Home/Work/etc. without each screen issuing its own fetch.
+  useEffect(() => {
+    if (currentUser?.id) fetchSavedAddresses();
+  }, [currentUser?.id, fetchSavedAddresses]);
+
+  const createSavedAddress = async (addressData) => {
+    try {
+      const res = await api(`${API_BASE_URL}/saved-addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...addressData,
+          userId: currentUser?.id,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: getErrorMessage(data, 'Could not save the address.') };
+      if (data?.id) {
+        setSavedAddresses(prev => [...prev, data]);
+        return data;
+      }
+      return { error: getErrorMessage(data, 'Could not save the address.') };
+    } catch (err) {
+      console.error('Failed to save address:', err);
+      return { error: getErrorMessage(err, 'Could not save the address.') };
+    }
+  };
+
+  const updateSavedAddress = async (id, addressData) => {
+    try {
+      const res = await api(`${API_BASE_URL}/saved-addresses/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addressData)
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: getErrorMessage(data, 'Could not update the address.') };
+      if (data?.id) {
+        setSavedAddresses(prev => prev.map(a => (a.id === data.id ? data : a)));
+        return data;
+      }
+      return { error: getErrorMessage(data, 'Could not update the address.') };
+    } catch (err) {
+      console.error('Failed to update saved address:', err);
+      return { error: getErrorMessage(err, 'Could not update the address.') };
+    }
+  };
+
+  const deleteSavedAddress = async (id) => {
+    try {
+      const res = await api(`${API_BASE_URL}/saved-addresses/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return { error: getErrorMessage(data, 'Could not delete the address.') };
+      setSavedAddresses(prev => prev.filter(a => a.id !== id));
+      return { id, deleted: true };
+    } catch (err) {
+      console.error('Failed to delete saved address:', err);
+      return { error: getErrorMessage(err, 'Could not delete the address.') };
+    }
+  };
+
   const updateBookingStatus = async (bookingId, status, note, verificationCode) => {
     const targetStatus = String(status || '').toLowerCase();
     const existing = bookings.find(b => b.id === bookingId);
@@ -1076,7 +1158,12 @@ export const DataProvider = ({ children }) => {
       denyProviderServiceRequest,
       // Dedupe-aware live-notification prepend for RealtimeProvider.
       addLiveNotification,
-      addLiveAlert
+      addLiveAlert,
+      savedAddresses,
+      fetchSavedAddresses,
+      createSavedAddress,
+      updateSavedAddress,
+      deleteSavedAddress
     }}>
       {children}
     </DataContext.Provider>

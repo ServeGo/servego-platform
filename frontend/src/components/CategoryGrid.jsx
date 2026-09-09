@@ -62,17 +62,17 @@ const getCategoryImage = (cat) => {
   return (
     <section className="mx-auto max-w-6xl px-4 pt-16 pb-4 sm:pt-20">
       <div>
-        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between">
+        <div className="mb-8 flex items-start justify-between gap-3 md:items-end">
           <div>
             <h2 className="text-2xl sm:text-3xl font-extrabold font-sans text-slate-900 leading-none">All Services</h2>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1.5 font-medium">Pick from our list of high-quality home services</p>
+            <p className="mt-1.5 text-xs font-medium text-slate-500 sm:text-sm">Pick from our list of high-quality home services</p>
           </div>
           <button 
             onClick={onSeeAll}
-            className="mt-4 md:mt-0 inline-flex items-center gap-1 rounded-lg bg-teal-700 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition-all hover:bg-teal-800 focus:outline-none"
+            className="inline-flex items-center gap-1 rounded-lg bg-teal-700 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm transition-all hover:bg-teal-800 focus:outline-none md:px-3 md:py-2 md:text-[11px]"
           >
             <span>See All Services</span>
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ChevronRight className="h-3 w-3 md:h-3.5 md:w-3.5" />
           </button>
         </div>
 

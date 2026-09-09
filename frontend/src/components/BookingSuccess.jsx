@@ -8,20 +8,20 @@ export default function BookingSuccess({ details, onDashboard, onBrowse }) {
         <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-6">
           <CheckCircle2 className="w-8 h-8" />
         </div>
-        <span className="text-[10px] bg-amber-100 font-extrabold text-amber-800 px-2.5 py-1 rounded uppercase tracking-widest border border-amber-200">
-          Request Sent
+        <span className="text-[10px] bg-emerald-100 font-extrabold text-emerald-800 px-2.5 py-1 rounded uppercase tracking-widest border border-emerald-200">
+          Booking Confirmed
         </span>
-        <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-4 font-sans tracking-tight leading-none">Waiting for a Specialist</h3>
+        <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-4 font-sans tracking-tight leading-none">Booking Placed Successfully</h3>
         <p className="text-slate-500 text-xs mt-2 font-bold uppercase tracking-tight">
           Booking ID: <span className="text-indigo-600">{details.id}</span>
         </p>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-6 text-left text-xs font-bold space-y-2">
-          <p className="text-amber-900 leading-relaxed">
-            Your request has been sent to all eligible specialists in your area. The first
-            specialist to accept your job will be assigned automatically.
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 my-6 text-left text-xs font-bold space-y-2">
+          <p className="text-emerald-900 leading-relaxed">
+            Your booking has been confirmed. The request has been sent to all eligible
+            specialists in your area. The first specialist to accept your job will be assigned automatically.
           </p>
-          <p className="text-amber-700">
+          <p className="text-emerald-700">
             You can track the status in the Pending tab of your dashboard. Once a specialist
             accepts, their details and live location will appear.
           </p>
