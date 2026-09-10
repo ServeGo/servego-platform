@@ -13,17 +13,12 @@ export default function BookingSuccess({ details, onDashboard, onBrowse }) {
         </span>
         <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-4 font-sans tracking-tight leading-none">Waiting for a Specialist</h3>
         <p className="text-slate-500 text-xs mt-2 font-bold uppercase tracking-tight">
-          Booking ID: <span className="text-indigo-600">{details.id}</span>
+          Booking No: <span className="text-indigo-600">{details.bookingNumber || details.id}</span>
         </p>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-6 text-left text-xs font-bold space-y-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-6 text-left text-xs font-bold">
           <p className="text-amber-900 leading-relaxed">
-            Your request has been sent to all eligible specialists in your area. The first
-            specialist to accept your job will be assigned automatically.
-          </p>
-          <p className="text-amber-700">
-            You can track the status in the Pending tab of your dashboard. Once a specialist
-            accepts, their details and live location will appear.
+            Once a specialist accepts your request — you can track it in active bookings tab.
           </p>
         </div>
 

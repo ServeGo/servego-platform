@@ -49,6 +49,7 @@ model User {
   alerts                  Alert[]
   providerProfile         Provider?
   customerProfile         Customer?
+  customerAddresses       CustomerAddress[]
   reviews                 Review[]       @relation("ReviewerReviews")
   leadsAsCustomer         Lead[]
   serviceRequests         PermanentServiceRequest[] @relation("CustomerServiceRequests")
@@ -67,6 +68,29 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// Customer saved addresses (Blinkit/Zomato-style). The address captured at
+// signup becomes the first HOME entry; customers can add more with a label of
+// HOME / OFFICE / OTHER and pick the exact spot on a map.
+model CustomerAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String   @default("HOME")
+  address   String
+  pincode   String?
+  landmark  String?
+  latitude  Float?
+  longitude Float?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@index([userId, createdAt])
 }
 
 model Notification {
@@ -223,8 +247,9 @@ model ProviderBadge {
 }
 
 model Service {
-  id             String         @id @default(cuid())
-  name           String
+  id            String         @id @default(cuid())
+  serviceNumber String?        @unique
+  name          String
   nameNormalized String?        @unique
   description    String?
   image          String?
@@ -286,8 +311,9 @@ model ProviderServiceRequest {
 
 
 model Booking {
-  id              String        @id @default(cuid())
-  customerId      String
+  id             String        @id @default(cuid())
+  bookingNumber  String?       @unique
+  customerId     String
   providerId      String
   serviceId       String?
   serviceCategory String
@@ -296,6 +322,9 @@ model Booking {
   locationAddress String
   city            String
   instructions    String?
+
+  // Customer-supplied contact number for this job (captured at booking time).
+  contactPhone String?
 
   // Customer's exact service location picked on the map at booking time.
   // Authoritative for provider radius matching and tracking (endLocation is a
@@ -1020,4 +1049,13 @@ model BookingInvoice {
 
   @@index([bookingId])
   @@index([issuedAt])
+}
+
+// Atomic per-entity business-number counters (e.g. SG24-0001 bookings and
+// services). Incremented inside the same transaction that writes the entity
+// row that carries the generated display number.
+model BusinessSequenceCounter {
+  key       String @id
+  value     Int    @default(0)
+  updatedAt DateTime @updatedAt
 }

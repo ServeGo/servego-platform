@@ -49,6 +49,7 @@ const PROVIDER_SCALAR_FIELDS = [
 
 const BOOKING_SCALAR_FIELDS = [
   'id',
+  'bookingNumber',
   'customerId',
   'providerId',
   'serviceId',
@@ -58,6 +59,7 @@ const BOOKING_SCALAR_FIELDS = [
   'locationAddress',
   'city',
   'instructions',
+  'contactPhone',
   'serviceLatitude',
   'serviceLongitude',
   'startedAt',

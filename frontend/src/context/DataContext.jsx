@@ -504,7 +504,9 @@ export const DataProvider = ({ children }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        await fetchServices();
+        // PATCH is committed — don't wait on the full catalog refetch, that is
+        // what makes saves feel slow. Refresh in the background and return now.
+        fetchServices();
         return data;
       }
       return data;
@@ -590,14 +592,15 @@ export const DataProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...bookingData,
-          // Prisma Booking does not store customerName/customerEmail/customerPhone.
-          // Keep request payload aligned with backend/DB contract.
+          // Booking stores the customer-supplied contactPhone (plus the id
+          // relation to the account owner) — everything else in the payload is
+          // passed through as-is.
           customerId: currentUser?.id,
         })
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: getErrorMessage(data, 'Booking failed.') };
+        return { error: getErrorMessage(data, 'Booking failed.'), code: data?.code || null };
       }
       // Backend returns { booking, lead } under `data`; normalize the booking
       // itself so the caller receives the flat booking object it expects.

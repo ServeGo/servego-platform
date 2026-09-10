@@ -21,6 +21,7 @@ import { PermanentServiceRequestController } from '../controllers/permanentServi
 import { ProviderBusinessController } from '../controllers/providerBusinessController.js';
 import { AdminBusinessController } from '../controllers/adminBusinessController.js';
 import { WalletController } from '../controllers/walletController.js';
+import { AddressController } from '../controllers/addressController.js';
 import { QueueController } from '../controllers/queueController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
 import { uploadImage } from '../middleware/upload.js';
@@ -186,6 +187,13 @@ apiRouter.get('/admin/leads/:id', requireAuth, requireRole('admin'), AdminBusine
 apiRouter.get('/admin/providers/performance', requireAuth, requireRole('admin'), AdminBusinessController.getProviderPerformance);
 apiRouter.get('/admin/analytics/cancellations', requireAuth, requireRole('admin'), AdminBusinessController.getCancellationAnalytics);
 apiRouter.get('/admin/analytics/promotions', requireAuth, requireRole('admin'), AdminBusinessController.getPromotionAnalytics);
+
+// --- Customer saved addresses ---
+apiRouter.get('/customer-addresses', requireAuth, requireRole('customer'), AddressController.getMine);
+apiRouter.post('/customer-addresses', requireAuth, requireRole('customer'), AddressController.create);
+apiRouter.patch('/customer-addresses/:id', requireAuth, requireRole('customer'), AddressController.update);
+apiRouter.delete('/customer-addresses/:id', requireAuth, requireRole('customer'), AddressController.remove);
+apiRouter.post('/customer-addresses/:id/default', requireAuth, requireRole('customer'), AddressController.setDefault);
 
 // --- Wallet (credits) ---
 apiRouter.get('/wallet', requireAuth, WalletController.getMyWallet);

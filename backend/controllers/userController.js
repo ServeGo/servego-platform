@@ -280,6 +280,22 @@ export const UserController = {
             preferences: []
           }
         });
+
+        // The signup address becomes the customer's first saved address,
+        // labelled HOME and marked as the default (Blinkit-style).
+        if (address && String(address).trim()) {
+          await prisma.customerAddress.create({
+            data: {
+              userId: newUser.id,
+              label: 'HOME',
+              address: String(address).trim(),
+              pincode: pincode ? String(pincode).trim() : null,
+              latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
+              longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
+              isDefault: true
+            }
+          });
+        }
       } else {
         // New providers start in the GENERAL sector (every provider stays
         // GENERAL for now). They request their own service(s) from their
@@ -488,6 +504,9 @@ export const UserController = {
           verificationCode: true,
           providerId: true, createdAt: true, updatedAt: true,
           customerProfile: true,
+          customerAddresses: {
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }]
+          },
           providerProfile: {
             select: {
               id: true, category: true, rating: true, reviewCount: true,
@@ -554,11 +573,33 @@ export const UserController = {
             }
           });
         }
+
+        // Keep the saved-address list consistent with the profile address: if a
+        // customer has no saved address yet (pre-existing account), their
+        // profile address becomes the default HOME entry.
+        if (address && String(address).trim()) {
+          const hasSaved = await prisma.customerAddress.count({ where: { userId: user.id } });
+          if (hasSaved === 0) {
+            await prisma.customerAddress.create({
+              data: {
+                userId: user.id,
+                label: 'HOME',
+                address: String(address).trim(),
+                pincode: pincode ? String(pincode).trim() : null,
+                isDefault: true
+              }
+            });
+          }
+        }
       }
 
       const refreshed = await prisma.user.findUnique({
         where: { id },
-        include: { customerProfile: true, providerProfile: true }
+        include: {
+          customerProfile: true,
+          customerAddresses: { orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }] },
+          providerProfile: true
+        }
       });
       const { password: __, ...safeUser } = refreshed;
       return sendApiSuccess(res, 200, { user: safeUser });

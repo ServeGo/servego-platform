@@ -97,6 +97,10 @@ export const RealtimeProvider = ({ children }) => {
         const bookingId = payload?.bookingId;
         const status = payload?.status || payload?.booking?.status;
         patchBookingStatus(bookingId, status);
+        // Reconcile from the canonical record — one GET, so the card's status,
+        // provider assignment, quotation and the tracking timeline all refresh
+        // without waiting for a page reload or the polling cycle.
+        refreshBooking(bookingId);
       };
       // Assignment events (buildLeadPayload) carry { bookingId, booking: { status },
       // provider, ... }. Patch the booking in place from the payload — no fetch.
@@ -147,6 +151,7 @@ export const RealtimeProvider = ({ children }) => {
       const applyDispatchPhase = (payload) => {
         if (!payload?.bookingId) return;
         patchBookingStatus(payload.bookingId, payload.status, { providerPhase: payload.providerPhase });
+        refreshBooking(payload.bookingId);
         setLocationUpdates((prev) => ({
           ...prev,
           [payload.bookingId]: {

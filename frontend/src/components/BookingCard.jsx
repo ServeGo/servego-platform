@@ -57,35 +57,35 @@ export default function BookingCard({
   const { getBookingLocation } = useRealtime();
   const { showToast } = useToast();
   const liveLocation = getBookingLocation(booking.id);
+  const dispatchPhase = liveLocation?.providerPhase || booking.providerPhase || null;
   const timeline = Array.isArray(booking.statusHistory) ? booking.statusHistory : [];
   const [cancelling, setCancelling] = useState(false);
   const quotation = booking.quotation || null;
   const quotationSubmitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-5 sm:p-6 text-left">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs p-4 sm:p-5 text-left">
       {/* Top line panel */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-4 border-b border-slate-100 mb-5 text-xs font-bold">
-        <div className="min-w-0">
-          <span className="text-slate-400 uppercase tracking-tight">Booking ID: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded break-all">{booking.id}</span></span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-3 border-b border-slate-100 mb-4 text-[11px] font-bold">
+        <div className="flex justify-start w-full sm:w-auto">
+          <StatusBadge status={booking.status} />
         </div>
 
-        <div className="flex justify-end w-full sm:w-auto">
-          <StatusBadge status={booking.status} />
+        <div className="flex justify-end w-full sm:w-auto min-w-0">
+          <span className="text-slate-400 uppercase tracking-tight">Booking {booking.bookingNumber ? 'No' : 'ID'}: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded break-all">{booking.bookingNumber || booking.id}</span></span>
         </div>
       </div>
 
       {/* Meta and description column */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pb-6 mb-5 border-b border-slate-100/60">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pb-4 mb-4 border-b border-slate-100/60">
         {booking.status === 'pending' ? (
-          <div className="md:col-span-4 flex items-start gap-3">
-            <div className="w-12 h-12 rounded-xl shrink-0 border border-amber-200 bg-amber-50 flex items-center justify-center">
-              <Hourglass className="w-5 h-5 text-amber-500" />
+          <div className="md:col-span-4 flex items-start gap-2.5">
+            <div className="w-9 h-9 rounded-lg shrink-0 border border-amber-200 bg-amber-50 flex items-center justify-center">
+              <Hourglass className="w-4 h-4 text-amber-500" />
             </div>
-            <div>
-              <span className="text-[10px] text-amber-600 font-extrabold uppercase tracking-wide">Waiting for Specialist</span>
-              <h4 className="font-bold text-slate-800 text-sm">Your request has been sent to all eligible specialists</h4>
-              <span className="text-xs text-slate-500 font-medium">The first specialist to accept your job will be assigned. You can track their details here once confirmed.</span>
+            <div className="min-w-0">
+              <h4 className="font-bold text-slate-800 text-[13px] leading-snug">Your request has been sent to all eligible specialists</h4>
+              <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-0.5">The first specialist to accept your job will be assigned. You can track their details here once confirmed.</span>
             </div>
           </div>
         ) : (
@@ -106,7 +106,7 @@ export default function BookingCard({
           </div>
           <div className="flex gap-1.5 items-start">
             <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-            <span className="text-slate-700 flex-1 min-w-0 leading-tight">{booking.locationAddress}</span>
+            <span className="text-slate-700 flex-1 min-w-0 leading-tight break-words text-[11px]" title={booking.locationAddress}>{booking.locationAddress}</span>
           </div>
           {booking.instructions && (
             <div className="flex gap-1.5 items-start">
@@ -117,11 +117,6 @@ export default function BookingCard({
         </div>
 
         <div className="md:col-span-3 text-left md:text-right flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end gap-2">
-          <div>
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Booked</span>
-            <span className="text-xs font-bold text-slate-700 block mt-1">{new Date(booking.createdAt).toLocaleDateString()}</span>
-          </div>
-
           {booking.status === 'completed' && (
             <button 
               onClick={() => onDownloadReceipt(booking)}
@@ -150,8 +145,8 @@ export default function BookingCard({
       )}
 
       {/* Timeline */}
-      <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 mb-4">
-        <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-3 block">Tracking Timeline</span>
+      <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 mb-3">
+        <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-2 block">Tracking Timeline</span>
         {timeline.length === 0 ? (
           <p className="text-xs text-slate-400 italic py-3 text-center">No tracking events available for this booking yet.</p>
         ) : (
@@ -187,7 +182,7 @@ export default function BookingCard({
 
       {/* Action buttons */}
       <div className="flex justify-end gap-2">
-        {(booking.status === 'pending' || (booking.status === 'confirmed' && !quotationSubmitted)) && (
+        {(booking.status === 'pending' || (booking.status === 'confirmed' && !quotationSubmitted)) && dispatchPhase !== 'ARRIVED' && (
           <button
             type="button"
             disabled={cancelling}
@@ -214,11 +209,12 @@ export default function BookingCard({
         {['confirmed', 'in_progress', 'en_route', 'ongoing'].includes(booking.status) && (
           <button 
             type="button"
+            disabled
             onClick={onToggleChat}
-            className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border shadow-3xs ${chatOpen ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'}`}
+            className="px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border shadow-3xs disabled:opacity-50 disabled:cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200"
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>{chatOpen ? 'Hide Chat' : 'Chat with Specialist'}</span>
+            <span>Chat with Specialist</span>
           </button>
         )}
 

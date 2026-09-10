@@ -3,8 +3,8 @@ import { Briefcase, CircuitBoard } from 'lucide-react';
 
 export default function ServiceRequestChoice({ onPermanent, onCustom, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full relative shadow-2xl animate-fade-in text-left">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
           <div>
             <h3 className="text-lg font-bold text-slate-900">Request a Service</h3>

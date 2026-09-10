@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, UserX, ArrowRight } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
+import { api as apiClient } from '../utils/apiClient';
 
 // Components
 import ServiceHeader from '../components/ServiceHeader';
 import ServiceCard from '../components/ServiceCard';
 import SkeletonLoader from '../components/SkeletonLoader';
 import ServiceRequestChoice from '../components/ServiceRequestChoice';
-import ServiceEngagementChoice from '../components/ServiceEngagementChoice';
 import PermanentServiceRequestModal from '../components/PermanentServiceRequestModal';
 import CustomServiceRequestModal from '../components/CustomServiceRequestModal';
 import PermanentRequestSuccess from '../components/PermanentRequestSuccess';
@@ -30,7 +30,7 @@ export const Services = ({ onNavigate }) => {
     selectedArea,
     setArea,
   } = useUI();
-  const { searchServices, createBooking, bookings, getCustomerLoyaltyTier } = useData();
+  const { searchServices, createBooking } = useData();
   const { currentUser } = useAuth();
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
@@ -48,15 +48,62 @@ export const Services = ({ onNavigate }) => {
   // Booking flow ("Book Now" on a service card) — opened directly on this page,
   // there is no separate service-details page anymore.
   const [bookingServiceId, setBookingServiceId] = useState(null);
-  const [showEngagementChoice, setShowEngagementChoice] = useState(false);
   const [permanentServiceName, setPermanentServiceName] = useState('');
   const [bookingStep, setBookingStep] = useState(0); // 0: browse, 1: checkout, 2: processing, 3: success
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
-  const [instructions, setInstructions] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [errorText, setErrorText] = useState('');
   const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
+  const [showNoProvidersModal, setShowNoProvidersModal] = useState(false);
+
+  // Saved addresses (Blinkit-style) — shown in the booking popup so the user
+  // picks an existing address instead of dropping a pin every time.
+  const [savedAddresses, setSavedAddresses] = useState([]);
+
+  const loadSavedAddresses = useCallback(async () => {
+    if (!currentUser || currentUser.role !== 'customer') return;
+    try {
+      const res = await apiClient.get('/customer-addresses');
+      if (res.ok && Array.isArray(res.data?.addresses)) {
+        setSavedAddresses(res.data.addresses);
+        // Auto-select the default saved address for the booking.
+        const def = res.data.addresses.find((a) => a.isDefault) || res.data.addresses[0];
+        if (def && (def.latitude != null) && (def.longitude != null)) {
+          setLatitude(def.latitude);
+          setLongitude(def.longitude);
+          setAddress(def.address);
+        }
+      }
+    } catch {
+      // Addresses are a convenience — never block opening the booking popup.
+    }
+  }, [currentUser]);
+
+  // Save a brand-new address from the booking popup, then return it for instant selection.
+  const handleSaveAddress = useCallback(async (payload) => {
+    try {
+      const res = await apiClient.post('/customer-addresses', payload);
+      if (res.ok && res.data?.address) {
+        const addr = res.data.address;
+        setSavedAddresses((prev) => [addr, ...prev.filter((a) => a.id !== addr.id)]);
+        setLatitude(addr.latitude);
+        setLongitude(addr.longitude);
+        setAddress(addr.address);
+        return { ok: true, address: addr };
+      }
+      return { ok: false, error: res.data?.message || 'Could not save this address.' };
+    } catch {
+      return { ok: false, error: 'Could not save this address.' };
+    }
+  }, []);
+
+  const handlePickSaved = useCallback((addr) => {
+    setLatitude(addr.latitude);
+    setLongitude(addr.longitude);
+    setAddress(addr.address);
+  }, []);
 
   const debounceTimerRef = useRef(null);
   const searchAbortRef = useRef(null);
@@ -120,9 +167,24 @@ export const Services = ({ onNavigate }) => {
   const handleSelectCategory = (catId) => {
     setCategory(catId);
     if (currentUser?.role === 'customer') {
-      // Open the temporary/permanent choice right here — no navigation needed.
       setBookingServiceId(catId);
-      setShowEngagementChoice(true);
+      // If the service has no active providers on the catalog, show the
+      // "No Providers Available" popup immediately instead of the booking form.
+      const cat = (results || []).find(
+        (c) => String(c.id) === String(catId) || String(c.name || '').toLowerCase() === String(catId).toLowerCase()
+      );
+      if (cat && Number(cat.activeSpecialistCount) === 0) {
+        setShowNoProvidersModal(true);
+        return;
+      }
+      // Eligible providers exist — open the Temporary Service booking form.
+      setAddress('');
+      setLatitude(null);
+      setLongitude(null);
+      setContactPhone(currentUser?.phone || '');
+      setErrorText('');
+      setBookingStep(1);
+      loadSavedAddresses();
     } else {
       // Store the intent so the login page can resume it after sign-in.
       sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId }));
@@ -131,8 +193,8 @@ export const Services = ({ onNavigate }) => {
   };
 
   // Resume a stored booking intent (set when an unauthenticated user tapped
-  // Book Now, or from the customer home) — open the engagement choice straight
-  // away on this page.
+  // Book Now, or from the customer home) — open the booking form straight away
+  // on this page.
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'customer') return;
     const raw = sessionStorage.getItem('servego_booking_intent');
@@ -141,9 +203,7 @@ export const Services = ({ onNavigate }) => {
       const intent = JSON.parse(raw);
       sessionStorage.removeItem('servego_booking_intent');
       if (intent.catId) {
-        setCategory(intent.catId);
-        setBookingServiceId(intent.catId);
-        setShowEngagementChoice(true);
+        handleSelectCategory(intent.catId);
       }
     } catch {
       sessionStorage.removeItem('servego_booking_intent');
@@ -162,38 +222,16 @@ export const Services = ({ onNavigate }) => {
   };
   const bookingServiceName = bookingServiceId ? resolveServiceName(bookingServiceId) : '';
 
-  const customerCompletedBookingsCount = (bookings || []).filter(
-    (b) => b.customerId === currentUser?.id && b.status === 'completed'
-  ).length;
-  const loyaltyTier = getCustomerLoyaltyTier(customerCompletedBookingsCount);
-
-  const handleChooseTemporary = () => {
-    setShowEngagementChoice(false);
-    setAddress('');
-    setLatitude(null);
-    setLongitude(null);
-    setInstructions('');
-    setErrorText('');
-    setBookingStep(1);
-  };
-
-  const handleChoosePermanent = () => {
-    setShowEngagementChoice(false);
-    setBookingServiceId(null);
-    setPermanentServiceName(bookingServiceName);
-    setShowPermanentRequest(true);
-  };
-
-  const handleCloseEngagementChoice = () => {
-    setShowEngagementChoice(false);
-    setBookingServiceId(null);
-  };
-
   const handleCompleteCheckout = async (e) => {
     e.preventDefault();
 
     if (!latitude || !longitude || !address.trim()) {
       setErrorText('Please select your service location on the map');
+      return;
+    }
+
+    if (!contactPhone.trim()) {
+      setErrorText('Please enter a contact number — the specialist will call you on it.');
       return;
     }
 
@@ -208,10 +246,15 @@ export const Services = ({ onNavigate }) => {
         serviceLatitude: latitude,
         serviceLongitude: longitude,
         city: 'Hyderabad',
-        instructions
+        contactPhone
       });
 
       if (!created || created.error) {
+        if (created?.code === 'NO_ELIGIBLE_PROVIDERS') {
+          setBookingStep(0);
+          setShowNoProvidersModal(true);
+          return;
+        }
         setErrorText(created?.error || 'Could not complete the booking. Please try again.');
         setBookingStep(1);
         return;
@@ -316,13 +359,33 @@ export const Services = ({ onNavigate }) => {
           />
         )}
 
-        {showEngagementChoice && bookingServiceId && (
-          <ServiceEngagementChoice
-            serviceName={bookingServiceName}
-            onTemporary={handleChooseTemporary}
-            onPermanent={handleChoosePermanent}
-            onClose={handleCloseEngagementChoice}
-          />
+        {showNoProvidersModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full relative shadow-2xl animate-fade-in text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-5">
+                <UserX className="w-8 h-8 text-amber-500" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">No Providers Available</h3>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6 max-w-xs mx-auto">
+                There are no service providers available in your area right now. Please try again later or explore other services.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setShowNoProvidersModal(false)}
+                  className="cursor-pointer px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Try Again Later
+                </button>
+                <button
+                  onClick={() => { setShowNoProvidersModal(false); onNavigate('services'); }}
+                  className="cursor-pointer px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center justify-center gap-1.5"
+                >
+                  Browse Services
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {bookingStep === 1 && (
@@ -332,9 +395,11 @@ export const Services = ({ onNavigate }) => {
             address={address} setAddress={setAddress}
             latitude={latitude} longitude={longitude}
             setLatitude={setLatitude} setLongitude={setLongitude}
-            instructions={instructions} setInstructions={setInstructions}
-            loyaltyTier={loyaltyTier}
+            contactPhone={contactPhone} setContactPhone={setContactPhone}
             onSubmit={handleCompleteCheckout}
+            savedAddresses={savedAddresses}
+            onPickSaved={handlePickSaved}
+            onSaveAddress={handleSaveAddress}
           />
         )}
 
@@ -364,23 +429,6 @@ export const Services = ({ onNavigate }) => {
           onSearchChange={handleSearchChange}
           onQuick={handleIssueClick}
         />
-
-        <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-extrabold text-slate-900">Can't find the service you need?</p>
-            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Request a permanent, contract, or custom service — our team will add it and arrange a specialist.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRequestService}
-            className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-all shadow-sm"
-          >
-            <PlusCircle className="w-4 h-4" />
-            Request a Service
-          </button>
-        </div>
 
         {!isLoading && results.length > 0 && (
           <div ref={gridRef} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-4 px-1 text-left scroll-mt-24">
@@ -433,7 +481,6 @@ export const Services = ({ onNavigate }) => {
                   category={cat}
                   providers={[]}
                   onSelect={(id) => handleSelectCategory(id)}
-                  onIssueClick={handleIssueClick}
                 />
               ))}
             </div>
@@ -485,6 +532,31 @@ export const Services = ({ onNavigate }) => {
             )}
           </>
         )}
+
+        <div className="mt-8 relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-5 sm:px-6 sm:py-6 shadow-sm">
+          <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-indigo-100 blur-2xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md">
+                <PlusCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold text-slate-900 tracking-tight">Can't find a service?</p>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
+                  We'll add it and arrange a specialist for you.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleRequestService}
+              className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-all shadow-md hover:shadow-lg"
+            >
+              Request a Service
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

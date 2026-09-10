@@ -107,7 +107,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
             </span>
             Explore Services
           </span>
-          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1">BOOK NOW</span>
+          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1">BOOK NOW <span className="text-slate-600">₹199/-</span></span>
         </button>
       </section>
 
@@ -167,8 +167,8 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
-                  <span className="mt-0.5 flex items-center gap-0.5 text-[9px] font-bold text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                    Book now <ArrowRight className="w-2.5 h-2.5" />
+                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-teal-600">
+                    Book now · <span className="text-slate-500">₹199/-</span> <ArrowRight className="w-2.5 h-2.5" />
                   </span>
                 </span>
               </button>

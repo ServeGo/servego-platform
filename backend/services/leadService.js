@@ -11,6 +11,12 @@ import { debitWalletAllowNegative } from './walletService.js';
 import { getCommissionTiers, computeCommission, round2 } from './quotationService.js';
 import { normalizeBookingStatus } from '../utils/workflow.js';
 import { consumeAlertsByData } from './alertService.js';
+import { nextBusinessNumber } from '../utils/businessNumber.js';
+import { appendStatusHistory } from '../utils/statusHistory.js';
+
+// A provider may hold at most this many open leads offers (NEW/VIEWED) at once.
+// Declining or accepting one frees a slot for the next eligible lead.
+const MAX_OPEN_LEADS = 2;
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
@@ -192,9 +198,23 @@ export async function findEligibleProviders({
   const now = new Date();
   const hasCustomerCoords = customerLat != null && customerLng != null;
 
+  // Rule — capped inbox: a provider may hold at most MAX_OPEN_LEADS open
+  // offers. Providers at the cap (2 open NEW/VIEWED leads) drop out of new
+  // broadcasts entirely; declining or accepting one frees a slot so the next
+  // eligible lead gets offered. Mirrors what the provider sees in the
+  // "Action Required" inbox tab (open = isCurrent offer on a still-open lead).
+  const atCap = await client.leadAssignmentHistory.groupBy({
+    by: ['providerId'],
+    where: { isCurrent: true, lead: { status: { in: ['NEW', 'VIEWED'] } } },
+    _count: { _all: true },
+    having: { providerId: { _count: { gte: MAX_OPEN_LEADS } } }
+  });
+  const cappedOutIds = atCap.map((r) => r.providerId);
+  const excludedProviderIds = [...excludeProviderIds, ...cappedOutIds];
+
   // Step 1 — every hard rule below runs in PostgreSQL, not Node.
   const baseWhere = {
-    id: excludeProviderIds.length ? { notIn: excludeProviderIds } : undefined,
+    id: excludedProviderIds.length ? { notIn: excludedProviderIds } : undefined,
     isVerified: true,
     accountStatus: 'ACTIVE',
     // Negative wallet balances block new leads until cleared.
@@ -340,6 +360,15 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
       return { code: 'SERVICE_NOT_APPROVED', message: 'This provider is not approved for the requested service.' };
     }
   }
+  const openOffers = await client.leadAssignmentHistory.count({
+    where: { providerId, isCurrent: true, lead: { status: { in: ['NEW', 'VIEWED'] } } }
+  });
+  if (openOffers >= MAX_OPEN_LEADS) {
+    return {
+      code: 'LEAD_CAP_REACHED',
+      message: `This provider already has ${MAX_OPEN_LEADS} open requests. Accept or decline one before taking on more.`
+    };
+  }
   return { code: 'PROVIDER_INELIGIBLE', message: 'This provider is not currently available for the requested service.' };
 }
 
@@ -375,6 +404,7 @@ export async function createBookingWithLead({
   customerLng = null,
   serviceLatitude = null,
   serviceLongitude = null,
+  contactPhone = null,
   client = prisma
 }) {
   // Provider matching is a read-only pass, so it runs before the Serializable
@@ -412,11 +442,16 @@ export async function createBookingWithLead({
 
     const baseAmount = amount != null && !Number.isNaN(Number(amount)) ? Number(amount) : null;
 
+    // Business display number (SG24-0001, ...) minted atomically inside the
+    // transaction so concurrent bookings can never share it.
+    const bookingNumber = await nextBusinessNumber('BOOKING', tx);
+
     // Per-booking platform charges were removed in favour of the monthly
     // platform fee. The customer pays the base amount and the provider keeps
     // the full amount (the booking columns are kept for historical shape).
     const booking = await tx.booking.create({
       data: {
+        bookingNumber,
         customerId,
         providerId: assignedProvider.id,
         serviceId: serviceId || null,
@@ -424,6 +459,7 @@ export async function createBookingWithLead({
         locationAddress,
         city,
         instructions,
+        contactPhone: contactPhone || null,
         serviceLatitude: serviceLatitude != null ? Number(serviceLatitude) : null,
         serviceLongitude: serviceLongitude != null ? Number(serviceLongitude) : null,
         amount: baseAmount,
@@ -606,16 +642,31 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
       return { booking: existing, alreadyAccepted: true, cancelledProviders: [] };
     }
 
+    const historyBefore = await tx.booking.findUnique({
+      where: { id: bookingId },
+      select: { statusHistory: true }
+    });
     const updated = await tx.booking.updateMany({
       where: { id: bookingId, status: 'PENDING' },
       data: {
         providerId,
         status: 'CONFIRMED',
-        statusHistory: { push: { status: 'CONFIRMED', timestamp: new Date().toISOString(), note: 'Provider accepted the booking request' } }
+        statusHistory: appendStatusHistory(historyBefore?.statusHistory, { status: 'CONFIRMED', timestamp: new Date().toISOString(), note: 'Provider accepted the booking request' })
       }
     });
     if (updated.count === 0) {
       throw serviceError('ACCEPT_RACE', 'This booking has already been handled. Another provider accepted it first.');
+    }
+
+    // One active job per provider: accepting a second offer while a previous
+    // one is already confirmed/ongoing must fail atomically, so a racing
+    // double-accept (two offers tapped in quick succession) can never produce
+    // two active bookings. Guarded by CURRENT DB state, not stale client state.
+    const otherActive = await tx.booking.findFirst({
+      where: { providerId, id: { not: bookingId }, status: { in: ['CONFIRMED', 'ONGOING'] } }
+    });
+    if (otherActive) {
+      throw serviceError('ACTIVE_BOOKING_EXISTS', 'You already have an active booking. Complete or cancel it before accepting another request.');
     }
 
     await tx.bookingEvent.create({
@@ -633,6 +684,13 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
         await tx.leadAssignmentHistory.updateMany({
           where: { leadId: lead.id, providerId, isCurrent: true },
           data: { status: 'ACCEPTED', actionAt: new Date() }
+        });
+
+        // Close this provider's OTHER open offers — one active job at a time.
+        // The freed slot lets a future lead backfill (max-2 open offers rule).
+        await tx.leadAssignmentHistory.updateMany({
+          where: { providerId, isCurrent: true, leadId: { not: lead.id } },
+          data: { status: 'REJECTED', isCurrent: false, actionAt: new Date(), reason: 'PROVIDER_ACCEPTED_ANOTHER_JOB' }
         });
 
         // First-accept-wins: auto-cancel every other provider's open offer.
@@ -692,12 +750,13 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
  */
 export async function startBookingWork({ bookingId, actorId, actorRole = 'provider', note = null, client = prisma }) {
   return withClientTransaction(client, async (tx) => {
+    const currentHistory = await tx.booking.findUnique({ where: { id: bookingId }, select: { statusHistory: true } });
     const transitioned = await tx.booking.updateMany({
       where: { id: bookingId, status: 'CONFIRMED' },
       data: {
         status: 'ONGOING',
         startedAt: new Date(),
-        statusHistory: { push: { status: 'ONGOING', timestamp: new Date().toISOString(), note: note || 'Work started' } }
+        statusHistory: appendStatusHistory(currentHistory?.statusHistory, { status: 'ONGOING', timestamp: new Date().toISOString(), note: note || 'Work started' })
       }
     });
     if (transitioned.count === 0) {
@@ -734,7 +793,7 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
-        statusHistory: { push: { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' } },
+        statusHistory: appendStatusHistory(booking.statusHistory, { status: 'COMPLETED', timestamp: new Date().toISOString(), note: 'Booking completed by provider' }),
         messages: []
       }
     });
