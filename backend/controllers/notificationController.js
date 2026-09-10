@@ -3,37 +3,6 @@ import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parseCursor, sliceCursorPage } from '../utils/pagination.js';
 
 export const NotificationController = {
-  registerToken: async (req, res) => {
-    try {
-      const { token, enabled } = req.body;
-      if (enabled === false) {
-        const user = await prisma.user.update({
-          where: { id: req.user.id },
-          data: { fcmToken: null }
-        });
-        return sendApiSuccess(res, 200, {
-          enabled: false,
-          token: user.fcmToken,
-          message: 'Push notifications disabled.'
-        });
-      }
-      if (!token || typeof token !== 'string' || token.length < 10 || token.length > 4096) {
-        return sendApiError(res, 400, 'INVALID_TOKEN', 'A valid FCM registration token is required.');
-      }
-      const user = await prisma.user.update({
-        where: { id: req.user.id },
-        data: { fcmToken: token }
-      });
-      return sendApiSuccess(res, 200, {
-        enabled: true,
-        token: user.fcmToken,
-        message: 'Push notifications enabled.'
-      });
-    } catch (err) {
-      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to save notification token', err.message);
-    }
-  },
-
   getAll: async (req, res) => {
     try {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));

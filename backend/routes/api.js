@@ -86,7 +86,6 @@ apiRouter.post('/bookings/:id/messages', requireAuth, BookingController.addMessa
 apiRouter.get('/bookings/:id/messages', requireAuth, BookingController.getMessages);
 
 // --- Notifications ---
-apiRouter.post('/notifications/register-token', requireAuth, NotificationController.registerToken);
 apiRouter.get('/notifications', requireAuth, NotificationController.getAll);
 apiRouter.post('/notifications', requireAuth, NotificationController.create);
 apiRouter.patch('/notifications/read-all', requireAuth, NotificationController.readAll);

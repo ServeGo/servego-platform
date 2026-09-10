@@ -7,7 +7,6 @@ import { getErrorInfo } from '../utils/errorMessages';
 
 // Components
 import DashboardHeader from '../components/DashboardHeader';
-import NotificationToggle from '../components/NotificationToggle';
 import BookingCard from '../components/BookingCard';
 import TicketsView from '../components/TicketsView';
 import AlertsView from '../components/AlertsView';
@@ -208,8 +207,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             requests: permanentCount
           }}
         />
-
-        <NotificationToggle className="mb-6" />
 
         {activeTab === 'bookings' && (
           <div className="space-y-6">
