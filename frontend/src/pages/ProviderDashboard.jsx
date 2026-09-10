@@ -7,6 +7,7 @@ import { cachedRequest } from '../utils/requestCache';
 
 // Components
 import ProviderHeader from '../components/ProviderHeader';
+import NotificationToggle from '../components/NotificationToggle';
 import ProviderLeadsInbox from '../components/ProviderLeadsInbox';
 import ProviderLevelAnalytics from '../components/ProviderLevelAnalytics';
 
@@ -136,6 +137,8 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             loadingServices={loadingServices}
           />
         )}
+
+        <NotificationToggle className="mb-4" />
 
         <TabList activeTab={activeTab} setActiveTab={setActiveTab} leadsCount={activeLeads.length} reviewsCount={activeProvider?.reviews?.length || 0} />
 

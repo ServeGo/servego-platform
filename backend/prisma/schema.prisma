@@ -29,6 +29,7 @@ model User {
   profileComplete         Boolean        @default(false)
   resetToken              String?
   resetTokenExpiry        DateTime?
+  fcmToken                String?
 
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
