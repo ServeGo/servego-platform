@@ -4,6 +4,7 @@ import { debitWallet, debitWalletAllowNegative, creditWallet } from './walletSer
 import { startBookingWork, findEligibleProviders, cancelOpenOffers } from './leadService.js';
 import { recordLeadOffered } from './providerPerformanceService.js';
 import { buildStatusHistory, normalizeBookingStatus } from '../utils/workflow.js';
+import { appendStatusHistory } from '../utils/statusHistory.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
@@ -92,7 +93,7 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
   return withClientTransaction(client, async (tx) => {
     const booking = await tx.booking.findUnique({
       where: { id: bookingId },
-      select: { providerId: true, status: true, serviceCategory: true, customerId: true }
+      select: { providerId: true, status: true, serviceCategory: true, customerId: true, statusHistory: true }
     });
     if (!booking) throw serviceError('BOOKING_NOT_FOUND', 'Booking not found.');
     if (booking.providerId !== providerId) throw serviceError('FORBIDDEN', 'You are not assigned to this booking.');
@@ -112,6 +113,9 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
             amount: Math.max(0, Number(row.amount) || 0)
           }))
       : [];
+    if (cleanItems.length === 0) {
+      throw serviceError('INVALID_QUOTATION', 'At least one payable line item is required alongside the service fee.');
+    }
     const fee = await getServiceFeeDefault(tx);
     const itemsTotal = round2(cleanItems.reduce((sum, row) => sum + Number(row.amount), 0));
     const totalAmount = round2(fee + itemsTotal);
@@ -129,6 +133,25 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
       : await tx.quotation.create({
           data: { bookingId, providerId, serviceFee: fee, items: cleanItems, totalAmount }
         });
+
+    // First submission lands on the customer's tracking timeline. Revisions
+    // update the quotation row in place without spamming the timeline, keeping
+    // the at-least-once/idempotent guarantee (double-submit can't duplicate).
+    if (!existing) {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          statusHistory: appendStatusHistory(booking.statusHistory, {
+            status: 'QUOTATION',
+            timestamp: new Date().toISOString(),
+            note: 'Specialist submitted a quotation for your review'
+          })
+        }
+      });
+      await tx.bookingEvent.create({
+        data: { bookingId, actorId: providerId, actorRole: 'provider', action: 'QUOTATION_SUBMITTED', note: 'Quotation submitted' }
+      });
+    }
 
     return { booking, quotation, created: !existing };
   });

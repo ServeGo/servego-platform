@@ -3,6 +3,7 @@ import { rankedServiceMatches } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
 import { createTtlCache } from '../utils/ttlCache.js';
+import { nextBusinessNumber } from '../utils/businessNumber.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
 
@@ -13,6 +14,39 @@ const catalogCache = createTtlCache(CATALOG_CACHE_TTL_MS);
 
 function invalidateCatalogCache() {
   catalogCache.invalidate('catalog');
+}
+
+/**
+ * Per-service provider stats: how many active/verified providers serve it and
+ * their average rating. Filtered exactly like the catalog count (approved link
+ * + ACTIVE + verified + ACTIVE user, optional location scope). The average
+ * only covers providers that actually have a rating (> 0), so unrated partners
+ * don't drag a service's score down.
+ */
+async function getServiceStats({ location = null } = {}) {
+  const links = await prisma.providerService.findMany({
+    select: { serviceId: true, provider: { select: { rating: true } } },
+    where: {
+      provider: {
+        accountStatus: 'ACTIVE',
+        isVerified: true,
+        user: { status: 'ACTIVE' },
+        ...(location ? { serviceAreas: { array_contains: [location] } } : {})
+      }
+    }
+  });
+
+  const map = {};
+  for (const { serviceId, provider } of links) {
+    const entry = map[serviceId] ?? (map[serviceId] = { count: 0, ratingSum: 0, ratedCount: 0 });
+    entry.count += 1;
+    const rating = Number(provider?.rating) || 0;
+    if (rating > 0) {
+      entry.ratingSum += rating;
+      entry.ratedCount += 1;
+    }
+  }
+  return map;
 }
 
 export const ServiceController = {
@@ -73,22 +107,17 @@ export const ServiceController = {
 
       const services = await prisma.service.findMany({ where: { isHidden: false } });
 
-      // Derive active specialist count per service: providers with an approved
-      // ProviderService link whose user account is ACTIVE and accountStatus is ACTIVE.
-      const counts = await prisma.providerService.groupBy({
-        by: ['serviceId'],
-        _count: { providerId: true },
-        where: {
-          provider: {
-            accountStatus: 'ACTIVE',
-            isVerified: true,
-            user: { status: 'ACTIVE' }
-          }
-        }
-      });
-      const countMap = Object.fromEntries(counts.map(c => [c.serviceId, c._count.providerId]));
+      // Active specialist count + average rating per service.
+      const statsMap = await getServiceStats();
 
-      const result = services.map(s => ({ ...s, activeSpecialistCount: countMap[s.id] || 0 }));
+      const result = services.map(s => {
+        const st = statsMap[s.id];
+        return {
+          ...s,
+          activeSpecialistCount: st?.count || 0,
+          avgRating: st?.ratedCount ? Number((st.ratingSum / st.ratedCount).toFixed(1)) : 0
+        };
+      });
       catalogCache.set('catalog', result);
       return sendApiSuccess(res, 200, result);
     } catch (err) {
@@ -128,25 +157,20 @@ export const ServiceController = {
 
       const services = await prisma.service.findMany({ where });
 
-      const counts = await prisma.providerService.groupBy({
-        by: ['serviceId'],
-        _count: { providerId: true },
-        where: {
-          provider: {
-            accountStatus: 'ACTIVE',
-            isVerified: true,
-            user: { status: 'ACTIVE' },
-            ...(location ? { serviceAreas: { array_contains: [location] } } : {})
-          }
-        }
-      });
-      const countMap = Object.fromEntries(counts.map(c => [c.serviceId, c._count.providerId]));
+      const statsMap = await getServiceStats({ location: location || null });
 
       // Lower score = higher search rank; popularity (active specialist count)
       // breaks ties, then alphabetical.
       const scoreMap = Object.fromEntries(order.map((id, i) => [id, order.length - i]));
       const result = services
-        .map(s => ({ ...s, activeSpecialistCount: countMap[s.id] || 0 }))
+        .map((s) => {
+          const st = statsMap[s.id];
+          return {
+            ...s,
+            activeSpecialistCount: st?.count || 0,
+            avgRating: st?.ratedCount ? Number((st.ratingSum / st.ratedCount).toFixed(1)) : 0
+          };
+        })
         .sort((a, b) => {
           if (order.length) {
             const diff = (scoreMap[b.id] || 0) - (scoreMap[a.id] || 0);
@@ -179,14 +203,18 @@ export const ServiceController = {
         return sendApiError(res, 409, 'DUPLICATE_ENTRY', 'A service with this name already exists');
       }
 
-      const created = await prisma.service.create({
-        data: {
-          name,
-          nameNormalized,
-          description: description || '',
-          popularIssues: Array.isArray(popularIssues) ? popularIssues : [],
-          image: String(image).trim()
-        }
+      const created = await prisma.$transaction(async (tx) => {
+        const serviceNumber = await nextBusinessNumber('SERVICE', tx);
+        return tx.service.create({
+          data: {
+            serviceNumber,
+            name,
+            nameNormalized,
+            description: description || '',
+            popularIssues: Array.isArray(popularIssues) ? popularIssues : [],
+            image: String(image).trim()
+          }
+        });
       });
 
       invalidateCatalogCache();

@@ -200,7 +200,8 @@ export function useAdminPanelController() {
 
     const resp = await updateService(editServiceId, payload);
 
-    if (!resp?.service) {
+    const updated = resp?.service || resp?.data?.service || resp;
+    if (resp?.error || !updated?.id) {
       setServiceEditError(resp?.message || resp?.error || 'Failed to update service.');
       return;
     }
@@ -209,7 +210,7 @@ export function useAdminPanelController() {
     setTimeout(() => {
       setServiceEditSuccess('');
       closeEditService();
-    }, 900);
+    }, 650);
   };
 
   return {

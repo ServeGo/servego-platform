@@ -8,8 +8,10 @@ import {
   Wallet,
   ClipboardList,
   Headphones,
+  LogOut,
   X,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const MORE_TABS = ['profile', 'wallet', 'requests', 'tickets'];
 
@@ -28,6 +30,7 @@ export default function CustomerBottomNav({
   alertsCount = 0,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const { logout } = useAuth();
   const onDashboard = currentPage === 'dashboard-customer';
 
   const goToTab = (tab) => {
@@ -38,6 +41,12 @@ export default function CustomerBottomNav({
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const handleLogout = () => {
+    setMoreOpen(false);
+    logout();
+    onNavigate('login');
   };
 
   const items = [
@@ -65,12 +74,12 @@ export default function CustomerBottomNav({
     },
   ];
 
-  const moreItems = [
-    { id: 'profile', label: 'Profile', icon: User, onClick: () => goToTab('profile') },
-    { id: 'wallet', label: 'Wallet', icon: Wallet, onClick: () => goToTab('wallet') },
-    { id: 'requests', label: 'Requests', icon: ClipboardList, onClick: () => goToTab('requests') },
-    { id: 'tickets', label: 'Help Tickets', icon: Headphones, onClick: () => goToTab('tickets') },
-  ];
+const moreItems = [
+  { id: 'profile', label: 'Profile', sub: 'Personal details & addresses', icon: User, tone: 'bg-indigo-50 text-indigo-600', onClick: () => goToTab('profile') },
+  { id: 'wallet', label: 'Wallet', sub: 'Balance, fees & transactions', icon: Wallet, tone: 'bg-teal-50 text-teal-600', onClick: () => goToTab('wallet') },
+  { id: 'requests', label: 'Requests', sub: 'Permanent service visits', icon: ClipboardList, tone: 'bg-amber-50 text-amber-600', onClick: () => goToTab('requests') },
+  { id: 'tickets', label: 'Help Tickets', sub: 'Support & bookings help', icon: Headphones, tone: 'bg-rose-50 text-rose-600', onClick: () => goToTab('tickets') },
+];
 
   const moreActive = moreOpen || (onDashboard && MORE_TABS.includes(activeTab));
 
@@ -148,26 +157,42 @@ export default function CustomerBottomNav({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 px-4 pb-6 pt-1">
-              {moreItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = onDashboard && activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={item.onClick}
-                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left text-sm font-bold transition-colors ${
-                      isActive
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+            <div className="px-4 pb-6 pt-1">
+              <div className="grid grid-cols-2 gap-2.5">
+                {moreItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = onDashboard && activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={item.onClick}
+                      className={`rounded-2xl border px-3 py-2.5 text-left transition-colors ${
+                        isActive
+                          ? 'bg-indigo-50 border-indigo-200'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${item.tone}`}>
+                        <Icon className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="block mt-1.5 text-xs font-extrabold text-slate-900 truncate">{item.label}</span>
+                      <span className="block mt-0.5 text-[9px] font-medium text-slate-400 leading-snug truncate">{item.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="h-px bg-slate-100 my-3" />
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-extrabold text-rose-600 transition-colors hover:bg-rose-100"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
             </div>
           </div>
         </>

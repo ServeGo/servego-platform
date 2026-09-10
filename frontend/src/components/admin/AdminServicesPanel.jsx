@@ -124,150 +124,172 @@ export default function AdminServicesPanel({
       </div>
 
       {canManage && isAddingService && (
-        <form onSubmit={submitNewService} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-900">Add new service category</h3>
-            <p className="text-slate-500 text-xs mt-1">Providers will show under the matching service name (case-insensitive).</p>
-          </div>
-
-          {serviceAddError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceAddError}</div>
-          )}
-          {serviceAddSuccess && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceAddSuccess}</div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
-              <input
-                value={newServiceForm.name}
-                onChange={(e) => setNewServiceForm((prev) => ({ ...prev, name: e.target.value }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                placeholder="e.g. Electrician"
-                required
-              />
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-overlay-in">
+          <form onSubmit={submitNewService} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-lg w-full relative shadow-2xl animate-fade-in space-y-5 max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Add new service category</h3>
+                <p className="text-slate-500 text-xs mt-1">Providers will show under the matching service name (case-insensitive).</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddService}
+                className="cursor-pointer shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
+              >
+                Exit
+              </button>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
-              <input
-                value={newServiceForm.popularIssuesText}
-                onChange={(e) => setNewServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
-              />
+            {serviceAddError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceAddError}</div>
+            )}
+            {serviceAddSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceAddSuccess}</div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
+                <input
+                  value={newServiceForm.name}
+                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                  placeholder="e.g. Electrician"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
+                <input
+                  value={newServiceForm.popularIssuesText}
+                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                  placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
+                <textarea
+                  value={newServiceForm.description}
+                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  className={inputClass}
+                  placeholder="Short description for the service category"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <ServiceImageField
+                  label="Service Photo"
+                  required
+                  imageUrl={newServiceForm.imageUrl}
+                  onChange={(url) => setNewServiceForm((prev) => ({ ...prev, imageUrl: url }))}
+                />
+              </div>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-              <textarea
-                value={newServiceForm.description}
-                onChange={(e) => setNewServiceForm((prev) => ({ ...prev, description: e.target.value }))}
-                rows={3}
-                className={inputClass}
-                placeholder="Short description for the service category"
-              />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeAddService}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs">
+                Save Service
+              </button>
             </div>
-
-            <div className="md:col-span-2">
-              <ServiceImageField
-                label="Service Photo"
-                required
-                imageUrl={newServiceForm.imageUrl}
-                onChange={(url) => setNewServiceForm((prev) => ({ ...prev, imageUrl: url }))}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeAddService}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200"
-            >
-              Cancel
-            </button>
-            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs">
-              Save Service
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
 
       {canManage && isEditingService && (
-        <form
-          onSubmit={submitEditService}
-          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-5"
-        >
-          <div>
-            <h3 className="text-base font-extrabold text-slate-900">Update service category</h3>
-            <p className="text-slate-500 text-xs mt-1">Make changes to the listing details.</p>
-          </div>
-
-          {serviceEditError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceEditError}</div>
-          )}
-          {serviceEditSuccess && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceEditSuccess}</div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
-              <input
-                value={editServiceForm.name}
-                onChange={(e) => setEditServiceForm((prev) => ({ ...prev, name: e.target.value }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                placeholder="e.g. Electrician"
-                required
-              />
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-overlay-in">
+          <form
+            onSubmit={submitEditService}
+            className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-lg w-full relative shadow-2xl animate-fade-in space-y-5 max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar"
+          >
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Update service category</h3>
+                <p className="text-slate-500 text-xs mt-1">Make changes to the listing details.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditService}
+                className="cursor-pointer shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
+              >
+                Exit
+              </button>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
-              <input
-                value={editServiceForm.popularIssuesText}
-                onChange={(e) => setEditServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
-              />
+            {serviceEditError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceEditError}</div>
+            )}
+            {serviceEditSuccess && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceEditSuccess}</div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
+                <input
+                  value={editServiceForm.name}
+                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                  placeholder="e.g. Electrician"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
+                <input
+                  value={editServiceForm.popularIssuesText}
+                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
+                  placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
+                <textarea
+                  value={editServiceForm.description}
+                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  className={inputClass}
+                  placeholder="Short description for the service category"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <ServiceImageField
+                  label="Service Photo"
+                  imageUrl={editServiceForm.imageUrl}
+                  onChange={(url) => setEditServiceForm((prev) => ({ ...prev, imageUrl: url }))}
+                />
+              </div>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-              <textarea
-                value={editServiceForm.description}
-                onChange={(e) => setEditServiceForm((prev) => ({ ...prev, description: e.target.value }))}
-                rows={3}
-                className={inputClass}
-                placeholder="Short description for the service category"
-              />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditService}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200"
+              >
+                Cancel
+              </button>
+
+              <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs">
+                Update Service
+              </button>
             </div>
-
-            <div className="md:col-span-2">
-              <ServiceImageField
-                label="Service Photo"
-                imageUrl={editServiceForm.imageUrl}
-                onChange={(url) => setEditServiceForm((prev) => ({ ...prev, imageUrl: url }))}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={closeEditService}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200"
-            >
-              Cancel
-            </button>
-
-            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs">
-              Update Service
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -283,7 +305,14 @@ export default function AdminServicesPanel({
                     {(cat.name || '?').charAt(0)}
                   </div>
                 )}
-                <h4 className="text-slate-900 font-extrabold text-sm">{cat.name}</h4>
+                <h4 className="text-slate-900 font-extrabold text-sm flex items-center gap-2">
+                  {cat.name}
+                  {cat.serviceNumber && (
+                    <span className="text-[9px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 tracking-wide">
+                      {cat.serviceNumber}
+                    </span>
+                  )}
+                </h4>
                 <p className="text-slate-500 text-xs font-medium leading-relaxed line-clamp-3">{cat.description}</p>
               </div>
 

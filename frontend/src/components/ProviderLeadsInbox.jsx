@@ -59,16 +59,16 @@ const fmtMoney = (v) => {
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
 };
 
-const ARRIVAL_RADIUS_M = 1000;
+const ARRIVAL_RADIUS_M = 150;
 
 // A GPS fix is only trusted when its reported accuracy is at least this good.
-// Poor fixes (e.g. 500 m accuracy inside a 1 km radius) prove nothing, so the
+// Poor fixes (e.g. 500 m accuracy inside the 150 m radius) prove nothing, so the
 // provider is routed to the manual "Arrive & Confirm" path instead of a
 // wrongly-enabled "Arrived" button.
 const ARRIVAL_ACCURACY_M = 300;
 
 // Straight-line distance between two { latitude, longitude } points in metres.
-// The 1 km "mark arrival" gate is a proximity check, not turn-by-turn distance,
+// The 150 m "mark arrival" gate is a proximity check, not turn-by-turn distance,
 // so haversine is deliberately used instead of the maps driving distance.
 const haversineMeters = (a, b) => {
   if (!a || !b) return null;
@@ -417,6 +417,14 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
           </button>
         ))}
       </div>
+
+      {filter === 'actionable' && (
+        <div className={`text-[10px] font-semibold px-1 ${counts.actionable >= 2 ? 'text-amber-600' : 'text-slate-400'}`}>
+          {counts.actionable >= 2
+            ? `You're at your limit of 2 open requests — accept or decline one to free a slot.`
+            : 'You can hold up to 2 open requests at a time — accept or decline to make room for more.'}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-2xl px-4 py-3">
@@ -803,9 +811,9 @@ function ProviderLocationShare({ bookingId }) {
  * sees the phase update live on their tracking screen.
  *
  * "On My Way" is optional — the provider may jump straight to "Arrived".
- * "Arrived" gating (Plan B):
+ * "Arrived" gating:
  * - GPS path: only actionable once a TRUSTED fix (accuracy ≤ 300 m) is within
- *   1 km of the destination pin. The destination prefers the live echo and
+ *   150 m of the destination pin. The destination prefers the live echo and
  *   falls back to the booking's service coordinates shipped in GET /leads.
  * - Manual path: when no trustworthy fix exists (no fix / permission denied /
  *   poor accuracy), the provider never gets stuck — a "Arrive & Confirm"
@@ -853,7 +861,7 @@ function ProviderDispatchControls({ booking }) {
 
   const arrivalHint =
     distanceM != null
-      ? `${(distanceM / 1000).toFixed(1)} km away — be within 1 km to mark arrival`
+      ? `${(distanceM / 1000).toFixed(2)} km away — be within 150 m to mark arrival`
       : 'Enable GPS sharing to mark arrival';
 
   return (

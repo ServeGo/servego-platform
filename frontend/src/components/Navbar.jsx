@@ -217,7 +217,10 @@ export default function Navbar({
         className="sticky top-0 z-30 bg-white border-b border-slate-200"
       >
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer select-none">
+          <div
+            onClick={() => handleLinkClick('provider-home')}
+            className="flex items-center gap-2 cursor-pointer select-none"
+          >
             <Logo className="w-9 h-9 rounded-lg" />
             <span className="font-extrabold text-slate-900 text-lg tracking-tight font-sans block h-5 leading-none">
               servego24
@@ -390,7 +393,7 @@ export default function Navbar({
       <header id="customer-navbar-comp" className="sticky top-0 z-30 bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div
-            onClick={() => handleLinkClick('home')}
+            onClick={() => handleLinkClick('customer-home')}
             className="flex items-center gap-2 cursor-pointer select-none"
           >
             <Logo className="w-9 h-9 rounded-lg" />

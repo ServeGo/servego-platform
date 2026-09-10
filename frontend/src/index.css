@@ -16,6 +16,28 @@
     width: 0;
     height: 0;
   }
+  /* Modal/card entrance — fade + micro rise so dialogs don't pop in raw. */
+  .animate-fade-in {
+    animation: sg-pop-in 0.22s ease-out both;
+  }
+  /* Modal backdrop fade only (full-screen overlays should not rise/scale). */
+  .animate-overlay-in {
+    animation: sg-fade-in 0.18s ease-out both;
+  }
+  @keyframes sg-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes sg-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 
 

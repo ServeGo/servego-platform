@@ -4,6 +4,7 @@ import { notifyServiceApproved, notifyServiceDenied } from '../services/notifica
 import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
+import { nextBusinessNumber } from '../utils/businessNumber.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
 
@@ -63,13 +64,17 @@ export const AdminProviderServiceController = {
       });
 
       if (!service) {
-        service = await prisma.service.create({
-          data: {
-            name: String(requestedName).trim(),
-            nameNormalized,
-            description: request.description || null
-          },
-          select: { id: true }
+        service = await prisma.$transaction(async (tx) => {
+          const serviceNumber = await nextBusinessNumber('SERVICE', tx);
+          return tx.service.create({
+            data: {
+              serviceNumber,
+              name: String(requestedName).trim(),
+              nameNormalized,
+              description: request.description || null
+            },
+            select: { id: true, serviceNumber: true }
+          });
         });
       }
 

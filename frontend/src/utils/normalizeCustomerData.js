@@ -9,6 +9,9 @@ const lc = (value) => (value ?? '').toString().trim().toLowerCase();
 
 const eventToStatus = (action) => {
   const a = (action || '').toString().toUpperCase();
+  if (a.includes('ON_THE_WAY')) return 'on_the_way';
+  if (a.includes('ARRIVED')) return 'arrived';
+  if (a.includes('QUOTATION')) return 'quotation';
   if (a.includes('CANCELL')) return 'cancelled';
   if (a.includes('COMPLETE') || a.includes('FINISH')) return 'completed';
   if (a.includes('ONGOING') || a.includes('START') || a.includes('WORK')) return 'ongoing';

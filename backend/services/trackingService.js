@@ -2,6 +2,7 @@ import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
 import { getDrivingInfo, getRouteGeoJson } from './mapsService.js';
 import { notifyProviderOnTheWay, notifyProviderArrived } from './notificationService.js';
+import { appendStatusHistory } from '../utils/statusHistory.js';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
@@ -288,7 +289,10 @@ async function resolveProviderBooking({ bookingId, providerUserId, client }) {
       endLocation: true,
       startLocation: true,
       providerLatitude: true,
-      providerLongitude: true
+      providerLongitude: true,
+      serviceLatitude: true,
+      serviceLongitude: true,
+      statusHistory: true
     }
   });
   if (!booking) throw trackingError('BOOKING_NOT_FOUND', 'Booking not found.');
@@ -308,7 +312,10 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
 
   const updated = await client.booking.update({
     where: { id: booking.id },
-    data: { providerPhase: 'ON_THE_WAY' }
+    data: {
+      providerPhase: 'ON_THE_WAY',
+      statusHistory: appendStatusHistory(booking.statusHistory, { status: 'ON_THE_WAY', timestamp: new Date().toISOString(), note: 'Provider is on the way' })
+    }
   });
 
   const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ON_THE_WAY', timestamp: new Date().toISOString() };
@@ -316,6 +323,9 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
     io.to(`user:${booking.customerId}`).emit('provider:onTheWay', payload);
     if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:onTheWay', payload);
   }
+  await client.bookingEvent.create({
+    data: { bookingId: booking.id, actorId: provider.id, actorRole: 'provider', action: 'PHASE_ON_THE_WAY', note: 'Provider is on the way' }
+  });
   await notifyProviderOnTheWay(io, booking.customerId, payload);
   return { ok: true, payload, booking: updated };
 }
@@ -328,9 +338,39 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
 export async function markProviderArrived({ bookingId, providerUserId, io = null, source = 'gps', client = prisma }) {
   const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
 
+  // GPS arrival gate: a GPS-signalled arrival only counts within 150 m of the
+  // customer's service location (straight-line). The provider can't spoof a
+  // fix — the coordinates come from their own live feed. Manual overrides stay
+  // available for the no-GPS case and are audited via `arrivedSource`.
+  const ARRIVAL_RADIUS_M = 150;
+  if (
+    source !== 'manual' &&
+    booking.providerLatitude != null &&
+    booking.providerLongitude != null &&
+    booking.serviceLatitude != null &&
+    booking.serviceLongitude != null
+  ) {
+    const distanceM = haversineKm(
+      Number(booking.providerLatitude),
+      Number(booking.providerLongitude),
+      Number(booking.serviceLatitude),
+      Number(booking.serviceLongitude)
+    ) * 1000;
+    if (distanceM > ARRIVAL_RADIUS_M) {
+      throw trackingError(
+        'ARRIVAL_TOO_FAR',
+        `You are ${Math.round(distanceM)} m from the customer location. Arrival unlocks within 150 m of the address.`
+      );
+    }
+  }
+
   const updated = await client.booking.update({
     where: { id: booking.id },
-    data: { providerPhase: 'ARRIVED', arrivedSource: source === 'manual' ? 'manual' : 'gps' }
+    data: {
+      providerPhase: 'ARRIVED',
+      arrivedSource: source === 'manual' ? 'manual' : 'gps',
+      statusHistory: appendStatusHistory(booking.statusHistory, { status: 'ARRIVED', timestamp: new Date().toISOString(), note: 'Provider has arrived at your location' })
+    }
   });
 
   const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', arrivedSource: updated.arrivedSource, timestamp: new Date().toISOString() };
@@ -338,6 +378,9 @@ export async function markProviderArrived({ bookingId, providerUserId, io = null
     io.to(`user:${booking.customerId}`).emit('provider:arrived', payload);
     if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:arrived', payload);
   }
+  await client.bookingEvent.create({
+    data: { bookingId: booking.id, actorId: provider.id, actorRole: 'provider', action: 'PHASE_ARRIVED', note: 'Provider has arrived at your location' }
+  });
   await notifyProviderArrived(io, booking.customerId, payload);
   return { ok: true, payload, booking: updated };
 }

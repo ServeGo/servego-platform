@@ -55,6 +55,7 @@ const CODE_COPY = {
   ACCEPT_RACE: { message: 'Another provider accepted this lead just before you.', action: 'Refresh leads' },
   NO_CHANGE: { message: 'This lead has already been handled.', action: 'Refresh leads' },
   CUSTOMER_BUSY: { message: 'You already have an active booking for this service. Complete or cancel it before booking the same service again.', action: 'View bookings' },
+  NO_ELIGIBLE_PROVIDERS: { message: 'No providers are currently available for this service in your area. Please try again later or browse other services.', action: 'Browse Services' },
 
   // --- bookings ---
   BOOKING_NOT_FOUND: { message: 'This booking could not be found.', action: 'View bookings' },

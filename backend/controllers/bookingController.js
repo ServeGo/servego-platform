@@ -316,6 +316,9 @@ export const BookingController = {
         city: bookingData.city || 'Hyderabad',
         instructions: bookingData.instructions || '',
         notes: bookingData.notes || null,
+        contactPhone: bookingData.contactPhone
+          ? String(bookingData.contactPhone).replace(/[^0-9+]/g, '').slice(0, 15) || null
+          : null,
         // Exact service location picked on the map is authoritative; fall back
         // to the customer's profile coordinates for legacy/admin-created rows.
         serviceLatitude: bookingData.serviceLatitude != null ? Number(bookingData.serviceLatitude) : null,

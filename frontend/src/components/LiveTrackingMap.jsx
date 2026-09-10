@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Map as MapLibreMap, Marker, NavigationControl, LngLatBounds } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Compass, MapPin, Clock, Radio, Truck, UserCheck } from 'lucide-react';
+import { MapPin, Clock, Radio, Truck, UserCheck } from 'lucide-react';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
@@ -15,7 +15,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const fmtCoord = (v) => (v == null ? '—' : Number(v).toFixed(6));
 const fmtKm = (v) => (v == null ? '—' : `${Number(v).toFixed(1)} km`);
 
 // OpenStreetMap raster tiles (free, keyless). Swap in Google/MapTiler tiles by
@@ -111,7 +110,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
     const map = new MapLibreMap({
       container,
       style: OSM_STYLE,
-      attributionControl: true,
+      attributionControl: false,
       center: [72.8777, 19.076],
       zoom: 11
     });
@@ -212,7 +211,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isStale ? 'bg-amber-500' : hasLocation ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`} />
           <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
             <Radio className="w-3 h-3 text-emerald-400" />
-            {isStale ? 'Signal lost — last fix' : 'Live Provider Tracking'}
+            Live Provider Tracking
           </span>
         </div>
         <span className="text-[10px] font-mono text-slate-400 font-bold">
@@ -250,11 +249,6 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           <div className="relative h-56 border-b border-slate-800 overflow-hidden">
             <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
-            <div className="absolute left-3 bottom-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold">
-              <MapPin className="w-2.5 h-2.5 inline-block mr-1 text-teal-400" />
-              {booking.locationAddress || 'Customer location'}
-            </div>
-
             <div className="absolute right-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1">
               <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-600" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
               <Truck className="w-3 h-3 text-amber-400" />
@@ -263,17 +257,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           </div>
 
           {/* Telemetry */}
-          <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-950/60 font-semibold text-xs border-t border-slate-800">
-            <div className="space-y-1">
-              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider flex items-center gap-1">
-                <Compass className="w-3.5 h-3.5 text-indigo-500" />
-                Position
-              </span>
-              <div className="font-mono text-[11px] text-slate-200">
-                {fmtCoord(live.latitude)}°<br />{fmtCoord(live.longitude)}°
-              </div>
-            </div>
-
+          <div className="p-4 grid grid-cols-2 md:grid-cols-2 gap-4 bg-slate-950/60 font-semibold text-xs border-t border-slate-800">
             <div className="space-y-1">
               <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-amber-500" />
@@ -297,16 +281,6 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
                     : hasLocation
                       ? 'Arriving'
                       : '—'}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider flex items-center gap-1">
-                <Radio className="w-3.5 h-3.5 text-emerald-500" />
-                Feed Status
-              </span>
-              <div className={`text-[10px] font-bold px-2 py-1 rounded inline-block self-start border font-mono ${isStale ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
-                {isStale ? 'STALE FIX' : hasLocation ? 'LIVE' : 'WAITING'}
               </div>
             </div>
           </div>

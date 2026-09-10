@@ -199,7 +199,7 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
       style: OSM_STYLE,
       center: saved ? [Number(value.longitude), Number(value.latitude)] : DEFAULT_CENTER,
       zoom: saved ? 15 : 11,
-      attributionControl: true
+      attributionControl: false
     });
     map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
 

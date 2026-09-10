@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Calendar, Search, Clock, CheckCircle2 } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { normalizeBooking } from '../utils/normalizeCustomerData';
@@ -11,6 +11,7 @@ import BookingCard from '../components/BookingCard';
 import TicketsView from '../components/TicketsView';
 import AlertsView from '../components/AlertsView';
 import ProfileView from '../components/ProfileView';
+import CustomerAddresses from '../components/CustomerAddresses';
 import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
 import PermanentRequestsView from '../components/PermanentRequestsView';
@@ -241,7 +242,12 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
           />
         )}
 
-        {activeTab === 'profile' && <ProfileView user={currentUser} onSave={handleSaveProfile} />}
+        {activeTab === 'profile' && (
+          <div className="space-y-6">
+            <ProfileView user={currentUser} onSave={handleSaveProfile} />
+            {currentUser?.role === 'customer' && <CustomerAddresses />}
+          </div>
+        )}
 
         {activeTab === 'wallet' && (
           <WalletView
@@ -382,7 +388,9 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
           next[tab] = kept.map(item => freshById.get(item.id) || item);
         }
       });
-      // A booking moved to another sub-tab → re-fetch that snapshot next time.
+      // A booking moved to another sub-tab → re-fetch that snapshot next time
+      // it is viewed (excluding the tab currently on screen, which gets the
+      // live move-in below).
       if (next !== prev) {
         movedOut.forEach(fresh => {
           const s = String(fresh.status || '').toLowerCase();
@@ -392,6 +400,21 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
             }
           });
         });
+
+        // Live move-in: a booking leaving one tab lands on screen in its
+        // destination tab immediately (e.g. provider accepts → pending card
+        // flips into Active without a manual refresh).
+        const currentTab = BOOKING_SUB_TABS.find(t => t.id === subTab);
+        const curStatuses = currentTab ? currentTab.statuses.map(x => String(x).toLowerCase()) : [];
+        const currentList = next[subTab] || [];
+        const arrivals = [...movedOut.values()].filter(fresh =>
+          fresh &&
+          curStatuses.includes(String(fresh.status || '').toLowerCase()) &&
+          !currentList.some(x => x.id === fresh.id)
+        );
+        if (arrivals.length) {
+          next[subTab] = [...arrivals, ...currentList];
+        }
       }
       return next;
     });
@@ -437,9 +460,25 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
-          <p className="text-slate-500 text-xs font-medium">No {subTab} bookings.</p>
-          {subTab === 'pending' && (
-            <button onClick={() => onNavigate('services')} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg text-xs transition-colors">
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            {subTab === 'active' && <Clock className="w-7 h-7 text-slate-400" />}
+            {subTab === 'pending' && <Calendar className="w-7 h-7 text-slate-400" />}
+            {subTab === 'cancelled' && <CheckCircle2 className="w-7 h-7 text-slate-400" />}
+            {subTab === 'past' && <CheckCircle2 className="w-7 h-7 text-slate-400" />}
+          </div>
+          <p className="text-slate-700 text-sm font-bold">No {subTab} bookings</p>
+          <p className="text-slate-400 text-xs font-medium mt-1">
+            {subTab === 'active' && "You don't have any active bookings right now."}
+            {subTab === 'pending' && "You don't have any pending bookings right now."}
+            {subTab === 'cancelled' && "You haven't cancelled any bookings."}
+            {subTab === 'past' && "You don't have any completed bookings yet."}
+          </p>
+          {(subTab === 'active' || subTab === 'pending') && (
+            <button
+              onClick={() => onNavigate('services')}
+              className="mt-5 inline-flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-colors"
+            >
+              <Search className="w-3.5 h-3.5" />
               Browse Services
             </button>
           )}

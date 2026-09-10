@@ -1,14 +1,8 @@
 import React from 'react';
-import { MapPin, Instagram, Twitter, Linkedin } from 'lucide-react';
+import { Instagram, Twitter, Linkedin } from 'lucide-react';
 import Logo from './Logo';
 
 export default function Footer() {
-  const cities = [
-    { name: 'Hyderabad', status: 'Active' },
-    { name: 'Bengaluru', status: 'Pending' },
-    { name: 'Chennai', status: 'Pending' },
-  ];
-
   const socials = [
     { icon: Instagram, label: 'Instagram' },
     { icon: Twitter, label: 'Twitter' },
@@ -19,8 +13,8 @@ export default function Footer() {
     <footer id="reusable-footer-comp" className="relative overflow-hidden border-t border-slate-800 bg-slate-950 px-5 py-10 text-xs text-slate-400 sm:px-6 sm:py-14">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-teal-500/60 to-transparent" />
       <div className="relative mx-auto flex max-w-6xl flex-col gap-8">
-        <div className="flex flex-col items-center gap-10 border-b border-slate-800 pb-8 text-center lg:flex-row lg:items-start lg:justify-between lg:gap-16 lg:text-left">
-          <div className="flex max-w-md flex-col items-center lg:items-start">
+        <div className="flex flex-col items-center border-b border-slate-800 pb-8 text-center">
+          <div className="flex max-w-md flex-col items-center">
             <div className="flex items-center gap-2">
               <Logo className="h-8 w-8 rounded-lg" />
               <p className="text-sm font-extrabold tracking-tight text-white">servego24</p>
@@ -41,38 +35,10 @@ export default function Footer() {
               ))}
             </div>
           </div>
-
-          <div className="flex flex-col items-center lg:w-[340px] lg:shrink-0 lg:items-start">
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-teal-400">Growing locally</p>
-            <h3 className="mt-2 text-base font-bold text-slate-200">Launch territories</h3>
-            <p className="mt-1 text-slate-500">Expanding access to trusted home specialists, one city at a time.</p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
-              {cities.map((city) => (
-                <div
-                  key={city.name}
-                  className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 backdrop-blur-sm"
-                >
-                  <MapPin className="h-3.5 w-3.5 text-teal-500" />
-                  <span className="font-medium text-slate-200">{city.name}</span>
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      city.status === 'Active' ? 'bg-teal-500' : 'bg-slate-600'
-                    }`}
-                  />
-                  <span className="text-slate-400">{city.status}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
-        <div className="flex flex-col items-center gap-3 text-center text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:text-left">
+        <div className="text-center text-slate-500">
           <span>© 2026 servego24. All rights reserved.</span>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <a href="#" className="transition-colors hover:text-teal-400">Privacy policy</a>
-            <a href="#" className="transition-colors hover:text-teal-400">Terms of service</a>
-            <span className="text-slate-500">Verified specialists</span>
-          </div>
         </div>
       </div>
     </footer>

@@ -117,6 +117,11 @@ export const createBookingValidation = [
     .trim()
     .isLength({ max: 1000 }).withMessage('Instructions too long')
     .escape(),
+  body('contactPhone')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ min: 8, max: 15 }).withMessage('Phone number must be 8 to 15 digits')
+    .matches(/^[0-9+]+$/).withMessage('Phone number can only contain digits'),
   body('amount')
     .optional()
     .custom((value) => {
