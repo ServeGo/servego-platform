@@ -1,20 +1,25 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Plus, Save, Loader2 } from 'lucide-react';
+import { Plus, Save, Loader2, Wrench } from 'lucide-react';
 import { api } from '../utils/apiClient';
 
-function FilterButton({ label, active, onClick }) {
+function FilterButton({ label, count, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={
-        `shrink-0 whitespace-nowrap px-3.5 py-2 text-xs font-black rounded-xl border transition-colors ` +
+        `shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-black rounded-xl border transition-colors ` +
         (active
           ? 'bg-slate-900 text-white border-slate-900'
           : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800')
       }
     >
       {label}
+      {count != null && (
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -24,7 +29,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const [servicesError, setServicesError] = useState('');
   const [loadingMyServices, setLoadingMyServices] = useState(false);
 
-  const [servicesFilter, setServicesFilter] = useState('APPROVED'); // APPROVED | PENDING | DENIED
+  const [servicesFilter, setServicesFilter] = useState('ALL'); // ALL | APPROVED | PENDING | DENIED
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [serviceInterestedOption, setServiceInterestedOption] = useState('');
@@ -52,12 +57,20 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
 
     let arr = myServices;
 
-    if (servicesFilter === 'APPROVED') arr = arr.filter(sv => sv.approvalStatus === 'APPROVED');
-    if (servicesFilter === 'PENDING') arr = arr.filter(sv => sv.approvalStatus === 'PENDING');
-    if (servicesFilter === 'DENIED') arr = arr.filter(sv => sv.approvalStatus === 'DENIED');
+    if (servicesFilter !== 'ALL') arr = arr.filter(sv => sv.approvalStatus === servicesFilter);
 
     return arr;
   }, [myServices, servicesFilter]);
+
+  const counts = useMemo(() => {
+    const arr = Array.isArray(myServices) ? myServices : [];
+    return {
+      all: arr.length,
+      approved: arr.filter(sv => sv.approvalStatus === 'APPROVED').length,
+      pending: arr.filter(sv => sv.approvalStatus === 'PENDING').length,
+      denied: arr.filter(sv => sv.approvalStatus === 'DENIED').length
+    };
+  }, [myServices]);
 
   const fetchProviderServices = async () => {
     if (!providerId) return;
@@ -125,6 +138,12 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
       return;
     }
 
+    const descLen = description.trim().length;
+    if (descLen < 10 || descLen > 1000) {
+      setServicesError('Description must be between 10 and 1000 characters.');
+      return;
+    }
+
 
     setSubmitting(true);
     setServicesError('');
@@ -138,7 +157,8 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
       });
       const data = res.data;
       if (!res.ok) {
-        setServicesError(data?.message || 'Failed to register service.');
+        const fieldError = Array.isArray(data?.details) && data.details.length > 0 ? data.details[0].message : null;
+        setServicesError(fieldError || data?.message || 'Failed to register service.');
         setSubmitting(false);
         return;
       }
@@ -177,9 +197,10 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
         {/* Filter buttons */}
         <div className="flex flex-col gap-3">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar flex-nowrap -mx-1 px-1">
-            <FilterButton label="Approved services" active={servicesFilter === 'APPROVED'} onClick={() => setServicesFilter('APPROVED')} />
-            <FilterButton label="Denied services" active={servicesFilter === 'DENIED'} onClick={() => setServicesFilter('DENIED')} />
-            <FilterButton label="Pending services" active={servicesFilter === 'PENDING'} onClick={() => setServicesFilter('PENDING')} />
+            <FilterButton label="All services" count={counts.all} active={servicesFilter === 'ALL'} onClick={() => setServicesFilter('ALL')} />
+            <FilterButton label="Approved" count={counts.approved} active={servicesFilter === 'APPROVED'} onClick={() => setServicesFilter('APPROVED')} />
+            <FilterButton label="Pending" count={counts.pending} active={servicesFilter === 'PENDING'} onClick={() => setServicesFilter('PENDING')} />
+            <FilterButton label="Denied" count={counts.denied} active={servicesFilter === 'DENIED'} onClick={() => setServicesFilter('DENIED')} />
           </div>
 
           {loadingMyServices && (
@@ -198,11 +219,25 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
         )}
 
         {filteredServices.length === 0 ? (
-          <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-200">
+          <div className="text-center py-14 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="flex justify-center mb-3">
+              <span className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center">
+                <Wrench className="w-5 h-5 text-slate-300" />
+              </span>
+            </div>
             <div className="text-slate-500 text-xs font-semibold">
-              {`No ${servicesFilter === 'APPROVED' ? 'approved' : servicesFilter === 'PENDING' ? 'pending' : 'denied'} services yet.`}
+              {`No ${servicesFilter === 'APPROVED' ? 'approved' : servicesFilter === 'PENDING' ? 'pending' : servicesFilter === 'DENIED' ? 'denied' : ''} services yet.`}
             </div>
             <div className="text-slate-400 text-[11px] mt-2 font-medium">Click Register to add your service.</div>
+            {servicesFilter === 'ALL' && counts.all === 0 && (
+              <button
+                type="button"
+                onClick={openRegister}
+                className="mt-4 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black px-4 py-2 rounded-xl text-xs transition-colors shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5 shrink-0" /> Register for a service
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -215,11 +250,9 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
                     <div className="text-[11px] text-slate-600 mt-1 font-semibold">
                       Experience: {provider?.experienceYears ?? experienceYears} years
                     </div>
-
-
                   </div>
                   <div
-                    className={`text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full border ${
+                    className={`text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 ${
                       sv.approvalStatus === 'APPROVED'
                         ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
                         : sv.approvalStatus === 'PENDING'
@@ -305,10 +338,11 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Service Description *</label>
                 <textarea
                   rows={3}
+                  maxLength={1000}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none"
-                  placeholder="Write description about your service"
+                  placeholder="Write description about your service (10-1000 characters)"
                 />
               </div>
 

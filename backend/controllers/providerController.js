@@ -91,6 +91,9 @@ export const ProviderController = {
           name: r.requestedServiceName,
           approvalStatus: r.status,
           description: r.description,
+          experienceYears: r.experienceYears,
+          popularIssues: Array.isArray(r.popularIssues) ? r.popularIssues : [],
+          denialReason: r.denialReason,
           createdAt: r.createdAt
         }));
 
