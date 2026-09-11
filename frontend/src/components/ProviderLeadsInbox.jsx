@@ -579,9 +579,11 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
   const expiryMs = lead.expiryTime ? new Date(lead.expiryTime).getTime() - now : null;
   const expired = expiryMs != null && expiryMs <= 0;
   const bookingStatus = booking.status || 'PENDING';
-  // Rule: the customer's number is only shown while the booking is live.
-  // Once the customer cancels, the backend strips it and the UI never renders it.
-  const canShowPhone = bookingStatus !== 'CANCELLED';
+  // Rule: the customer's name and number are only revealed while the job is
+  // live (active duty). Action-required/closed/declined etc. keep identities
+  // hidden until a booking is actually active.
+  const activeDuty = bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING';
+  const canShowPhone = activeDuty;
 
   // Dispatch phase read live-first (socket/realtime) with the persisted value
   // from GET /leads as the reload fallback.
@@ -635,14 +637,18 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
             {lead.serviceCategory} Request
           </h4>
           <p className="text-xs text-slate-500 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
-            <User className="w-3.5 h-3.5" /> {lead.customer?.name || 'Customer'}
-            {canShowPhone && lead.customer?.phone && (
-              <a
-                href={`tel:${lead.customer.phone}`}
-                className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5 hover:bg-teal-100 hover:border-teal-300 transition-colors"
-              >
-                <Phone className="w-3 h-3" /> {lead.customer.phone}
-              </a>
+            {activeDuty && (
+              <>
+                <User className="w-3.5 h-3.5" /> {lead.customer?.name || 'Customer'}
+                {canShowPhone && lead.customer?.phone && (
+                  <a
+                    href={`tel:${lead.customer.phone}`}
+                    className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5 hover:bg-teal-100 hover:border-teal-300 transition-colors"
+                  >
+                    <Phone className="w-3 h-3" /> {lead.customer.phone}
+                  </a>
+                )}
+              </>
             )}
             {lead.distanceKm != null && (
               <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">

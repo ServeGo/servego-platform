@@ -9,7 +9,7 @@
 1. [High-level architecture](#1-high-level-architecture)
 2. [Repository layout](#2-repository-layout)
 3. [Backend stack & request lifecycle](#3-backend-stack--request-lifecycle)
-4. [API surface (127 routes)](#4-api-surface-127-routes)
+4. [API surface (135 routes)](#4-api-surface-135-routes)
 5. [Security, validation & middleware](#5-security-validation--middleware)
 6. [Auth & token model](#6-auth--token-model)
 7. [Data layer (Prisma)](#7-data-layer-prisma)
@@ -55,29 +55,29 @@ servego-platform/
 ├── package.json               # root orchestration (dev: all, build: frontend)
 ├── package-lock.json
 ├── AGENTS.md                  # permanent engineering rules (authored separately)
-├── API_LIST_GET_POST_GROUPED.md  # generated API reference (127 routes)
+├── API_LIST_GET_POST_GROUPED.md  # generated API reference (135 routes)
 ├── PROJ_ARCHITECTURE_REPORT.md   # this document
 ├── backend/
 │   ├── server.js              # bootstrap: express, socket.io, queue, timers
-│   ├── routes/api.js          # all 127 REST routes
-│   ├── controllers/           # 24 controllers (HTTP layer)
+│   ├── routes/api.js          # all 135 REST routes
+│   ├── controllers/           # 26 controllers (HTTP layer)
 │   ├── middleware/            # 5 middleware modules
-│   ├── services/              # 21 service modules (incl. queue/)
-│   ├── utils/                 # 10 shared utilities
+│   ├── services/              # 22 service modules (incl. queue/)
+│   ├── utils/                 # 12 shared utilities
 │   ├── prisma/
-│   │   ├── schema.prisma      # 34 models + 21 enums
-│   │   ├── migrations/        # 44 migrations
+│   │   ├── schema.prisma      # 37 models + 22 enums
+│   │   ├── migrations/        # 51 migrations
 │   │   └── seed.js            # dev seed
 │   ├── seeders/               # servicesSeed + businessModelSeed (idempotent)
 │   ├── scripts/               # photo migration script
-│   └── tests/                 # node --test suites
+│   └── tests/                 # node --test suites (17 files)
 └── frontend/
     ├── src/
     │   ├── main.jsx, App.jsx  # router + role-based layout
     │   ├── context/           # Auth, Data, Realtime, UI, Toast, App
-    │   ├── pages/             # 13 page components
-    │   ├── components/        # shared + admin + provider components
-    │   └── utils/             # apiClient, serializers, watermarks, etc.
+    │   ├── pages/             # 15 entry pages + admin/ (tab router + 14 tabs)
+    │   ├── components/        # shared + admin + provider components (62 files)
+    │   └── utils/             # apiClient, serializers, watermarks, etc. (8 files)
     └── package.json           # Vite 6 + React 19 + Tailwind 4
 ```
 
@@ -95,7 +95,7 @@ helmet → hpp → cors (getCorsConfig) → general rate limiter
 → trailing-slash 301 normalization
 → GET /api/health (DB liveness; 503 when DB unreachable)
 → GET /api/versions (uncached version registry)
-→ /api/v1/* via maintenanceMode + apiRouter (127 routes)
+→ /api/v1/* via maintenanceMode + apiRouter (135 routes)
 → 404 JSON { success:false, code:'NOT_FOUND', ... }
 → global errorHandler (last)
 ```
@@ -105,7 +105,7 @@ business model if empty, starts the auto-cancel cron, schedules lead-expiry time
 recovers interruped queue jobs, then starts the queue workers. Graceful shutdown
 drains the queue and disconnects Prisma.
 
-## 4) API surface (127 routes)
+## 4) API surface (135 routes)
 
 100 % of routes live in `backend/routes/api.js` and are exposed under `/api/v1`. The
 grouped reference (methods, paths, access roles, validation) is generated from that
@@ -118,6 +118,7 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Bookings | `POST /bookings`, `GET /bookings`, `GET /bookings/:id`, `PATCH /bookings/:id/{accept,decline,cancel,complete,status}`, `POST /bookings/:id/{on-the-way,arrived}`, `PATCH /bookings/:id/location`, messages, tracking, timeline |
 | Quotations | `POST /bookings/:id/quotation`, `GET/POST .../confirm`, `POST .../cancel` |
 | Notifications | `GET/POST /notifications`, `PATCH .../read`, `PATCH /read-all`, `DELETE /notifications` |
+| Alerts | `GET /alerts`, `DELETE /alerts/:id`, `DELETE /alerts` (temporary, deleted once reviewed) |
 | Tickets | `GET/POST /tickets`, `POST /support-tickets` (optional auth), admin resolve/status |
 | Reviews | `POST /reviews`, `GET /providers/:id/reviews`, admin list/delete |
 | Referrals | `POST /referrals/apply`, `GET /referrals/me`, `POST /referrals/generate` |
@@ -125,8 +126,10 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Leads | `GET /leads`, `GET /leads/:id`, `PATCH /leads/:id/{view,accept,reject}` |
 | Permanent requests | `POST /permanent-service-requests`, `GET .../mine`, admin list/update, `POST .../cancel` |
 | Wallet | `GET /wallet`, `GET /wallet/ledger`, `POST /wallet/withdrawals`, `GET /wallet/withdrawals`, `GET /wallet/withdrawal/config`, admin wallet/withdrawals/credit/process |
+| Customer addresses | `GET/POST /customer-addresses`, `PATCH/DELETE /customer-addresses/:id`, `POST /customer-addresses/:id/default` |
 | Provider business | `GET /level-rules`, `GET /provider-performance/me`, `GET /promotions/me`, `POST /promotions/:id/acknowledge`, `GET /provider-level-history/me` |
 | Admin | dashboard, analytics, audit-logs, configs, level-rules, providers/status, provider-service-requests approve/deny, service items, reputation refresh, queue stats/requeue, feature flags, leads, wallet |
+| Feature flags | `GET /feature-flags/public` (public), `GET /feature-flags`, `PUT /feature-flags/:key` (admin) |
 | Misc | `POST /images/upload` (optional auth, multer → Cloudinary) |
 
 ## 5) Security, validation & middleware
@@ -167,7 +170,7 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
 
 ## 7) Data layer (Prisma)
 
-34 models, 21 enums, 44 migrations, all indexes defined as `@@index` in
+37 models, 22 enums, 51 migrations, all indexes defined as `@@index` in
 `schema.prisma` and mirrored by migration SQL (naming `Table_col1_col2_idx`).
 
 Key models:
@@ -253,8 +256,26 @@ Eligibility (`findEligibleProviders`) — all three must hold:
 
 Also excluded: not `isVerified`, `profileComplete: false`, `acceptingBookings: false`,
 `isOnline: false`, `accountStatus !== ACTIVE`, user not ACTIVE, provider in performance
-cooldown. Ranking prefers provider level, then rating, then distance, then `createdAt`
-determinism (no PREMIUM/GENERAL sector tie-break — all providers are GENERAL).
+cooldown.
+
+Silent exclusion: a provider with `latitude`/`longitude` NULL never survives the
+bounding-box pre-filter (`NULL >= X` is falsy in the WHERE), so it is removed before
+ranking with no per-provider explanation — the classic cause of "No Providers Available"
+for a brand-new provider who skipped the location step.
+
+Inbox cap & one-job rule (rule 17, verified by `bookingFlow.test.js`): a provider may
+hold at most `MAX_OPEN_LEADS = 2` open offers (`findEligibleProviders` pushes the cap
+into SQL via `groupBy`/`having`). Declining one frees a slot; accepting one closes the
+provider's remaining open offers and clears the matched `Alert` rows
+(`consumeAlertsByData`) so a provider can only ever hold one active job. A customer
+cannot create a second booking on the same service while one is active (409
+`CUSTOMER_BUSY`), but may book different services in parallel.
+
+Ranking (`rankProviders`), used for assignment and re-assignment, in priority order:
+Distance → Rating → Provider Level (`BRONZE < SILVER < GOLD < PLATINUM < DIAMOND`) →
+Acceptance Rate → Cancellation Rate (low wins) → Response Rate → Experience Years →
+Review Count → Service Fee (low wins) → `createdAt` determinism. There is no
+PREMIUM/GENERAL sector tie-break — all providers are `GENERAL`.
 
 `diagnoseProvider` explains WHY a provider isn't eligible for a customer
 (`NO_SERVICE_MATCH`, `OUT_OF_RADIUS`/`NO_COORDS`, `WALLET_BELOW_ZERO`,
@@ -341,7 +362,11 @@ signup (self-serve) → PENDING service request → admin approve/deny
 
 - Admin verification (`PATCH /providers/:id/verify`) + `AdminProviderStatusController`
   for account status; `adminProviderServiceController` approves/denies
-  `ProviderServiceRequest` rows and writes the `ProviderService` link.
+  `ProviderServiceRequest` rows and writes the `ProviderService` link. Requests carry
+  `description` (10–1000 chars), `experienceYears` and `popularIssues`; denials record a
+  `denialReason` visible on the provider's service panel.
+- Leads require a location: `latitude`/`longitude` (signup/profile) + approved service +
+  `maxRadiusKm`. A provider missing coordinates is silently ineligible until set.
 - Provider dispatches its dashboard via `GET /providers/me/summary`; location/range
   updates via `PATCH /providers/me/location`; availability incl. `AvailabilitySlot`.
 - Reputation refresh (`POST /admin/providers/reputation/refresh`) recomputes ranking
@@ -397,10 +422,15 @@ Backend (`backend/package.json`): `npm start` (node), `npm run dev` (nodemon),
 Root `package.json`: `npm run dev` (concurrently backend+frontend), `npm run build`
 (frontend), `install:all`.
 
-Tests live in `backend/tests/*.test.js` (auth, availability, feature flags, integration,
-maps, pagination, queue, response, runtime config, search, serializers, socket-auth,
-tracking, workflow). Integration tests spin the Express app and hit Postgres via the
-normal middleware path.
+Tests live in `backend/tests/*.test.js`: `alertService`, `auth`, `availability`,
+`bookingFlow` (mock-DB e2e, 24 cases driving the full lead → booking pipeline against a
+stubbed Prisma client and asserting the five booking business rules: broadcast to every
+eligible provider, `MAX_OPEN_LEADS = 2` cap by `groupBy`, one-lead-at-a-time + offer
+closing on accept, duplicate-service 409 `CUSTOMER_BUSY`, and the ranking order), `featureFlags`,
+`integration`, `maps`, `pagination`, `queue`, `quotationDecline`, `response`,
+`runtimeConfig`, `search`, `serializers`, `socketAuth`, `tracking`, `workflow`. Most are
+pure unit tests with mocked clients; `queue.test.js` is DB-backed and auto-skips when
+Postgres is offline. `node --test` runs each file in its own process.
 
 Health check: `GET /api/health` returns 200 + DB probe or 503 `SERVICE_UNAVAILABLE`.
 Graceful shutdown drains queue workers and disconnects Prisma on SIGTERM/SIGINT.
@@ -431,9 +461,12 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 
 ## 21) Project metrics
 
-- 24 controllers, 21 service modules (incl. queue), 10 utils, 5 middleware modules.
-- 34 Prisma models, 21 enums, 44 migrations.
-- 127 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
+- 26 controllers, 22 service modules (incl. queue), 12 utils, 5 middleware modules.
+- 37 Prisma models, 22 enums, 51 migrations.
+- 135 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
+- 17 test files (16 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases).
+- Frontend: 29 page files (15 entries + admin tab router/tabs), 62 components, 6 contexts,
+  8 utils.
 
 ## 22) Known gaps & next steps
 
@@ -448,3 +481,10 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
   the requests ledger).
 - `@google/genai`, `razorpay` and capacitor deps are present but only partially used —
   verify before enabling features that depend on them.
+- Providers with NULL `latitude`/`longitude` are silently dropped from lead broadcast
+  (§10). Add a signup/profile guard + `diagnoseProvider` surfacing in the provider UI so
+  a missing location never silently yields "No Providers Available".
+- Test hygiene: `pagination.test.js`/`queue.test.js` are slow (~min) and hit the live
+  Neon DB, and `tracking.test.js`'s purge step hits the `BookingEvent_bookingId_fkey`
+  RESTRICT (5 pre-existing failures). Prefer pure unit tests with the mocked-client
+  pattern of `bookingFlow.test.js`/`quotationDecline.test.js`.

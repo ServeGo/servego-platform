@@ -617,7 +617,7 @@ export async function reopenLeadBroadcast({ leadId, client = prisma }) {
  * and the providers whose offers were cancelled.
  */
 export async function acceptLeadForBooking({ bookingId, providerId, client = prisma }) {
-  return withClientTransaction(client, async (tx) => {
+  const result = await withClientTransaction(client, async (tx) => {
     const lead = await tx.lead.findUnique({ where: { bookingId } });
     if (lead) {
       const offer = await tx.leadAssignmentHistory.findFirst({

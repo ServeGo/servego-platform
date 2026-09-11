@@ -2,10 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Crown,
   Star,
-  Target,
-  Zap,
-  ThumbsUp,
-  ThumbsDown,
   TrendingUp,
   Snowflake,
   AlertTriangle,
@@ -27,8 +23,6 @@ const LEVEL_META = {
   PLATINUM: { color: 'bg-teal-600', ring: 'ring-teal-400/40', text: 'text-teal-200', banner: 'from-teal-600 via-teal-700 to-teal-900' },
   DIAMOND: { color: 'bg-sky-500', ring: 'ring-sky-400/40', text: 'text-sky-200', banner: 'from-sky-600 via-sky-700 to-sky-900' }
 };
-
-const pct = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
 
 const fmtMoneyIn = (n) => `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
 
@@ -186,13 +180,6 @@ export default function ProviderLevelAnalytics({ providerId }) {
   const inCooldown = Boolean(performance.cooldownUntil && new Date(performance.cooldownUntil) > new Date());
   const unacknowledged = promotions.filter((p) => !p.acknowledged);
 
-  const metrics = [
-    { label: 'Acceptance Rate', value: pct(performance.acceptanceRate), icon: ThumbsUp, tone: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
-    { label: 'Response Rate', value: pct(performance.responseRate), icon: Zap, tone: 'text-sky-600 bg-sky-50 border-sky-200' },
-    { label: 'Cancellation Rate', value: pct(performance.cancellationRate), icon: ThumbsDown, tone: 'text-rose-600 bg-rose-50 border-rose-200' },
-    { label: 'Leads Received', value: performance.totalLeads ?? 0, icon: Target, tone: 'text-teal-600 bg-teal-50 border-teal-200' }
-  ];
-
   // Jobs-based level (BRONZE → DIAMOND)
   const levelOrder = Array.isArray(data?.levelOrder) ? data.levelOrder : ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
   const currentLevel = provider?.providerLevel || 'BRONZE';
@@ -224,9 +211,9 @@ export default function ProviderLevelAnalytics({ providerId }) {
       <div className="bg-white border border-slate-200 rounded-3xl p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight text-left">Performance & Analytics</h3>
-            <p className="text-xs text-slate-500 font-semibold mt-1">
-              Acceptance, response and lead performance, plus your lifetime earnings and booking analytics.
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 uppercase tracking-tight text-left">Analytics</h3>
+            <p className="text-[10px] sm:text-xs text-slate-500 font-semibold mt-1">
+              Lifetime earnings, booking analytics and performance insights.
             </p>
           </div>
           <button
@@ -280,18 +267,6 @@ export default function ProviderLevelAnalytics({ providerId }) {
           You are paused due to repeated cancellations until {fmtDate(performance.cooldownUntil)}. New leads resume automatically after that.
         </div>
       )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((m) => (
-          <div key={m.label} className="bg-white border border-slate-200 rounded-2xl p-4">
-            <span className={`inline-flex w-8 h-8 rounded-xl border items-center justify-center mb-2 ${m.tone}`}>
-              <m.icon className="w-4 h-4" />
-            </span>
-            <p className="text-xl font-black text-slate-900">{m.value}</p>
-            <p className="text-[10px] uppercase tracking-widest font-black text-slate-400">{m.label}</p>
-          </div>
-        ))}
-      </div>
 
       <div className="bg-white border border-slate-200 rounded-3xl p-5">
         <div className="flex items-center gap-2 mb-2">
@@ -402,10 +377,6 @@ export default function ProviderLevelAnalytics({ providerId }) {
             </table>
           </div>
         </div>
-
-        <p className="text-xs text-slate-500 italic font-semibold mt-6">
-          Note: Earnings reflect provider payouts (service amount minus the admin-configured provider platform charge) on completed bookings.
-        </p>
       </div>
 
       {/* Levels */}
