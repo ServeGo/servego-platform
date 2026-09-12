@@ -761,7 +761,6 @@ model ProviderPerformance {
   acceptedLeads         Int       @default(0)
   rejectedLeads         Int       @default(0)
   ignoredLeads          Int       @default(0)
-  expiredLeads          Int       @default(0)
   completedJobs         Int       @default(0)
   cancelledJobs         Int       @default(0)
   jobsStarted           Int       @default(0)

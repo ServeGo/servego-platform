@@ -197,12 +197,6 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     };
 
     // Lead reached a terminal state (EXPIRED, etc.) — merge the payload fields.
-    const handleLeadState = (payload) => {
-      const lead = toLead(payload);
-      if (!lead?.id) return;
-      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...lead } : l));
-    };
-
     // The embedded booking changed status (CONFIRMED/ONGOING/CANCELLED…) —
     // patch it in place, and if this provider accepted (booking → CONFIRMED)
     // move the actionable lead to the Active Duty tab.
@@ -222,7 +216,6 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
 
     const handlers = {
       newLead: handleNewLead,
-      leadExpired: handleLeadState,
       leadCancelled: handleOfferClosed,
       leadReassigned: handleOfferClosed,
       bookingUpdated: handleBookingStatus,

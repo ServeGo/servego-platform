@@ -1,5 +1,6 @@
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { getQueueStats, requeueDeadJobs } from '../services/queue/queueService.js';
+import { queueMetrics } from '../services/queue/queueMetrics.js';
 
 export const QueueController = {
   /** Admin — live view of the job queue (pending/processing/dead counts). */
@@ -24,5 +25,11 @@ export const QueueController = {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to requeue dead jobs',
         process.env.NODE_ENV !== 'production' ? err.message : undefined);
     }
+  },
+
+  /** Admin — reset the in-memory worker metrics window. */
+  resetStats: async (req, res) => {
+    queueMetrics.reset();
+    return sendApiSuccess(res, 200, { ok: true });
   }
 };

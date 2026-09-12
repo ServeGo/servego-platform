@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Home, Briefcase, MoreHorizontal, Plus, Pencil, Trash2, MapPin, Star, Loader2 } from 'lucide-react';
+import { Home, Briefcase, MoreHorizontal, Pencil, Trash2, Star, Loader2 } from 'lucide-react';
 import { api as apiClient } from '../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../utils/requestCache';
+import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
 import AddressEditorModal from './AddressEditorModal';
 
 const LABEL_META = {
@@ -9,27 +11,28 @@ const LABEL_META = {
   OTHER: { label: 'Other', icon: MoreHorizontal, tone: 'bg-amber-50 text-amber-600 border-amber-100' },
 };
 
+const LABEL_ORDER = ['HOME', 'OFFICE', 'OTHER'];
+
 /**
  * Blinkit-style saved addresses box — renders on the customer profile below the
- * personal details. Shows every address as a tile (Home/Office/Other label),
- * with add / edit / delete and set-default actions. Add & edit both open the
- * map-backed AddressEditorModal.
+ * personal details. Customers get exactly THREE fixed slots (Home/Office/Other),
+ * each always visible so any of them can be filled or edited. The backend
+ * upserts by label, so saving an address can never create a fourth slot.
  */
 export default function CustomerAddresses() {
   const [addresses, setAddresses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editing, setEditing] = useState(null); // address object or null
-  const [adding, setAdding] = useState(false);
+  const [editingLabel, setEditingLabel] = useState(null); // 'HOME' | 'OFFICE' | 'OTHER' | null
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await apiClient.get('/customer-addresses');
+      const res = await cachedRequest('customer-addresses', () => apiClient.get('/customer-addresses'));
       if (res.ok && Array.isArray(res.data?.addresses)) {
-        setAddresses(res.data.addresses);
+        setAddresses(normalizeSavedAddresses(res.data.addresses));
       } else {
         setError(res.data?.message || 'Could not load your saved addresses.');
       }
@@ -40,7 +43,7 @@ export default function CustomerAddresses() {
     }
   }, []);
 
-useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   // Auto-dismiss errors so a stale message can't sit there looking huge.
   useEffect(() => {
@@ -49,21 +52,25 @@ useEffect(() => { load(); }, [load]);
     return () => clearTimeout(t);
   }, [error]);
 
+  const byLabel = {};
+  for (const a of addresses) if (a) byLabel[a.label] = a;
+  const editing = editingLabel ? byLabel[editingLabel] || null : null;
+
   const handleSave = async (payload) => {
     setSaving(true);
     try {
-      const isEdit = Boolean(editing?.id);
-      let res = isEdit
+      // Editing the tile for a filled label patches its row; an empty tile
+      // creates it. A 404 means another tab deleted the row — re-save fresh.
+      let res = editing
         ? await apiClient.patch(`/customer-addresses/${editing.id}`, payload)
         : await apiClient.post('/customer-addresses', payload);
-      // Editing an address another tab just deleted — save it as a fresh one.
-      if (isEdit && res.status === 404 && !res.ok) {
+      if (editing && res.status === 404 && !res.ok) {
         res = await apiClient.post('/customer-addresses', payload);
       }
       if (res.ok) {
+        invalidateCache('customer-addresses');
         await load();
-        setEditing(null);
-        setAdding(false);
+        setEditingLabel(null);
         return { ok: true };
       }
       return { ok: false, error: res.data?.message || 'Could not save this address.' };
@@ -79,8 +86,9 @@ useEffect(() => { load(); }, [load]);
     // A 404 (ADDRESS_NOT_FOUND) just means another tab already deleted it —
     // silently refresh instead of scaring the user with a big error.
     const res = await apiClient.delete(`/customer-addresses/${addr.id}`);
-    if (res.status === 404) { return load(); }
+    if (res.status === 404) { invalidateCache('customer-addresses'); return load(); }
     if (res.ok) {
+      invalidateCache('customer-addresses');
       await load();
     } else {
       setError(res.data?.message || 'Could not delete this address.');
@@ -89,8 +97,9 @@ useEffect(() => { load(); }, [load]);
 
   const handleSetDefault = async (addr) => {
     const res = await apiClient.post(`/customer-addresses/${addr.id}/default`, {});
-    if (res.status === 404) { return load(); }
+    if (res.status === 404) { invalidateCache('customer-addresses'); return load(); }
     if (res.ok) {
+      invalidateCache('customer-addresses');
       await load();
     } else {
       setError(res.data?.message || 'Could not set this address as default.');
@@ -103,67 +112,58 @@ useEffect(() => { load(); }, [load]);
         <div>
           <h3 className="text-lg font-bold text-slate-900">Saved Addresses</h3>
           <p className="text-slate-500 text-xs mt-1 font-medium">
-            Reuse these addresses for faster bookings — add Home, Office or Other.
+            Keep one Home, Office and Other address for faster bookings.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setAdding(true); setEditing(null); }}
-          className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 bg-slate-900 hover:bg-teal-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Address
-        </button>
       </div>
 
       {error && (
         <p className="mt-2 inline-block text-[10px] font-semibold text-rose-600 bg-rose-50 rounded-md px-2 py-1">{error}</p>
       )}
 
-      {/* Address tiles */}
+      {/* Exactly three tiles — one per fixed slot, always visible. */}
       <div className="mt-4 grid grid-cols-1 gap-3">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-slate-400 text-xs font-semibold">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading saved addresses…
           </div>
-        ) : addresses.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-10 px-6 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-teal-50 text-teal-500 flex items-center justify-center">
-              <MapPin className="w-6 h-6" />
-            </div>
-            <p className="mt-3 text-xs font-bold text-slate-700">No saved addresses yet</p>
-            <p className="text-[11px] text-slate-500 font-medium mt-1 max-w-xs mx-auto">
-              Add your home or office address and pick it instantly when booking a service.
-            </p>
-          </div>
         ) : (
-          addresses.map((addr) => {
-            const meta = LABEL_META[addr.label] || LABEL_META.OTHER;
+          LABEL_ORDER.map((labelId) => {
+            const meta = LABEL_META[labelId];
             const Icon = meta.icon;
+            const addr = byLabel[labelId];
             return (
               <div
-                key={addr.id}
-                className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 transition-all hover:border-teal-300 hover:shadow-sm"
+                key={labelId}
+                className={`flex items-start gap-3 rounded-2xl border p-4 transition-all ${
+                  addr ? 'border-slate-200 hover:border-teal-300 hover:shadow-sm' : 'border-dashed border-slate-300 bg-slate-50/50'
+                }`}
               >
                 <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${meta.tone}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-black text-slate-900 capitalize">{meta.label}</span>
-                    {addr.isDefault && (
+                    <span className="text-xs font-black text-slate-900">{meta.label}</span>
+                    {addr?.isDefault && (
                       <span className="inline-flex items-center gap-1 text-[9px] font-black text-teal-700 bg-teal-50 border border-teal-100 rounded-full px-2 py-0.5">
                         <Star className="w-2.5 h-2.5 fill-teal-500 text-teal-500" /> Default
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-600 font-medium mt-1 leading-relaxed break-words">
-                    {addr.address}
-                    {addr.landmark ? ` · ${addr.landmark}` : ''}
-                  </p>
+                  {addr ? (
+                    <p className="text-[11px] text-slate-600 font-medium mt-1 leading-relaxed break-words">
+                      {addr.address}
+                      {addr.landmark ? ` · ${addr.landmark}` : ''}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">
+                      Not saved yet — tap the pencil to set your {meta.label.toLowerCase()} address.
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  {!addr.isDefault && (
+                  {addr && !addr.isDefault && (
                     <button
                       type="button"
                       onClick={() => handleSetDefault(addr)}
@@ -175,20 +175,22 @@ useEffect(() => { load(); }, [load]);
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label="Edit address"
-                      onClick={() => { setEditing(addr); setAdding(false); }}
+                      aria-label={`${addr ? 'Edit' : 'Add'} ${meta.label} address`}
+                      onClick={() => setEditingLabel(labelId)}
                       className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button
-                      type="button"
-                      aria-label="Delete address"
-                      onClick={() => handleDelete(addr)}
-                      className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-500 flex items-center justify-center transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {addr && (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${meta.label} address`}
+                        onClick={() => handleDelete(addr)}
+                        className="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-500 flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -197,10 +199,11 @@ useEffect(() => { load(); }, [load]);
         )}
       </div>
 
-      {(adding || editing) && (
+      {editingLabel && (
         <AddressEditorModal
           initial={editing}
-          onClose={() => { setAdding(false); setEditing(null); }}
+          usedLabels={addresses.map((a) => a.label)}
+          onClose={() => setEditingLabel(null)}
           onSave={async (payload) => {
             const result = await handleSave(payload);
             return result;

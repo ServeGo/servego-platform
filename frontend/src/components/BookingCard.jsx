@@ -1,19 +1,21 @@
-import React, { useState } from 'react';
-import { Calendar, MapPin, FileText, MessageSquare, Navigation, UserCheck, Hourglass, IndianRupee, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { LiveTrackingMap } from './LiveTrackingMap';
+import React, { useState, Suspense, lazy } from 'react';
+import { Calendar, MapPin, FileText, MessageSquare, UserCheck, Hourglass, IndianRupee, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import MapLoadingFallback from './MapLoadingFallback';
 import ChatPanel from './ChatPanel';
 import { useRealtime, useToast } from '../context/AppContext';
 import { SERVICE_FEE_DEFAULT } from './QuotationModal';
 
+// maplibre is heavy; load it only when a live map is actually rendered for a
+// confirmed/ongoing booking.
+const LiveTrackingMap = lazy(() => import('./LiveTrackingMap').then((m) => ({ default: m.LiveTrackingMap })));
+
 function DispatchStepper({ phase }) {
   const steps = [
     { key: null, label: 'Confirmed', icon: Calendar, desc: 'Provider assigned' },
-    { key: 'ON_THE_WAY', label: 'On the way', icon: Navigation, desc: 'Provider is travelling to you' },
     { key: 'ARRIVED', label: 'Arrived', icon: UserCheck, desc: 'Provider is at your location' }
   ];
   const reached = (stepKey) => {
     if (stepKey === null) return true;
-    if (stepKey === 'ON_THE_WAY') return phase === 'ON_THE_WAY' || phase === 'ARRIVED';
     return phase === 'ARRIVED';
   };
 
@@ -58,7 +60,8 @@ export default function BookingCard({
   const { showToast } = useToast();
   const liveLocation = getBookingLocation(booking.id);
   const dispatchPhase = liveLocation?.providerPhase || booking.providerPhase || null;
-  const timeline = Array.isArray(booking.statusHistory) ? booking.statusHistory : [];
+  const timeline = (Array.isArray(booking.statusHistory) ? booking.statusHistory : [])
+    .filter((h) => String(h.status || '').toLowerCase() !== 'on_the_way');
   const [cancelling, setCancelling] = useState(false);
   const quotation = booking.quotation || null;
   const quotationSubmitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
@@ -84,8 +87,9 @@ export default function BookingCard({
               <Hourglass className="w-4 h-4 text-amber-500" />
             </div>
             <div className="min-w-0">
-              <h4 className="font-bold text-slate-800 text-[13px] leading-snug">Your request has been sent to all eligible specialists</h4>
-              <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-0.5">The first specialist to accept your job will be assigned. You can track their details here once confirmed.</span>
+              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wide">Requested Service</span>
+              <h4 className="font-bold text-slate-800 text-[13px] leading-snug">{booking.serviceCategory || 'Service requested'}</h4>
+              <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-0.5">Your request has been sent to all eligible specialists. The first specialist to accept your job will be assigned. You can track their details here once confirmed.</span>
             </div>
           </div>
         ) : (
@@ -132,7 +136,9 @@ export default function BookingCard({
       {/* Live Tracking Map */}
       {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
         <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
-          <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+          <Suspense fallback={<MapLoadingFallback />}>
+            <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+          </Suspense>
         </div>
       )}
 

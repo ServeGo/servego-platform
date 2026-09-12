@@ -60,12 +60,33 @@ const BOOKING_INCLUDE = {
 const BOOKING_LIST_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
   provider: {
-    include: {
-      user: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
+    select: {
+      // List rows only render id/photo + the user's name/avatar for the
+      // provider card (`bookingListItem`); the contact-heavy full shape stays
+      // on getById. A `select` also stops Prisma pulling the whole Provider
+      // row — including the specialties/serviceAreas/timeSlots JSON columns —
+      // onto every booking row of the page.
+      id: true,
+      photo: true,
+      user: { select: { id: true, name: true, avatar: true } }
     }
   },
   service: { select: { id: true, name: true } },
-  quotations: { orderBy: { createdAt: 'desc' }, take: 1 },
+  // `bookingListItem` normalizes the take-1 quotation row into exactly these
+  // fields, so select them instead of pulling the full Quotation row.
+  quotations: {
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      serviceFee: true,
+      items: true,
+      totalAmount: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  },
   events: { orderBy: { createdAt: 'asc' }, select: { action: true, note: true, actorRole: true, createdAt: true } },
 };
 
@@ -679,10 +700,9 @@ async function handleAccept(req, res, { booking, provider, io }) {
     if (io) {
       io.to(`user:${booking.customerId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'CONFIRMED' });
       if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'CONFIRMED' });
-      // Auto-cancel the remaining offers — tell every losing provider.
-      for (const loser of result.cancelledProviders || []) {
-        await notifyLeadCancelled(io, loser.userId, leadPayload);
-      }
+      // Auto-cancel the remaining offers — tell every losing provider. The
+      // notifications are independent writes, so fire them in parallel.
+      await Promise.all((result.cancelledProviders || []).map((loser) => notifyLeadCancelled(io, loser.userId, leadPayload)));
     }
 
     return sendApiSuccess(res, 200, updated);

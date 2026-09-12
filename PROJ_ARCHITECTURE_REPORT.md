@@ -75,8 +75,8 @@ servego-platform/
     ├── src/
     │   ├── main.jsx, App.jsx  # router + role-based layout
     │   ├── context/           # Auth, Data, Realtime, UI, Toast, App
-    │   ├── pages/             # 15 entry pages + admin/ (tab router + 14 tabs)
-    │   ├── components/        # shared + admin + provider components (62 files)
+    │   ├── pages/             # 14 entry pages + admin/ (tab router + 14 lazy tabs)
+    │   ├── components/        # shared + admin + provider components (54 files)
     │   └── utils/             # apiClient, serializers, watermarks, etc. (8 files)
     └── package.json           # Vite 6 + React 19 + Tailwind 4
 ```
@@ -131,6 +131,11 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Admin | dashboard, analytics, audit-logs, configs, level-rules, providers/status, provider-service-requests approve/deny, service items, reputation refresh, queue stats/requeue, feature flags, leads, wallet |
 | Feature flags | `GET /feature-flags/public` (public), `GET /feature-flags`, `PUT /feature-flags/:key` (admin) |
 | Misc | `POST /images/upload` (optional auth, multer → Cloudinary) |
+
+Customer addresses enforce exactly three labels (`HOME`/`OFFICE`/`OTHER`): `create`
+upserts by label (never a fourth row), an `update` that collides with another label
+returns 409 `LABEL_ALREADY_EXISTS`, and the UI always renders the three fixed save
+slots.
 
 ## 5) Security, validation & middleware
 
@@ -232,7 +237,10 @@ PENDING → CONFIRMED → ONGOING → COMPLETED
 - `BookingEvent` records who/what/why for auditability. Messages, quotations, live
   tracking and `BookingLocationUpdate` are attached to the booking. Auto-cancel cron
   (`autoCancelService`) closes stale PENDING bookings. `BookingInvoice` is generated
-  through the queue with `INV-BKG-YYYYMMDD-######`.
+  through the queue with `INV-BKG-YYYYMMDD-######`. Live phase steps are idempotent
+  (`markProviderOnTheWay`/`markProviderArrived` return `alreadyDone` and skip
+  re-notification/regression on repeat calls) and the frontend collapses consecutive
+  same-status timeline entries (`dedupeConsecutive`).
 - Accepted-quotation billing uses `debitWalletAllowNegative` (tab-style); completion
   emits analytics + invoice via the queue.
 
@@ -375,11 +383,20 @@ signup (self-serve) → PENDING service request → admin approve/deny
 ## 17) Frontend architecture
 
 React 19 + Vite 6 + Tailwind 4, `Capacitor`-aware (Android wrapper dep), lucide icons,
-React Router 7, socket.io-client, MapLibre GL (OSM tiles, keyless) for maps.
+socket.io-client, MapLibre GL (OSM tiles, keyless) for maps. Routing is a custom
+state-based switch in `App.jsx` (`currentPage`), no react-router dependency.
 
 - `App.jsx` — router + role-based shell; `RESTRICTED_ROUTES` = dashboard-customer,
-  dashboard-provider, admin; role-aware landing (`getDefaultDashboardForRole`) and
-  lazy-loaded admin tabs.
+  dashboard-provider, admin; role-aware landing (`getDefaultDashboardForRole`).
+- **Code splitting (rule 15, extended from the admin-tab pattern):** every page is a
+  `React.lazy` chunk, loaded only when the user opens it. The heavy map components
+  `LocationPicker` and `LiveTrackingMap` are lazy too, so the MapLibre GL dependency
+  (~952 kB min / ~249 kB gzip, plus its ~70 kB CSS) is fetched only when a map is
+  actually rendered. Result: the entry chunk dropped from ~1.6 MB to ~352 kB (gzip
+  ~103 kB). `PageFallback` (page switch) and `MapLoadingFallback` (map slot) keep the
+  UI populated while a chunk loads instead of flashing blank.
+- Admin panel: 14 tabs lazily loaded per active tab via
+  `pages/admin/AdminPanelTabsRouter.jsx` (each 3–48 kB after minification).
 - Contexts (`context/AppContext.jsx` re-exports): `AuthContext` (session, tokens,
   `registerUser`/`loginUser` → `/auth/*`), `DataContext` (services, providers, bookings,
   leads, wallet, admin data; optimistic-but-reconciled mutations for safe ops only),
@@ -393,10 +410,19 @@ React Router 7, socket.io-client, MapLibre GL (OSM tiles, keyless) for maps.
   Forgot/ResetPassword, About, Contact, FAQ.
 - `utils/apiClient.js` — base URL, token storage, 401 refresh retry; `errorMessages.js`
   maps backend codes → friendly copy; `reconnectWatermark.js` (reconnect resync);
-  `normalizeAdminData.js`/`normalizeCustomerData.js`/`requestCache.js`/`exportExcel.js`.
+  `requestCache.js` — `cachedRequest` dedupes identical/in-flight GETs with a short TTL
+  and `invalidateCache` (exact key or namespace prefix) on write; used for
+  customer-addresses, permanent-service-requests/mine, provider-services:`<id>`,
+  admin-configs and wallet-ledger. Bookings, leads, notifications and the wallet
+  balance are NEVER cached (rule 14 freshness rules).
+- `normalizeCustomerData.js` — booking timeline (`buildStatusTimeline` collapses
+  consecutive same-status events via `dedupeConsecutive`) and the 3-slot address
+  normalizer `normalizeSavedAddresses` (folds legacy duplicates onto HOME/OFFICE/OTHER);
+  `normalizeAdminData.js`; `exportExcel.js`.
 - Loading UX (rule 15): `SkeletonLoader`, skeleton/empty states per screen, inline
-  "Processing…" for long-running flows; optimistic UI only for trivial reversible
-  toggles (favourites) — payments, cancellations and withdrawals wait for the server.
+  "Processing…" for long-running flows, lazy-chunk fallbacks above; optimistic UI only
+  for trivial reversible toggles (favourites) — payments, cancellations and withdrawals
+  wait for the server.
 
 ## 18) Config, feature flags & runtime
 
@@ -446,13 +472,19 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 - **13 (indexes):** all composite indexes trace back to real queries (`perf_indexes_v2`)
   and match Prisma conventions.
 - **14 (caching):** selective TTL caches (catalog 30 s, config 30 s, levels 60 s) with
-  invalidation hooks; freshness-critical data never cached.
-- **15 (loading UX):** skeleton → partial → remaining; inline progress + empty states.
+  invalidation hooks; freshness-critical data never cached. Frontend `requestCache.js`
+  mirrors this — identical/frequent GETs are deduped with a short TTL and
+  `invalidateCache` on every write; bookings, leads, notifications and payment/wallet
+  state are never cached on the client either.
+- **15 (loading UX):** skeleton → partial → remaining; inline progress + empty states;
+  code-split pages and maps render `PageFallback`/`MapLoadingFallback` instead of blanks.
 - **16 (optimistic UI):** only trivial, reversible toggles; dangerous ops wait for the server.
 - **17 (state consistency):** single workflow layer (`utils/workflow.js`) + guarded
   CAS transitions; never direct `booking.status` writes from controllers.
 - **18 (idempotency):** CAS transitions, `dedupeKey` jobs, natural-key/upsert guards on
-  derived rows, webhook-style handlers re-check state.
+  derived rows, webhook-style handlers re-check state; live-track phase steps
+  (`on-the-way`/`arrived`) are idempotent server-side, with the frontend timeline
+  deduping consecutive same-status entries.
 - **19 (error UX):** stable codes + human messages + recovery actions, frontend
   `code → copy` maps; 500s never leak internals.
 - **20 (async side effects):** email/invoice/analytics/performance enqueued only.
@@ -465,8 +497,11 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 - 37 Prisma models, 22 enums, 51 migrations.
 - 135 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
 - 17 test files (16 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases).
-- Frontend: 29 page files (15 entries + admin tab router/tabs), 62 components, 6 contexts,
-  8 utils.
+- Frontend: 29 page files (14 entry pages + admin tab router + 14 lazy tab chunks),
+  54 components, 6 contexts, 8 utils.
+- Frontend bundles: entry chunk ~352 kB (gzip ~103 kB); everything else is on demand —
+  `maplibre-gl` shared chunk ~952 kB (gzip ~249 kB, fetched only when a map renders),
+  `exportExcel` ~285 kB, admin tabs 3–48 kB, pages 3–77 kB each.
 
 ## 22) Known gaps & next steps
 

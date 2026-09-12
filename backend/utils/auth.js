@@ -93,17 +93,6 @@ export function extractToken(authHeader) {
 }
 
 /**
- * Decode token without verification (for debugging)
- */
-export function decodeToken(token) {
-  try {
-    return jwt.decode(token);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Basic authentication middleware - requires valid token
  */
 export function requireAuth(req, res, next) {

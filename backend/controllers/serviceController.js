@@ -1,4 +1,5 @@
 import prisma from '../prisma/client.js';
+import { Prisma } from '@prisma/client';
 import { rankedServiceMatches } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
@@ -22,29 +23,29 @@ function invalidateCatalogCache() {
  * + ACTIVE + verified + ACTIVE user, optional location scope). The average
  * only covers providers that actually have a rating (> 0), so unrated partners
  * don't drag a service's score down.
+ *
+ * The whole aggregation runs in one SQL statement (rule 12) — the previous
+ * version shipped every linked provider row to Node and summed it in JS, which
+ * grows linearly with the catalog on every cache miss and every search.
  */
 async function getServiceStats({ location = null } = {}) {
-  const links = await prisma.providerService.findMany({
-    select: { serviceId: true, provider: { select: { rating: true } } },
-    where: {
-      provider: {
-        accountStatus: 'ACTIVE',
-        isVerified: true,
-        user: { status: 'ACTIVE' },
-        ...(location ? { serviceAreas: { array_contains: [location] } } : {})
-      }
-    }
-  });
+  const rows = await prisma.$queryRaw`
+    SELECT ps."serviceId" AS id,
+           COUNT(*)::int AS count,
+           COALESCE(SUM(CASE WHEN p.rating > 0 THEN p.rating END), 0)::float8 AS "ratingSum",
+           COUNT(CASE WHEN p.rating > 0 THEN 1 END)::int AS "ratedCount"
+    FROM "ProviderService" ps
+    JOIN "Provider" p ON p.id = ps."providerId"
+    JOIN "User" u ON u.id = p."userId"
+    WHERE p."accountStatus" = 'ACTIVE'
+      AND p."isVerified" = true
+      AND u.status = 'ACTIVE'
+      ${location ? Prisma.sql`AND p."serviceAreas" @> ${JSON.stringify([location])}::jsonb` : Prisma.empty}
+    GROUP BY ps."serviceId"`;
 
   const map = {};
-  for (const { serviceId, provider } of links) {
-    const entry = map[serviceId] ?? (map[serviceId] = { count: 0, ratingSum: 0, ratedCount: 0 });
-    entry.count += 1;
-    const rating = Number(provider?.rating) || 0;
-    if (rating > 0) {
-      entry.ratingSum += rating;
-      entry.ratedCount += 1;
-    }
+  for (const r of rows) {
+    map[r.id] = { count: r.count, ratingSum: Number(r.ratingSum), ratedCount: r.ratedCount };
   }
   return map;
 }

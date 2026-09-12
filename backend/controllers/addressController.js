@@ -35,6 +35,35 @@ export const AddressController = {
         return sendApiError(res, 400, 'INVALID_LABEL', 'Address label must be HOME, OFFICE or OTHER.');
       }
 
+      // Labels are fixed slots (HOME / OFFICE / OTHER) — exactly one saved
+      // address per label. Re-saving the same label updates the current entry
+      // instead of silently creating a duplicate row (customers used to end up
+      // with two "Home" or two "Office" addresses).
+      const existingLabel = await prisma.customerAddress.findFirst({
+        where: { userId: req.user.id, label: normLabel }
+      });
+      if (existingLabel) {
+        const willBeDefault = existingLabel.isDefault || req.body?.isDefault === true;
+        if (willBeDefault && !existingLabel.isDefault) {
+          await prisma.customerAddress.updateMany({
+            where: { userId: req.user.id, isDefault: true },
+            data: { isDefault: false }
+          });
+        }
+        const updated = await prisma.customerAddress.update({
+          where: { id: existingLabel.id },
+          data: {
+            address: String(address).trim(),
+            pincode: pincode ? String(pincode).trim() : null,
+            landmark: landmark ? String(landmark).trim() : null,
+            latitude: isFiniteCoord(latitude) ? Number(latitude) : null,
+            longitude: isFiniteCoord(longitude) ? Number(longitude) : null,
+            isDefault: willBeDefault
+          }
+        });
+        return sendApiSuccess(res, 200, { address: updated });
+      }
+
       const existingCount = await prisma.customerAddress.count({ where: { userId: req.user.id } });
       // First address is always the default (keeps the "signup default = home"
       // invariant), otherwise only when the client asks for it.
@@ -82,6 +111,15 @@ export const AddressController = {
       const normLabel = label ? String(label).toUpperCase() : existing.label;
       if (!ADDRESS_LABELS.includes(normLabel)) {
         return sendApiError(res, 400, 'INVALID_LABEL', 'Address label must be HOME, OFFICE or OTHER.');
+      }
+
+      if (normLabel !== existing.label) {
+        const holder = await prisma.customerAddress.findFirst({
+          where: { userId: req.user.id, label: normLabel, id: { not: id } }
+        });
+        if (holder) {
+          return sendApiError(res, 409, 'LABEL_ALREADY_EXISTS', `You already have a saved ${normLabel} address. Edit that one instead.`);
+        }
       }
 
       let willBeDefault = existing.isDefault;

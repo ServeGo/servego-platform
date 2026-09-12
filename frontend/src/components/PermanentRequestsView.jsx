@@ -1,7 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Briefcase, Clock, CheckCircle2, XCircle, Ban, Info } from 'lucide-react';
+import { Briefcase, Clock, CheckCircle2, XCircle, Ban, Info, PlusCircle } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../utils/requestCache';
 import SkeletonLoader from './SkeletonLoader';
+import ServiceRequestChoice from './ServiceRequestChoice';
+import PermanentServiceRequestModal from './PermanentServiceRequestModal';
+import CustomServiceRequestModal from './CustomServiceRequestModal';
+import PermanentRequestSuccess from './PermanentRequestSuccess';
 
 const STATUS_STYLES = {
   PENDING: 'bg-amber-100 border-amber-300 text-amber-800',
@@ -26,9 +31,18 @@ export default function PermanentRequestsView({ onNavigate }) {
   const [cancellingId, setCancellingId] = useState(null);
   const [error, setError] = useState('');
 
-  const fetchRequests = useCallback(async () => {
+  // Request-a-service flow (same options offered on the Services page).
+  const [showRequestChoice, setShowRequestChoice] = useState(false);
+  const [showPermanentRequest, setShowPermanentRequest] = useState(false);
+  const [showCustomRequest, setShowCustomRequest] = useState(false);
+  const [requestSuccess, setRequestSuccess] = useState(null);
+
+  const fetchRequests = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
-    const res = await api.get('/permanent-service-requests/mine');
+    // Shares the 30s cache with the dashboard's request counter so both views
+    // resolve from one request; explicit refreshes and post-write reloads force
+    // a live snapshot (and invalidate first, so concurrent views refetch too).
+    const res = await cachedRequest('permanent-service-requests/mine', () => api.get('/permanent-service-requests/mine'), { force });
     if (res.ok) {
       setRequests(Array.isArray(res.data) ? res.data : []);
       setError('');
@@ -41,15 +55,37 @@ export default function PermanentRequestsView({ onNavigate }) {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
+  const reloadFresh = () => {
+    invalidateCache('permanent-service-requests/mine');
+    return fetchRequests({ force: true });
+  };
+
   const handleCancel = async (requestId) => {
     setCancellingId(requestId);
     const res = await api.post(`/permanent-service-requests/${requestId}/cancel`);
     setCancellingId(null);
     if (res.ok) {
-      fetchRequests();
+      reloadFresh();
     } else {
       setError(res.data?.message || res.data?.error || 'Could not cancel the request.');
     }
+  };
+
+  const handleRequestChoicePermanent = () => {
+    setShowRequestChoice(false);
+    setShowPermanentRequest(true);
+  };
+
+  const handleRequestChoiceCustom = () => {
+    setShowRequestChoice(false);
+    setShowCustomRequest(true);
+  };
+
+  // Keep the list fresh when a request is submitted from this view.
+  const handleRequestSuccess = () => {
+    setShowPermanentRequest(false);
+    setShowCustomRequest(false);
+    reloadFresh();
   };
 
   const durationText = (r) => {
@@ -64,10 +100,33 @@ export default function PermanentRequestsView({ onNavigate }) {
 
   return (
     <div className="space-y-4">
+      {showRequestChoice && (
+        <ServiceRequestChoice
+          onPermanent={handleRequestChoicePermanent}
+          onCustom={handleRequestChoiceCustom}
+          onClose={() => setShowRequestChoice(false)}
+        />
+      )}
+
+      {showPermanentRequest && (
+        <PermanentServiceRequestModal
+          serviceName=""
+          onClose={() => setShowPermanentRequest(false)}
+          onSuccess={handleRequestSuccess}
+        />
+      )}
+
+      {showCustomRequest && (
+        <CustomServiceRequestModal
+          onClose={() => setShowCustomRequest(false)}
+          onSuccess={handleRequestSuccess}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-900 text-left">Service Requests</h3>
         <button
-          onClick={fetchRequests}
+          onClick={reloadFresh}
           className="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-100 transition-colors"
         >
           Refresh
@@ -92,12 +151,21 @@ export default function PermanentRequestsView({ onNavigate }) {
           <p className="text-slate-500 text-xs mt-1 font-medium">
             Request a permanent, contract, or custom service and our team will arrange everything for you.
           </p>
-          <button
-            onClick={() => onNavigate('services')}
-            className="mt-5 bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
-          >
-            Browse Services
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2.5 justify-center mt-5">
+            <button
+              onClick={() => setShowRequestChoice(true)}
+              className="inline-flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              Request a Service
+            </button>
+            <button
+              onClick={() => onNavigate('services')}
+              className="bg-slate-900 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
+            >
+              Browse Services
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

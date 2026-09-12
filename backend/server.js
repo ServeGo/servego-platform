@@ -11,10 +11,10 @@ import { getCorsConfig, resolvePort } from './utils/runtimeConfig.js';
 import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/security.js';
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
-import { startAutoCancelCron, stopAutoCancelCron } from './services/autoCancelService.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
 import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
+import { socketMetrics } from './services/socketMetrics.js';
 import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
 import { maintenanceMode } from './middleware/maintenance.js';
 
@@ -144,6 +144,7 @@ async function bootstrap() {
   });
 
   io.on('connection', (socket) => {
+    socketMetrics.recordConnection();
     console.log(`🔌 Socket connected: ${socket.id}, IP: ${socket.handshake.address}`);
 
     socket.on('join', (userId) => {
@@ -181,6 +182,8 @@ async function bootstrap() {
     // booking; the customer's room receives the broadcast. REST fallback lives
     // in BookingController.updateLocation for clients without sockets.
     socket.on('location:update', async (payload, ack) => {
+      socketMetrics.recordEvent('location:update');
+      const startedAt = Date.now();
       try {
         if (!socket.userId || socket.userRole !== 'provider') {
           if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
@@ -199,12 +202,16 @@ async function bootstrap() {
         if (typeof ack === 'function') {
           ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
         }
+      } finally {
+        socketMetrics.recordHandlerDuration('location:update', Date.now() - startedAt);
       }
     });
 
     // Dispatch lifecycle (provider): "On my way" and "Arrived at location".
     // Emits `provider:onTheWay` / `provider:arrived` to the customer's room.
     socket.on('provider:onTheWay', async (payload, ack) => {
+      socketMetrics.recordEvent('provider:onTheWay');
+      const startedAt = Date.now();
       try {
         if (!socket.userId || socket.userRole !== 'provider') {
           if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
@@ -219,10 +226,14 @@ async function bootstrap() {
       } catch (err) {
         console.error(`🔌 provider:onTheWay failed:`, err.message);
         if (typeof ack === 'function') ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
+      } finally {
+        socketMetrics.recordHandlerDuration('provider:onTheWay', Date.now() - startedAt);
       }
     });
 
     socket.on('provider:arrived', async (payload, ack) => {
+      socketMetrics.recordEvent('provider:arrived');
+      const startedAt = Date.now();
       try {
         if (!socket.userId || socket.userRole !== 'provider') {
           if (typeof ack === 'function') ack({ ok: false, error: 'UNAUTHORIZED' });
@@ -238,10 +249,13 @@ async function bootstrap() {
       } catch (err) {
         console.error(`🔌 provider:arrived failed:`, err.message);
         if (typeof ack === 'function') ack({ ok: false, error: err.code || 'TRACKING_ERROR', message: err.message });
+      } finally {
+        socketMetrics.recordHandlerDuration('provider:arrived', Date.now() - startedAt);
       }
     });
 
     socket.on('disconnect', (reason) => {
+      socketMetrics.recordDisconnection();
       console.log(`🔌 Socket disconnected: ${socket.id}, Reason: ${reason}`);
     });
 
@@ -269,7 +283,6 @@ async function bootstrap() {
     console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security: Helmet + Rate Limiting enabled`);
     console.log('===================================================');
-    startAutoCancelCron(io);
     void scheduleAllLeadTimers(io).catch((err) => {
       console.error('Lead timer scheduling failed:', err.message);
     });
@@ -302,7 +315,6 @@ async function bootstrap() {
   // Graceful shutdown
   const shutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);
-    stopAutoCancelCron();
     stopQueueWorkers();
     await drainQueueWorkers(10000);
     httpServer.close(async () => {

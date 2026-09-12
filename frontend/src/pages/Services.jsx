@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, UserX, ArrowRight } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
 import { api as apiClient } from '../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../utils/requestCache';
+import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
 
 // Components
 import ServiceHeader from '../components/ServiceHeader';
@@ -65,11 +67,12 @@ export const Services = ({ onNavigate }) => {
   const loadSavedAddresses = useCallback(async () => {
     if (!currentUser || currentUser.role !== 'customer') return;
     try {
-      const res = await apiClient.get('/customer-addresses');
+      const res = await cachedRequest('customer-addresses', () => apiClient.get('/customer-addresses'));
       if (res.ok && Array.isArray(res.data?.addresses)) {
-        setSavedAddresses(res.data.addresses);
+        const saved = normalizeSavedAddresses(res.data.addresses);
+        setSavedAddresses(saved);
         // Auto-select the default saved address for the booking.
-        const def = res.data.addresses.find((a) => a.isDefault) || res.data.addresses[0];
+        const def = saved.find((a) => a.isDefault) || saved[0];
         if (def && (def.latitude != null) && (def.longitude != null)) {
           setLatitude(def.latitude);
           setLongitude(def.longitude);
@@ -86,8 +89,9 @@ export const Services = ({ onNavigate }) => {
     try {
       const res = await apiClient.post('/customer-addresses', payload);
       if (res.ok && res.data?.address) {
+        invalidateCache('customer-addresses');
         const addr = res.data.address;
-        setSavedAddresses((prev) => [addr, ...prev.filter((a) => a.id !== addr.id)]);
+        setSavedAddresses((prev) => normalizeSavedAddresses([addr, ...prev.filter((a) => a.id !== addr.id)]));
         setLatitude(addr.latitude);
         setLongitude(addr.longitude);
         setAddress(addr.address);

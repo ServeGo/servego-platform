@@ -15,12 +15,9 @@ export const AdminDashboardController = {
         totalProviders,
         totalCustomers,
         totalUsers,
-        activeBookings,
-        pendingBookings,
-        confirmedBookings,
-        ongoingBookings,
-        completedBookings,
-        cancelledBookings,
+        // All six booking-status counts come from one GROUP BY (rule 12) —
+        // previously six separate count() queries scanned the same rows.
+        bookingStatusGroups,
         pendingApprovals,
         completedThisMonth,
         completedLastMonth,
@@ -37,13 +34,11 @@ export const AdminDashboardController = {
         prisma.user.count({ where: { role: 'customer' } }),
         prisma.user.count(),
         
-        // Booking status counts
-        prisma.booking.count({ where: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } }),
-        prisma.booking.count({ where: { status: 'PENDING' } }),
-        prisma.booking.count({ where: { status: 'CONFIRMED' } }),
-        prisma.booking.count({ where: { status: 'ONGOING' } }),
-        prisma.booking.count({ where: { status: 'COMPLETED' } }),
-        prisma.booking.count({ where: { status: 'CANCELLED' } }),
+        // Booking status counts — single grouped scan instead of 6 filters.
+        prisma.booking.groupBy({
+          by: ['status'],
+          _count: true
+        }),
         
         // Service requests
         prisma.providerServiceRequest.count({ where: { status: 'PENDING' } }),
@@ -83,6 +78,15 @@ export const AdminDashboardController = {
           _avg: { rating: true }
         })
       ]);
+
+      // Derive the per-status dashboard numbers from the grouped scan.
+      const byStatus = Object.fromEntries(bookingStatusGroups.map((g) => [g.status, g._count]));
+      const pendingBookings = byStatus.PENDING ?? 0;
+      const confirmedBookings = byStatus.CONFIRMED ?? 0;
+      const ongoingBookings = byStatus.ONGOING ?? 0;
+      const completedBookings = byStatus.COMPLETED ?? 0;
+      const cancelledBookings = byStatus.CANCELLED ?? 0;
+      const activeBookings = pendingBookings + confirmedBookings + ongoingBookings;
 
       // Calculate growth metrics
       const bookingGrowth = completedLastMonth > 0 
@@ -291,7 +295,7 @@ export const AdminDashboardController = {
             user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
             // providerListItem renders the review audit only on the owner's own
             // row (never for admin tables), so don't load full review rows here.
-            badges: true
+            badges: { select: { badgeType: true, awardedAt: true } }
           },
           skip,
           take: limit,

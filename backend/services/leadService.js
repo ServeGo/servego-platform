@@ -1,5 +1,5 @@
 import prisma from '../prisma/client.js';
-import { levelRank, applyPromotion } from './providerLevelService.js';
+import { applyPromotion } from './providerLevelService.js';
 import {
   recordLeadOffered,
   recordLeadAccepted,
@@ -65,8 +65,8 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Lightweight socket-safe payload used by `newLead`, `leadExpired` and other
- * real-time lead events so the frontend does not have to re-fetch.
+ * Lightweight socket-safe payload used by `newLead` and other real-time lead
+ * events so the frontend does not have to re-fetch.
  */
 export function buildLeadPayload(lead, booking = null, provider = null) {
   const customer = booking?.customer ?? lead?.customer ?? null;
@@ -106,81 +106,36 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
 }
 
 /**
- * Rank a list of eligible providers using the recommended priority order:
- * Distance → Rating → Provider Level → Acceptance Rate → Cancellation Rate →
- * Response Rate → Experience → Reviews → Service Fee, with a deterministic
- * createdAt fallback.
- */
-function rankProviders(providers, distanceMap) {
-  return [...providers].sort((a, b) => {
-    const da = distanceMap.get(a.id);
-    const db = distanceMap.get(b.id);
-    if (da == null && db == null) {
-      // equal — fall through
-    } else if (da == null) {
-      return 1;
-    } else if (db == null) {
-      return -1;
-    } else if (da !== db) {
-      return da - db;
-    }
-
-    if (b.rating !== a.rating) return (Number(b.rating) || 0) - (Number(a.rating) || 0);
-
-    const la = levelRank(a.providerLevel);
-    const lb = levelRank(b.providerLevel);
-    if (la !== lb) return lb - la;
-
-    const aa = Number(a.performance?.acceptanceRate ?? 0);
-    const ab = Number(b.performance?.acceptanceRate ?? 0);
-    if (aa !== ab) return ab - aa;
-
-    const ca = Number(a.performance?.cancellationRate ?? 0);
-    const cb = Number(b.performance?.cancellationRate ?? 0);
-    if (ca !== cb) return ca - cb;
-
-    const ra = Number(a.performance?.responseRate ?? 0);
-    const rb = Number(b.performance?.responseRate ?? 0);
-    if (ra !== rb) return rb - ra;
-
-    if (b.experienceYears !== a.experienceYears) return Number(b.experienceYears) - Number(a.experienceYears);
-
-    if (b.reviewCount !== a.reviewCount) return Number(b.reviewCount) - Number(a.reviewCount);
-
-    const fa = Number(a.serviceFee ?? 0);
-    const fb = Number(b.serviceFee ?? 0);
-    if (fa !== fb) return fa - fb;
-
-    return new Date(a.createdAt) - new Date(b.createdAt);
-  });
-}
-
-/**
  * Find providers eligible for a new/transferred lead.
  *
  * Eligibility criteria (rule 11):
  *   - approved — account ACTIVE + verified,
- *   - available — online + accepting bookings,
  *   - has the service REGISTERED/approved (`ProviderService` link for the
  *     requested service — the legacy `provider.category` fallback is removed,
  *     a provider is only matchable for a service they actually registered),
  *   - inside the provider's service radius (`maxRadiusKm` vs. customer pin),
- *   - not in cooldown, not busy with an active job,
- *   - wallet balance >= 0 — a negative balance blocks new leads until cleared.
+ *   - wallet balance >= 0 — a negative balance blocks new leads until cleared,
+ *   - not busy with an active job,
+ *   - below the open-lead cap (`MAX_OPEN_LEADS = 2`).
+ *
+ * `isOnline`, `acceptingBookings` and cooldown are NOT eligibility gates: a
+ * provider who is offline / paused / cooling down still receives offers and
+ * decides themselves whether to accept.
  *
  * Providers receive leads without any subscription or quota blockers (rule 3).
- * Returns providers sorted by the ranking algorithm (rule 7), each annotated
- * with the customer distance (`distanceKm`) so callers can persist it.
+ * There is no ranking or "top provider" concept — the returned list is in a
+ * deterministic order (createdAt, then id) and every eligible provider is
+ * broadcast an open offer; the first entry merely satisfies the required
+ * `Booking.providerId` FK until one of them accepts.
  *
  * The pipeline is "progressively cheaper":
  *   1. PostgreSQL does the filtering — every hard eligibility rule (including
- *      cooldown and the service radius) is a WHERE clause,
+ *      the service radius) is a WHERE clause,
  *      so only a small candidate set is ever loaded into Node. The radius uses a
  *      cheap bounding box that is provably a superset of the true circle (the
  *      box is sized to the largest effective radius among candidates), so the
  *      box never wrongly excludes a far-radius provider.
- *   2. Only the small candidate set is ranked in Node.
- *   3. Ranking (via `rankProviders`) is the final step before assignment.
+ *   2. Only the small candidate set is filtered further in Node (exact haversine).
  *
  * The provider's own `maxRadiusKm` wins; otherwise the admin default radius is
  * used. When customer coordinates are known the radius filter is mandatory —
@@ -195,7 +150,6 @@ export async function findEligibleProviders({
   client = prisma
 }) {
   const defaultKm = 50;
-  const now = new Date();
   const hasCustomerCoords = customerLat != null && customerLng != null;
 
   // Rule — capped inbox: a provider may hold at most MAX_OPEN_LEADS open
@@ -225,8 +179,6 @@ export async function findEligibleProviders({
         { wallet: { is: { balance: { gte: 0 } } } }
       ]
     },
-    isOnline: true,
-    acceptingBookings: true,
     // Not busy with an active job.
     bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
     // The requested service must be registered (approved `ProviderService`).
@@ -237,20 +189,7 @@ export async function findEligibleProviders({
     }
   };
 
-  const where = {
-    AND: [
-      baseWhere,
-      // Rule 3 — not in cooldown: no performance row, no cooldown set, or the
-      // cooldown window has already passed.
-      {
-        OR: [
-          { performance: { is: null } },
-          { performance: { is: { cooldownUntil: null } } },
-          { performance: { is: { cooldownUntil: { lte: now } } } }
-        ]
-      }
-    ]
-  };
+  const where = { AND: [baseWhere] };
 
   // Rule 6 — service radius as a cheap bounding box. The box must be a superset
   // of the true circle, so it is sized to the largest effective radius among
@@ -280,10 +219,6 @@ export async function findEligibleProviders({
       id: true,
       userId: true,
       rating: true,
-      providerLevel: true,
-      experienceYears: true,
-      reviewCount: true,
-      serviceFee: true,
       latitude: true,
       longitude: true,
       maxRadiusKm: true,
@@ -295,60 +230,57 @@ export async function findEligibleProviders({
           avatar: true,
           phone: true
         }
-      },
-      performance: {
-        select: { cooldownUntil: true, acceptanceRate: true, cancellationRate: true, responseRate: true }
       }
     }
   });
 
-  // Step 2 — rank only the candidates. The guards below are cheap defense-in-
-  // depth on the small set; the SQL WHERE clauses already enforce the same rules.
-  const distanceMap = new Map();
-  for (const p of providers) {
-    if (hasCustomerCoords && p.latitude != null && p.longitude != null) {
-      distanceMap.set(p.id, haversineKm(customerLat, customerLng, p.latitude, p.longitude));
-    } else {
-      distanceMap.set(p.id, null);
-    }
-  }
-
-  const eligible = providers.filter((p) => {
-    // Rule 6 — precise radius check on the SQL-shrunk candidate set.
-    const km = distanceMap.get(p.id);
-    if (hasCustomerCoords) {
-      if (km == null) return false;
-      const providerRadius = Number(p.maxRadiusKm ?? defaultKm) || defaultKm;
-      if (km > providerRadius) return false;
-    }
-    return true;
+  // Deterministic order (createdAt, then id) so the FK-backed owner pick is
+  // stable across runs — NOT a preference ranking. Every entry below is a
+  // full member of the broadcast; no one is "better" than another.
+  const ordered = [...providers].sort((a, b) => {
+    const da = new Date(a.createdAt).getTime();
+    const db = new Date(b.createdAt).getTime();
+    if (da !== db) return da - db;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
-  const ranked = rankProviders(eligible, distanceMap);
-  for (const p of ranked) p.distanceKm = distanceMap.get(p.id) ?? null;
-  return ranked;
+  // Step 2 — filter only the SQL-shrunk candidate set in Node.
+  const eligible = [];
+  for (const p of ordered) {
+    if (hasCustomerCoords && p.latitude != null && p.longitude != null) {
+      const km = haversineKm(customerLat, customerLng, p.latitude, p.longitude);
+      p.distanceKm = km;
+      const providerRadius = Number(p.maxRadiusKm ?? defaultKm) || defaultKm;
+      if (km > providerRadius) continue;
+    } else if (hasCustomerCoords) {
+      // Rule 6 — providers without usable coordinates are not eligible.
+      p.distanceKm = null;
+      continue;
+    } else {
+      p.distanceKm = null;
+    }
+    eligible.push(p);
+  }
+
+  return eligible;
 }
 
 /** Diagnose why a specific preferred provider is not in the eligible pool. */
 async function diagnoseProvider(providerId, { serviceId = null, serviceCategory = null }, client) {
   const provider = await client.provider.findUnique({
     where: { id: providerId },
-    include: { performance: true, user: { select: { status: true, wallet: true } } }
+    include: { user: { select: { status: true, wallet: true } } }
   });
   if (!provider) return { code: 'PROVIDER_NOT_FOUND', message: 'Provider not found.' };
   if (!provider.isVerified) return { code: 'NOT_VERIFIED', message: 'This provider has not been verified yet and cannot accept bookings.' };
   if (provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE') {
     return { code: 'PROVIDER_UNAVAILABLE', message: 'This provider is not currently accepting new bookings.' };
   }
-  if (provider.isOnline === false || provider.acceptingBookings === false) {
-    return { code: 'PROVIDER_UNAVAILABLE', message: 'This provider is not currently accepting new bookings.' };
-  }
   if (provider.user?.wallet && Number(provider.user.wallet.balance) < 0) {
     return { code: 'WALLET_BELOW_ZERO', message: 'Clear your outstanding balance to start receiving new bookings.' };
   }
-  if (provider.performance?.cooldownUntil && new Date(provider.performance.cooldownUntil) > new Date()) {
-    return { code: 'PROVIDER_IN_COOLDOWN', message: 'This provider is temporarily paused due to repeated cancellations.' };
-  }
+  // Note: `isOnline`, `acceptingBookings` and cooldown are NOT eligibility
+  // gates — they do not block a provider from being offered a lead.
   if (serviceId || serviceCategory) {
     const approved = await client.providerService.findFirst({
       where: serviceId
@@ -376,18 +308,20 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
  * Create a booking together with its first lead assignment, atomically.
  *
  * Temporary-service bookings broadcast the request to EVERY eligible provider
- * (approved, online, accepting bookings, inside the service radius — no
+ * (approved, verified, inside the service radius, active account — no
  * subscription or quota gate) at the same time — first-accept-wins. The
- * booking is created against the top-ranked provider (`Booking.providerId` is
- * required) but every eligible provider receives an open offer via
- * `LeadAssignmentHistory` (`isCurrent: true`) and can accept it.
+ * booking is created against the first eligible provider (`Booking.providerId`
+ * is required, so it points at an arbitrary member of the broadcast — the
+ * first in the deterministic order; there is no ranking or "top provider") but
+ * every eligible provider receives an open offer via `LeadAssignmentHistory`
+ * (`isCurrent: true`) and can accept it.
  *
- * - With `preferredProviderId`: that provider is ranked first (when eligible);
- *   otherwise a descriptive 409-ish error is thrown.
+ * - With `preferredProviderId`: that provider is moved to the front (when
+ *   eligible); otherwise a descriptive 409-ish error is thrown.
  * - When no eligible provider exists the booking is rejected with
  *   `NO_ELIGIBLE_PROVIDERS`.
  *
- * Returns { booking, lead, provider, providers, rankedCount }. Socket emission
+ * Returns { booking, lead, provider, providers, eligibleCount }. Socket emission
  * is left to the caller after the transaction commits.
  */
 export async function createBookingWithLead({
@@ -411,7 +345,7 @@ export async function createBookingWithLead({
   // transaction — the transaction below only creates the booking and its lead.
   // The broadcast model (first-accept-wins) tolerates a provider going offline
   // in the short window before the open offers are written.
-  let ranked = await findEligibleProviders({
+  let eligible = await findEligibleProviders({
     serviceCategory,
     serviceId,
     excludeProviderIds: [],
@@ -421,15 +355,15 @@ export async function createBookingWithLead({
   });
 
   if (preferredProviderId) {
-    const preferred = ranked.find((p) => p.id === preferredProviderId);
+    const preferred = eligible.find((p) => p.id === preferredProviderId);
     if (!preferred) {
       const diagnosis = await diagnoseProvider(preferredProviderId, { serviceId, serviceCategory }, client);
       throw serviceError(diagnosis.code, diagnosis.message);
     }
-    ranked = [preferred, ...ranked.filter((p) => p.id !== preferredProviderId)];
+    eligible = [preferred, ...eligible.filter((p) => p.id !== preferredProviderId)];
   }
 
-  if (!ranked.length) {
+  if (!eligible.length) {
     throw serviceError(
       'NO_ELIGIBLE_PROVIDERS',
       'No eligible providers are available for this request right now. Please try again later.'
@@ -437,7 +371,7 @@ export async function createBookingWithLead({
   }
 
   return withClientTransaction(client, async (tx) => {
-    const assignedProvider = ranked[0];
+    const assignedProvider = eligible[0];
     const timestamp = new Date();
 
     const baseAmount = amount != null && !Number.isNaN(Number(amount)) ? Number(amount) : null;
@@ -510,9 +444,10 @@ export async function createBookingWithLead({
     });
 
     // Broadcast: open the offer to every eligible provider at once. `assignedProvider`
-    // (ranked[0]) remains the booking/lead owner until one of them accepts.
+    // (eligible[0]) merely satisfies the required `Booking.providerId` FK and stays
+    // the booking/lead owner until one of them accepts — no ranking involved.
     await tx.leadAssignmentHistory.createMany({
-      data: ranked.map((p) => ({
+      data: eligible.map((p) => ({
         leadId: lead.id,
         providerId: p.id,
         status: 'NEW',
@@ -526,7 +461,7 @@ export async function createBookingWithLead({
     // the caller enqueues one `performance` job per offered provider. It must
     // never add serial round trips to this critical path.
 
-    return { booking, lead: assignedLead, provider: assignedProvider, providers: ranked, rankedCount: ranked.length };
+    return { booking, lead: assignedLead, provider: assignedProvider, providers: eligible, eligibleCount: eligible.length };
   });
 }
 
@@ -891,9 +826,9 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
 }
 
 /**
- * Reassign a lead to the next ranked eligible provider, skipping everyone who
- * was already offered it. Reopens a cancelled booking for a new provider when
- * possible. Runs inside `client`'s transaction.
+ * Reassign a lead to another eligible provider (deterministic order, no
+ * ranking), skipping everyone who was already offered it. Reopens a cancelled
+ * booking for a new provider when possible. Runs inside `client`'s transaction.
  *
  * Returns { nextProvider, lead, booking } or throws when nothing found.
  */
@@ -958,7 +893,7 @@ async function redistributeInTx({ leadId, reason = 'REJECTED', details = null, e
       fromProviderId: lead.providerId,
       toProviderId: nextProvider.id,
       reason,
-      details: details ? { ...details, note: 'Lead reassigned to next ranked provider' } : { note: 'Lead reassigned to next ranked provider' }
+      details: details ? { ...details, note: 'Lead reassigned to another eligible provider' } : { note: 'Lead reassigned to another eligible provider' }
     }
   });
 
@@ -1090,7 +1025,7 @@ export async function rejectLead({ leadId, providerId, reason, client = prisma }
 
     if (remaining > 0) {
       // Re-point the lead and booking at the next remaining offer so the
-      // declining provider (who may have been ranked[0]) stops owning them.
+      // declining provider (who may have been the nominal owner) stops owning them.
       const nextOffer = await tx.leadAssignmentHistory.findFirst({
         where: { leadId, isCurrent: true },
         orderBy: { assignedAt: 'asc' },
@@ -1221,7 +1156,19 @@ export async function listProviderLeads(providerId, client = prisma) {
           serviceLatitude: true,
           serviceLongitude: true,
           createdAt: true,
-          quotations: { orderBy: { createdAt: 'desc' }, take: 1 }
+          quotations: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              serviceFee: true,
+              items: true,
+              totalAmount: true,
+              status: true,
+              createdAt: true,
+              updatedAt: true
+            }
+          }
         }
       }
     },

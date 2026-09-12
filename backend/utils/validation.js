@@ -55,13 +55,3 @@ export function isValidPincode(pincode) {
   const pincodeRegex = /^[0-9]{5,6}$/;
   return pincodeRegex.test(pincode);
 }
-
-/**
- * Validate rating value (1-5)
- * @param {number} rating - The rating to validate
- * @returns {boolean} True if valid
- */
-export function isValidRating(rating) {
-  const parsed = Number(rating);
-  return !isNaN(parsed) && parsed >= 1 && parsed <= 5;
-}

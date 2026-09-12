@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 import SkeletonLoader from './SkeletonLoader';
 
 const fmtMoney = (v) => {
@@ -29,11 +30,14 @@ export default function ProviderWalletAmbassador() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
+    // Balance (`/wallet`) is payment state — never cached (project rule 14).
+    // The ledger is a historical list and is shared with the customer Wallet
+    // tab, so it resolves from the promise cache; explicit Refresh forces it.
     const [w, l] = await Promise.all([
       api.get('/wallet'),
-      api.get('/wallet/ledger')
+      cachedRequest('wallet-ledger', () => api.get('/wallet/ledger'), { force })
     ]);
     if (w.ok) setWallet(w.data);
     if (l.ok) setTransactions(l.data?.transactions || []);
@@ -86,7 +90,7 @@ export default function ProviderWalletAmbassador() {
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <span className="text-sm font-extrabold text-slate-900">Recent Transactions</span>
-          <button onClick={load} className="text-[10px] font-black text-slate-500 hover:text-slate-800 flex items-center gap-1">
+          <button onClick={() => load({ force: true })} className="text-[10px] font-black text-slate-500 hover:text-slate-800 flex items-center gap-1">
             <RefreshCw className="w-3 h-3" /> Refresh
           </button>
         </div>

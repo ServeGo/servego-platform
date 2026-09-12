@@ -48,7 +48,7 @@ export const ProviderDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     if (!activeProvider?.id) return;
     setLoadingServices(true);
     try {
-      const res = await api.get(`/providers/${activeProvider.id}/services`);
+      const res = await cachedRequest(`provider-services:${activeProvider.id}`, () => api.get(`/providers/${activeProvider.id}/services`));
       const data = res.data;
       if (res.ok && Array.isArray(data)) {
         setApprovedServices(data.filter(s => s?.approvalStatus === 'APPROVED'));

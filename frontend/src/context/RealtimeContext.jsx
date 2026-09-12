@@ -148,10 +148,14 @@ export const RealtimeProvider = ({ children }) => {
         }));
       });
       // Dispatch lifecycle: provider taps "On My Way" / "Arrived".
+      // The socket event is authoritative for the dispatch phase — patch the
+      // single card in place and drive the stepper location state, but do NOT
+      // re-fetch the canonical booking too (that wrote the same change twice
+      // and made the tracking lines update/re-render twice per event). The 30s
+      // poll and the phase-only patching keep everything else consistent.
       const applyDispatchPhase = (payload) => {
         if (!payload?.bookingId) return;
         patchBookingStatus(payload.bookingId, payload.status, { providerPhase: payload.providerPhase });
-        refreshBooking(payload.bookingId);
         setLocationUpdates((prev) => ({
           ...prev,
           [payload.bookingId]: {

@@ -23,6 +23,7 @@ import { AdminBusinessController } from '../controllers/adminBusinessController.
 import { WalletController } from '../controllers/walletController.js';
 import { AddressController } from '../controllers/addressController.js';
 import { QueueController } from '../controllers/queueController.js';
+import { SocketController } from '../controllers/socketController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
@@ -211,7 +212,12 @@ apiRouter.post('/admin/wallet/credit', requireAuth, requireRole('admin'), valida
 
 // --- Job queue (async side-effects) ---
 apiRouter.get('/admin/queue/stats', requireAuth, requireRole('admin'), QueueController.getStats);
+apiRouter.post('/admin/queue/stats/reset', requireAuth, requireRole('admin'), QueueController.resetStats);
 apiRouter.post('/admin/queue/requeue', requireAuth, requireRole('admin'), QueueController.requeueDead);
+
+// --- Realtime (Socket.IO) traffic ---
+apiRouter.get('/admin/socket/stats', requireAuth, requireRole('admin'), SocketController.getStats);
+apiRouter.post('/admin/socket/stats/reset', requireAuth, requireRole('admin'), SocketController.resetStats);
 
 // --- Feature flags (runtime toggles + announcement banner) ---
 apiRouter.get('/feature-flags/public', FeatureFlagController.getPublic);

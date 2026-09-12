@@ -4,7 +4,6 @@ import {
   recordJobStarted,
   recordLateArrival,
   recordLeadIgnored,
-  recordLeadExpired,
   recordLeadOffered,
   recordJobCompleted
 } from '../providerPerformanceService.js';
@@ -155,8 +154,6 @@ export const jobHandlers = {
         return recordLateArrival(providerId);
       case 'leadIgnored':
         return recordLeadIgnored(providerId);
-      case 'leadExpired':
-        return recordLeadExpired(providerId);
       case 'jobCompleted':
         return recordJobCompleted(providerId, amount, commission, { jobDurationMs });
       default:

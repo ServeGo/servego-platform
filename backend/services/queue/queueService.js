@@ -1,5 +1,6 @@
 import prisma from '../../prisma/client.js';
 import { jobHandlers, registerHandler } from './jobHandlers.js';
+import { queueMetrics, idleBackoffMs } from './queueMetrics.js';
 
 /**
  * Durable job queue backed by PostgreSQL.
@@ -106,6 +107,10 @@ export function registerJobHandler(type, handler) {
 /**
  * Atomically claim up to `limit` due jobs of a type. The `updateMany` guard on
  * `status: 'PENDING'` makes this safe across multiple worker processes.
+ *
+ * Metrics: counts the 2–3 queries this poll performs and records, for every
+ * claimed job, how long it sat in the queue after it became due (the polling
+ * latency the admin dashboard can tune against).
  */
 export async function claimJobs(type, limit = CLAIM_BATCH_SIZE) {
   const now = new Date();
@@ -114,29 +119,41 @@ export async function claimJobs(type, limit = CLAIM_BATCH_SIZE) {
     orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
     take: limit
   });
+  queueMetrics.recordQuery();
   if (!due.length) return [];
 
   const claimed = await prisma.job.updateMany({
     where: { id: { in: due.map((j) => j.id) }, status: 'PENDING' },
     data: { status: 'PROCESSING', startedAt: now, attempts: { increment: 1 } }
   });
+  queueMetrics.recordQuery();
 
   // A competing worker may have claimed some of these rows first. Only return
   // the ones this worker actually transitioned.
+  let ours;
   if (claimed.count !== due.length) {
-    const ours = await prisma.job.findMany({
+    ours = await prisma.job.findMany({
       where: { id: { in: due.map((j) => j.id) }, status: 'PROCESSING' },
       select: { id: true }
     });
+    queueMetrics.recordQuery();
     const oursIds = new Set(ours.map((j) => j.id));
-    return due.filter((j) => oursIds.has(j.id));
+    ours = due.filter((j) => oursIds.has(j.id));
+  } else {
+    ours = due;
   }
-  return due;
+
+  for (const job of ours) {
+    const queuedFor = Math.max(0, now.getTime() - new Date(job.availableAt).getTime());
+    queueMetrics.recordClaim({ queuedFor });
+  }
+  return ours;
 }
 
 /** Run a single claimed job's handler and settle its outcome. */
 export async function processClaimedJob(job) {
   inFlight.add(job.id);
+  const startedAt = Date.now();
   try {
     const handler = jobHandlers[job.type];
     if (!handler) throw new Error(`No handler registered for job type "${job.type}".`);
@@ -145,6 +162,8 @@ export async function processClaimedJob(job) {
       where: { id: job.id },
       data: { status: 'SUCCEEDED', finishedAt: new Date(), lastError: null, result: result ?? undefined }
     });
+    queueMetrics.recordQuery();
+    queueMetrics.recordSucceeded({ durationMs: Date.now() - startedAt });
   } catch (err) {
     // A payload error that retrying can NEVER fix (missing required fields,
     // corrupted payload) dead-letters immediately instead of churning retries.
@@ -153,6 +172,8 @@ export async function processClaimedJob(job) {
         where: { id: job.id },
         data: { status: 'DEAD', finishedAt: new Date(), lastError: err.message }
       });
+      queueMetrics.recordQuery();
+      queueMetrics.recordDead();
       console.error(`[Queue] Job ${job.id} (${job.type}) blocked as permanent error: ${err.message}`);
       return;
     }
@@ -164,6 +185,8 @@ export async function processClaimedJob(job) {
         where: { id: job.id },
         data: { status: 'DEAD', finishedAt: new Date(), lastError: err.message }
       });
+      queueMetrics.recordQuery();
+      queueMetrics.recordDead();
       console.error(`[Queue] Job ${job.id} (${job.type}) dead after ${attemptNumber} attempts: ${err.message}`);
     } else {
       const backoff = backoffDelayMs(attemptNumber);
@@ -175,6 +198,8 @@ export async function processClaimedJob(job) {
           lastError: err.message
         }
       });
+      queueMetrics.recordQuery();
+      queueMetrics.recordRequeued();
       console.warn(`[Queue] Job ${job.id} (${job.type}) attempt ${attemptNumber} failed — retry in ${backoff}ms: ${err.message}`);
     }
   } finally {
@@ -184,22 +209,28 @@ export async function processClaimedJob(job) {
 
 async function workerLoop(type) {
   activeWorkers.add(type);
+  let consecutiveEmptyCycles = 0;
   try {
     while (running) {
       let jobs = [];
       try {
         jobs = await claimJobs(type);
       } catch (err) {
+        consecutiveEmptyCycles = 0;
         console.error(`[Queue] Worker (${type}) claim error: ${err.message}`);
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
 
       if (!jobs.length) {
-        await sleep(POLL_INTERVAL_MS);
+        consecutiveEmptyCycles += 1;
+        queueMetrics.recordCycle({ empty: true });
+        await sleep(idleBackoffMs(consecutiveEmptyCycles, POLL_INTERVAL_MS));
         continue;
       }
+      consecutiveEmptyCycles = 0;
 
+      queueMetrics.recordCycle({ empty: false });
       await Promise.all(jobs.map((job) => processClaimedJob(job)));
 
       // A full batch means more work is likely waiting — poll again immediately.
@@ -295,8 +326,11 @@ export async function getQueueStats() {
     enabled,
     running,
     pollIntervalMs: POLL_INTERVAL_MS,
+    claimBatchSize: CLAIM_BATCH_SIZE,
+    idleBackoffMs: idleBackoffMs(0, POLL_INTERVAL_MS),
     workers: Object.keys(jobHandlers),
     counts,
-    totals
+    totals,
+    metrics: queueMetrics.snapshot()
   };
 }

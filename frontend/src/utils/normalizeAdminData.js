@@ -5,35 +5,7 @@ export const TICKET_STATUS = Object.freeze({
   CLOSED: 'closed',
 });
 
-export const PROVIDER_APPROVAL_STATUS = Object.freeze({
-  VERIFIED: 'verified',
-  UNVERIFIED: 'unverified',
-});
-
 const normalizeString = (value) => (value ?? '').toString().trim().toLowerCase();
-
-/**
- * Canonical boolean: whether a provider is verified/approved.
- * Backend may send `isVerified` or `verified` (or other variants).
- */
-export function normalizeProviderIsVerified(provider) {
-  if (!provider) return false;
-
-  const isVerified = provider.isVerified;
-  if (typeof isVerified === 'boolean') return isVerified;
-
-  // Backend sometimes uses `verified`
-  const verified = provider.verified;
-  if (typeof verified === 'boolean') return verified;
-
-  // Sometimes backend sends strings
-  const v = provider.isVerified ?? provider.verified;
-  const sv = normalizeString(v);
-  if (sv === 'true' || sv === '1' || sv === 'yes' || sv === 'approved' || sv === 'verified') return true;
-  if (sv === 'false' || sv === '0' || sv === 'no' || sv === 'unapproved' || sv === 'unverified') return false;
-
-  return false;
-}
 
 /**
  * Canonical ticket status.

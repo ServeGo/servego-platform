@@ -51,18 +51,6 @@ export async function getProviderLevelForJobs(jobsCompleted, client = prisma) {
   return level;
 }
 
-export async function getLevelDiscount(level, client = prisma) {
-  const rules = await getRules(client);
-  const rule = rules.find((r) => r.level === level);
-  return rule?.discountPercent ?? 0;
-}
-
-export async function getLevelMinJobs(level, client = prisma) {
-  const rules = await getRules(client);
-  const rule = rules.find((r) => r.level === level);
-  return rule?.minJobs ?? 0;
-}
-
 /**
  * Check the provider for a promotion after a completed job and persist the
  * level change + history when promoted. Runs inside the caller's transaction
@@ -122,30 +110,9 @@ export async function applyPromotion(providerId, client = prisma) {
   };
 }
 
-/** Lazily record the provider's baseline level entry (BRONZE initial). */
-export async function ensureLevelHistory(providerId, client = prisma) {
-  const existing = await client.providerLevelHistory.findFirst({
-    where: { providerId },
-    select: { id: true }
-  });
-  if (existing) return existing;
-
-  const provider = await client.provider.findUnique({
-    where: { id: providerId },
-    select: { providerLevel: true, jobsCompleted: true }
-  });
-  if (!provider) return null;
-
-  return client.providerLevelHistory.create({
-    data: {
-      providerId,
-      level: provider.providerLevel,
-      reason: 'INITIAL',
-      completedJobs: provider.jobsCompleted
-    }
-  });
-}
-
+/**
+ * Promotion history for the provider dashboard level card.
+ */
 export async function getPromotionHistory(providerId, client = prisma) {
   return client.promotionHistory.findMany({
     where: { providerId },

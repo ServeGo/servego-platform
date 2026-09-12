@@ -23,6 +23,20 @@ const PROVIDER_USER_SELECT = {
   createdAt: true
 };
 
+// Columns the provider serializers actually render (rule 12 — never pull full
+// review/badge/slot rows onto a profile when only a handful of fields are read).
+const REVIEW_SELECT = {
+  id: true,
+  rating: true,
+  comment: true,
+  reviewerName: true,
+  serviceCategory: true,
+  bookingId: true,
+  date: true
+};
+const BADGE_SELECT = { badgeType: true, awardedAt: true };
+const SLOT_SELECT = { id: true, dayOfWeek: true, startTime: true, endTime: true };
+
 export const ProviderController = {
   registerOwnProviderService: async (req, res) => {
     const provider = await prisma.provider.findFirst({
@@ -122,9 +136,9 @@ export const ProviderController = {
         where: { userId: req.user.id },
         include: {
           user: { select: PROVIDER_USER_SELECT },
-          reviews: true,
-          badges: true,
-          availabilitySlots: true
+          reviews: { select: REVIEW_SELECT, orderBy: { date: 'desc' } },
+          badges: { select: BADGE_SELECT },
+          availabilitySlots: { select: SLOT_SELECT }
         }
       });
       if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Provider profile not found.');
@@ -271,7 +285,7 @@ export const ProviderController = {
           user: {
             select: isAdmin || isProvider ? PROVIDER_USER_SELECT : { id: true, name: true, avatar: true }
           },
-          badges: true
+          badges: { select: BADGE_SELECT }
         }
       });
 
@@ -311,9 +325,9 @@ export const ProviderController = {
         where: { id },
         include: {
           user: { select: PROVIDER_USER_SELECT },
-          reviews: true,
-          badges: true,
-          availabilitySlots: true
+          reviews: { select: REVIEW_SELECT, orderBy: { date: 'desc' } },
+          badges: { select: BADGE_SELECT },
+          availabilitySlots: { select: SLOT_SELECT }
         }
       });
       if (!provider) {

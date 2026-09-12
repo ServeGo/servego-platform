@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import Logo from '../components/Logo';
-import LocationPicker from '../components/LocationPicker';
+import MapLoadingFallback from '../components/MapLoadingFallback';
+
+// maplibre is heavy; load it only once the signup form actually needs the map.
+const LocationPicker = lazy(() => import('../components/LocationPicker'));
 import {
   Mail,
   Lock,
@@ -328,16 +331,18 @@ export function Signup({ onNavigate }) {
                   {isProvider ? 'Service Area / Base Location' : 'Your Service Location'} *
                 </span>
               </label>
-              <LocationPicker
-                value={{ latitude, longitude, address }}
-                onChange={({ latitude: lat, longitude: lng, address: addr }) => {
-                  setLatitude(lat);
-                  setLongitude(lng);
-                  setAddress(addr);
-                  setLocationError('');
-                }}
-                error={locationError || (errorMsg && !latitude) || undefined}
-              />
+              <Suspense fallback={<MapLoadingFallback />}>
+                <LocationPicker
+                  value={{ latitude, longitude, address }}
+                  onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                    setAddress(addr);
+                    setLocationError('');
+                  }}
+                  error={locationError || (errorMsg && !latitude) || undefined}
+                />
+              </Suspense>
               <p className="text-[10px] text-slate-500 font-medium mt-2">
                 {isProvider
                   ? 'We use this to match you with customer jobs near you.'

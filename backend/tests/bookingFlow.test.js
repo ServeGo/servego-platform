@@ -25,7 +25,9 @@ import { levelRank, getProviderLevelForJobs, invalidateLevelCache } from '../ser
 //   3. A provider can accept only ONE lead at a time, regardless of service.
 //   4. A customer cannot rebook the same service while a booking is active,
 //      but may book other services in parallel.
-//   5. Lead distribution follows the provider-level engine (BRONZE→DIAMOND).
+//   5. Distribution is UNRANKED: every eligible provider gets the offer and the
+//      FK owner is just the first in deterministic (createdAt, id) order.
+//      `isOnline`, `acceptingBookings` and cooldown are NOT eligibility gates.
 // ---------------------------------------------------------------------------
 
 // ---- fixtures ---------------------------------------------------------------
@@ -81,8 +83,6 @@ function activeWhere(base) {
     accountStatus: base?.accountStatus,
     user: base?.user ? { status: base.user.status, OR: base.user.OR } : null,
     walletGate: !!base?.user?.OR,
-    isOnline: base?.isOnline,
-    acceptingBookings: base?.acceptingBookings,
     bookingGate: !!base?.bookings?.none,
     serviceGate: !!base?.providerServices?.some,
     serviceId: base?.providerServices?.some?.serviceId ?? null,
@@ -99,8 +99,6 @@ function passesEligibility(where, p) {
     if (base.user.status && p.userStatus !== base.user.status) return false;
     if (p.walletBalance != null && p.walletBalance < 0) return false;
   }
-  if (base.isOnline && p.isOnline !== true) return false;
-  if (base.acceptingBookings && p.acceptingBookings !== true) return false;
   if (base.bookings?.none) {
     const active = base.bookings.none.status?.in ?? [];
     if (active.length && p.activeBooking != null && active.includes(p.activeBooking)) return false;
@@ -115,7 +113,6 @@ function passesEligibility(where, p) {
       if (!cats.includes(target)) return false;
     }
   }
-  if (p.cooldownUntil && new Date(p.cooldownUntil).getTime() > Date.now()) return false;
   return true;
 }
 
@@ -168,7 +165,7 @@ test('RULE 1: providers without the requested service approved are excluded', as
   assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p3']);
 });
 
-test('RULE 1: busy, offline, unverified, inactive or cooling-down providers are excluded', async () => {
+test('RULE 1: busy, unverified, inactive or negative-wallet providers are excluded', async () => {
   const pOk = makeProvider('p1');
   const pBusy = makeProvider('p2', { activeBooking: 'CONFIRMED' });
   const pOffline = makeProvider('p3', { isOnline: false });
@@ -182,10 +179,10 @@ test('RULE 1: busy, offline, unverified, inactive or cooling-down providers are 
 
   const ranked = await findEligibleProviders({ serviceId: 'svc-1', serviceCategory: 'Plumbing', client });
 
-  assert.deepEqual(ranked.map((p) => p.id), ['p1']);
+  assert.deepEqual(ranked.map((p) => p.id), ['p1', 'p3', 'p6'], 'offline and cooling-down providers remain eligible');
 });
 
-test('RULE 1: eligibility WHERE carries each hard gate (approved service, verified, wallet, radius-ready)', async () => {
+test('RULE 1: eligibility WHERE carries each hard gate (approved service, verified, wallet, radius-ready); online/accepting/cooldown are NOT gates', async () => {
   const p1 = makeProvider('p1');
   const { client, recorded } = makeEligibilityClient({ providers: [p1] });
 
@@ -196,8 +193,8 @@ test('RULE 1: eligibility WHERE carries each hard gate (approved service, verifi
   assert.equal(gates.accountStatus, 'ACTIVE', 'active account filter present');
   assert.equal(gates.user.status, 'ACTIVE', 'active user filter present');
   assert.equal(gates.walletGate, true, 'wallet gate present');
-  assert.equal(gates.isOnline, true, 'online filter present');
-  assert.equal(gates.acceptingBookings, true, 'accepting-bookings filter present');
+  assert.equal(gates.isOnline, undefined, 'isOnline is NOT an eligibility gate');
+  assert.equal(gates.acceptingBookings, undefined, 'acceptingBookings is NOT an eligibility gate');
   assert.equal(gates.bookingGate, true, 'no-active-booking filter present');
   assert.equal(gates.serviceGate, true, 'approved-service filter present');
   assert.equal(gates.serviceId, 'svc-1', 'serviceId filter pinned to requested service');
@@ -238,7 +235,7 @@ test('RULE 1: createBookingWithLead broadcasts open offers to EVERY eligible pro
     client: client2
   });
 
-  assert.equal(result.rankedCount, 3, 'all three eligible providers were ranked');
+  assert.equal(result.eligibleCount, 3, 'all three eligible providers are in the broadcast');
   assert.deepEqual(creates.map((c) => c.providerId).sort(), ['p1', 'p2', 'p3'], 'every provider got an open offer');
   assert.ok(creates.every((c) => c.status === 'NEW' && c.isCurrent === true), 'offers are open (NEW + current)');
 });
@@ -632,13 +629,17 @@ test('RULE 4: a different service is allowed while another booking is active (pa
   assert.equal(res.statusCode, 201, 'parallel different-service booking succeeds');
   assert.equal(res.body.success, true);
   assert.equal(res.body.data.booking.serviceCategory, 'Electrician');
-  assert.equal(res.body.data.booking.providerId, 'p1', 'top-ranked provider assigned');
+  assert.equal(res.body.data.booking.providerId, 'p1', 'first eligible provider owns the booking');
   assert.deepEqual(created.filter((c) => c.offerCount != null).map((c) => c.offerCount), [1], 'one provider got an offer');
 });
 
-// ---- RULE 5: provider-level lead engine --------------------------------------
+// ---- RULE 5: unranked distribution ------------------------------------------
+// No ranking or "top provider" concept: every eligible provider gets the same
+// open offer (first-accept-wins); provider level / distance / rating do NOT
+// prioritise anyone. The FK owner is simply the first in deterministic
+// (createdAt, id) order.
 
-test('RULE 5: levelRank orders BRONZE < SILVER < GOLD < PLATINUM < DIAMOND', () => {
+test('RULE 5: levelRank still orders BRONZE < SILVER < GOLD < PLATINUM < DIAMOND (level engine unchanged)', () => {
   assert.ok(levelRank('BRONZE') < levelRank('SILVER'));
   assert.ok(levelRank('SILVER') < levelRank('GOLD'));
   assert.ok(levelRank('GOLD') < levelRank('PLATINUM'));
@@ -646,7 +647,7 @@ test('RULE 5: levelRank orders BRONZE < SILVER < GOLD < PLATINUM < DIAMOND', () 
   assert.ok(levelRank('DIAMOND') > levelRank('BRONZE'));
 });
 
-test('RULE 5: at equal distance and rating, DIAMOND is ranked ahead of BRONZE', async () => {
+test('RULE 5: at identical distance/rating, DIAMOND and BRONZE are both eligible — level does NOT prioritise (appears first merely by id)', async () => {
   const diamond = makeProvider('p1', {
     providerLevel: 'DIAMOND',
     rating: 4.5,
@@ -669,10 +670,10 @@ test('RULE 5: at equal distance and rating, DIAMOND is ranked ahead of BRONZE', 
     client
   });
 
-  assert.deepEqual(ranked.map((p) => p.id), ['p1', 'p2'], 'DIAMOND first at identical distance/rating');
+  assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p2'], 'both providers are offered the lead');
 });
 
-test('RULE 5: distance beats level — a closer BRONZE ranks above a farther DIAMOND', async () => {
+test('RULE 5: distance does NOT rank — every provider within radius is eligible and offered', async () => {
   const closeBronze = makeProvider('p1', { providerLevel: 'BRONZE', latitude: 17.3851, longitude: 78.4868 });
   const farDiamond = makeProvider('p2', { providerLevel: 'DIAMOND', latitude: 17.42, longitude: 78.52, maxRadiusKm: 50 });
   const { client } = makeEligibilityClient({ providers: [closeBronze, farDiamond] });
@@ -685,13 +686,13 @@ test('RULE 5: distance beats level — a closer BRONZE ranks above a farther DIA
     client
   });
 
-  assert.deepEqual(ranked.map((p) => p.id), ['p1', 'p2'], 'closest provider first, level is a secondary sort key');
+  assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p2'], 'both are within their radius — no distance prioritisation');
 });
 
-test('RULE 5: createBookingWithLead assigns the top-ranked (best-level) provider as owner', async () => {
-  const bronze = makeProvider('p1', { providerLevel: 'BRONZE', rating: 4.5, latitude: 17.3850, longitude: 78.4867 });
-  const diamond = makeProvider('p2', { providerLevel: 'DIAMOND', rating: 4.5, latitude: 17.3850, longitude: 78.4867 });
-  const { client } = makeEligibilityClient({ providers: [bronze, diamond] });
+test('RULE 5: createBookingWithLead assigns the first eligible provider (deterministic createdAt/id) as owner — no level preference', async () => {
+  const olderBronze = makeProvider('p1', { providerLevel: 'BRONZE', rating: 4.5, latitude: 17.3850, longitude: 78.4867, createdAt: new Date('2023-01-01T00:00:00Z') });
+  const newerDiamond = makeProvider('p2', { providerLevel: 'DIAMOND', rating: 4.5, latitude: 17.3850, longitude: 78.4867, createdAt: new Date('2025-01-01T00:00:00Z') });
+  const { client } = makeEligibilityClient({ providers: [olderBronze, newerDiamond] });
 
   const result = await createBookingWithLead({
     customerId: 'c1',
@@ -716,8 +717,9 @@ test('RULE 5: createBookingWithLead assigns the top-ranked (best-level) provider
     }
   });
 
-  assert.equal(result.provider.id, 'p2', 'DIAMOND provider is the booking/lead owner');
-  assert.equal(result.booking.providerId, 'p2');
+  assert.equal(result.provider.id, 'p1', 'first eligible provider owns the booking (createdAt order, NOT level)');
+  assert.equal(result.booking.providerId, 'p1');
+  assert.equal(result.eligibleCount, 2, 'but both providers still received the broadcast offer');
 });
 
 test('RULE 5: provider level rises with completed jobs (level engine thresholds)', async () => {

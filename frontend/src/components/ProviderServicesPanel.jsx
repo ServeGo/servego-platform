@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Plus, Save, Loader2, Wrench } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../utils/requestCache';
 
 function FilterButton({ label, count, active, onClick }) {
   return (
@@ -72,11 +73,14 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
     };
   }, [myServices]);
 
-  const fetchProviderServices = async () => {
+  const fetchProviderServices = async ({ force = false } = {}) => {
     if (!providerId) return;
     try {
       setLoadingMyServices(true);
-      const res = await api.get(`/providers/${providerId}/services`);
+      // Resolves from the dashboard's warmed copy on first tab open (same
+      // key, one request); `force` plus invalidation after a register keeps
+      // the list authoritative whenever it changes.
+      const res = await cachedRequest(`provider-services:${providerId}`, () => api.get(`/providers/${providerId}/services`), { force });
       const data = res.data;
 
       if (!res.ok) {
@@ -165,7 +169,8 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
 
 
       setIsRegisterOpen(false);
-      await fetchProviderServices();
+      invalidateCache(`provider-services:${providerId}`);
+      await fetchProviderServices({ force: true });
     } catch (err) {
       setServicesError('Failed to register service.');
     } finally {

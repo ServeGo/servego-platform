@@ -72,7 +72,9 @@ export const ProviderServiceDiscoveryController = {
                   avatar: true
                 }
               },
-              badges: true
+              // The response maps badges through `badgeItem`, which only
+              // renders badgeType + awardedAt — don't pull full badge rows.
+              badges: { select: { badgeType: true, awardedAt: true } }
             }
           }
         }

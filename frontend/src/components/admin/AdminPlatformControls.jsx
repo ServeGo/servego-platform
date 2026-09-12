@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api as apiClient } from '../../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../../utils/requestCache';
 
 /**
  * Platform controls (admin Settings):
@@ -76,7 +77,10 @@ export default function AdminPlatformControls() {
   const load = useCallback(async () => {
     setLoaded(false);
     setLoadError('');
-    const res = await apiClient.get('/admin/configs');
+    // Backend already serves this with a ~30s cache, so the frontend promise
+    // cache dedupes admin sections that both read /admin/configs (Platform
+    // Controls + Config tab) without adding freshness risk.
+    const res = await cachedRequest('admin-configs', () => apiClient.get('/admin/configs'));
     if (res.ok && res.data && typeof res.data === 'object') {
       const merged = { ...DEFAULTS };
       for (const key of Object.keys(DEFAULTS)) {
@@ -102,6 +106,7 @@ export default function AdminPlatformControls() {
     const res = await apiClient.put(`/admin/configs/${key}`, { value });
     setSavingKey(null);
     if (res.ok) {
+      invalidateCache('admin-configs');
       setSettings((prev) => ({ ...prev, [key]: value }));
       flash('ok', 'Saved.');
     } else {

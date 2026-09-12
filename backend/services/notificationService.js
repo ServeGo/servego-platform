@@ -264,7 +264,7 @@ export async function notifyNewLead(io, providerUserId, leadPayload) {
   await createAlert({
     userId: providerUserId,
     title: 'New Booking Request',
-    message: `A new ${leadPayload?.serviceCategory || 'service'} request has arrived in your inbox. Accept it before it expires.`,
+    message: `A new ${leadPayload?.serviceCategory || 'service'} request has arrived in your inbox. Accept or decline it from the Requests tab.`,
     type: 'LEAD',
     data: { leadId: leadPayload?.leadId, bookingId: leadPayload?.bookingId, serviceCategory: leadPayload?.serviceCategory },
     io
@@ -325,7 +325,7 @@ export async function notifyLeadRejected(io, customerId, payload) {
   );
 }
 
-/** Lead transferred to the next ranked provider. */
+/** Lead transferred to another eligible provider. */
 export async function notifyLeadTransferred(io, providerUserId, payload) {
   return pushNotification(
     io,
@@ -373,19 +373,6 @@ export async function notifyLeadCancelledByCustomer(io, providerUserId, payload)
     'This service request was cancelled by the customer.',
     'LEAD',
     'leadCancelled',
-    payload
-  );
-}
-
-/** Lead expired for a provider (ignored / timed out). */
-export async function notifyLeadExpired(io, providerUserId, payload) {
-  return pushNotification(
-    io,
-    providerUserId,
-    'Request Expired',
-    'A service request expired because it was not responded to in time.',
-    'LEAD',
-    'leadExpired',
     payload
   );
 }
