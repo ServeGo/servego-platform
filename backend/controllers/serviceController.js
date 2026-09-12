@@ -126,6 +126,27 @@ export const ServiceController = {
     }
   },
 
+  // Admin-only listing: includes hidden services so the ops console can manage
+  // and un-hide them. Never served from the catalog cache (needs freshness).
+  adminList: async (req, res) => {
+    try {
+      const [rows, statsMap] = await Promise.all([
+        prisma.service.findMany({ orderBy: { createdAt: 'desc' } }),
+        getServiceStats()
+      ]);
+
+      const result = rows.map((s) => ({
+        ...s,
+        activeSpecialistCount: statsMap[s.id]?.count || 0,
+        avgRating: statsMap[s.id]?.ratedCount ? Number((statsMap[s.id].ratingSum / statsMap[s.id].ratedCount).toFixed(1)) : 0
+      }));
+
+      return sendApiSuccess(res, 200, result);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch services', err.message);
+    }
+  },
+
   search: async (req, res) => {
     try {
       const { query: q = '', location = '', category = '' } = req.query;
@@ -235,21 +256,29 @@ export const ServiceController = {
       const { id } = req.params;
       if (!id) return sendApiError(res, 400, 'MISSING_FIELDS', 'Missing service id');
 
-      const [service, activeProviders, bookings] = await Promise.all([
+      const [service, liveBookings] = await Promise.all([
         prisma.service.findUnique({ where: { id }, select: { id: true } }),
-        prisma.providerService.count({ where: { serviceId: id, provider: { accountStatus: 'ACTIVE' } } }),
         prisma.booking.count({ where: { serviceId: id, status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } })
       ]);
       if (!service) return sendApiError(res, 404, 'NOT_FOUND', 'Service not found');
-      if (activeProviders || bookings) {
-        return sendApiError(res, 409, 'CATEGORY_IN_USE', 'Reassign active providers and bookings before deleting this category.', { activeProviders, activeBookings: bookings });
+      if (liveBookings) {
+        return sendApiError(res, 409, 'CATEGORY_IN_USE', 'This category has live bookings — complete or cancel them before deleting.', { activeBookings: liveBookings });
       }
       if (String(req.query.confirm || req.body?.confirm) !== 'true') {
         return sendApiError(res, 400, 'CONFIRMATION_REQUIRED', 'Set confirm=true after verifying this category is safe to delete.');
       }
-      await prisma.service.delete({ where: { id } });
+
+      // ProviderService links are ON DELETE RESTRICT — clean them in the same
+      // transaction so the category can actually be removed. This is the admin's
+      // explicit, double-confirmed intent to delete the category wholesale.
+      const { removedProviderLinks } = await prisma.$transaction(async (tx) => {
+        const del = await tx.providerService.deleteMany({ where: { serviceId: id } });
+        await tx.service.delete({ where: { id } });
+        return { removedProviderLinks: del.count };
+      });
+
       invalidateCatalogCache();
-      return sendApiSuccess(res, 200, { message: 'Service deleted successfully' });
+      return sendApiSuccess(res, 200, { message: 'Service deleted successfully', removedProviderLinks });
     } catch (err) {
       if (err.code === 'P2002') {
         return sendApiError(res, 409, 'DUPLICATE_ENTRY', 'A service with this name already exists');

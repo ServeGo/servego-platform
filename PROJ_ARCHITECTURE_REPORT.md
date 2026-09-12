@@ -122,7 +122,7 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Tickets | `GET/POST /tickets`, `POST /support-tickets` (optional auth), admin resolve/status |
 | Reviews | `POST /reviews`, `GET /providers/:id/reviews`, admin list/delete |
 | Referrals | `POST /referrals/apply`, `GET /referrals/me`, `POST /referrals/generate` |
-| Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /categories/:slug`, admin CRUD |
+| Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /categories/:slug`, admin CRUD, `GET /admin/services` (ops list incl. hidden) |
 | Leads | `GET /leads`, `GET /leads/:id`, `PATCH /leads/:id/{view,accept,reject}` |
 | Permanent requests | `POST /permanent-service-requests`, `GET .../mine`, admin list/update, `POST .../cancel` |
 | Wallet | `GET /wallet`, `GET /wallet/ledger`, `POST /wallet/withdrawals`, `GET /wallet/withdrawals`, `GET /wallet/withdrawal/config`, admin wallet/withdrawals/credit/process |

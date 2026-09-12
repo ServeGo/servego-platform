@@ -128,6 +128,7 @@ apiRouter.post('/services', requireAuth, requireRole('admin'), validate(createSe
 apiRouter.delete('/services/:id', requireAuth, requireRole('admin'), ServiceController.deleteOne);
 apiRouter.patch('/services/:id', requireAuth, requireRole('admin'), validate(updateServiceValidation), ServiceController.updateOne);
 apiRouter.patch('/services/:id/hide', requireAuth, requireRole('admin'), ServiceController.hideOne);
+apiRouter.get('/admin/services', requireAuth, requireRole('admin'), ServiceController.adminList);
 
 // --- Provider Analytics ---
 // Admin can also view any provider's analytics

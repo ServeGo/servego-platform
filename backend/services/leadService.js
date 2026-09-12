@@ -91,6 +91,7 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
     booking: booking
       ? {
           id: booking.id,
+          bookingNumber: booking.bookingNumber || null,
           status: booking.status,
           locationAddress: booking.locationAddress,
           city: booking.city,
@@ -113,7 +114,9 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
  *   - has the service REGISTERED/approved (`ProviderService` link for the
  *     requested service — the legacy `provider.category` fallback is removed,
  *     a provider is only matchable for a service they actually registered),
- *   - inside the provider's service radius (`maxRadiusKm` vs. customer pin),
+ *   - inside the provider's service radius (`maxRadiusKm` vs. customer pin) —
+ *     TEMPORARILY DISABLED via the `ENFORCE_SERVICE_RADIUS` flag so providers
+ *     without coordinates keep receiving offers,
  *   - wallet balance >= 0 — a negative balance blocks new leads until cleared,
  *   - not busy with an active job,
  *   - below the open-lead cap (`MAX_OPEN_LEADS = 2`).
@@ -140,6 +143,7 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
  * The provider's own `maxRadiusKm` wins; otherwise the admin default radius is
  * used. When customer coordinates are known the radius filter is mandatory —
  * providers without usable coordinates are not eligible for that lead.
+ * (Not currently enforced — see `ENFORCE_SERVICE_RADIUS`.)
  */
 export async function findEligibleProviders({
   serviceCategory,
@@ -150,6 +154,12 @@ export async function findEligibleProviders({
   client = prisma
 }) {
   const defaultKm = 50;
+  // TEMPORARY: the service-radius gate is disabled to stop customers seeing
+  // "no providers available". Providers without usable coordinates keep
+  // receiving offers. Set `ENFORCE_SERVICE_RADIUS` back to true to restore the
+  // 50 km (or provider `maxRadiusKm`) area filter — the full logic is retained
+  // below so it can be re-enabled without touching the pipeline.
+  const ENFORCE_SERVICE_RADIUS = false;
   const hasCustomerCoords = customerLat != null && customerLng != null;
 
   // Rule — capped inbox: a provider may hold at most MAX_OPEN_LEADS open
@@ -195,7 +205,7 @@ export async function findEligibleProviders({
   // of the true circle, so it is sized to the largest effective radius among
   // candidates (a provider may set maxRadiusKm larger than the admin default).
   // The precise haversine check still runs in Node — but only on this subset.
-  if (hasCustomerCoords) {
+  if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords) {
     const lat = Number(customerLat);
     const lng = Number(customerLng);
     const { _max } = await client.provider.aggregate({
@@ -247,12 +257,12 @@ export async function findEligibleProviders({
   // Step 2 — filter only the SQL-shrunk candidate set in Node.
   const eligible = [];
   for (const p of ordered) {
-    if (hasCustomerCoords && p.latitude != null && p.longitude != null) {
+    if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords && p.latitude != null && p.longitude != null) {
       const km = haversineKm(customerLat, customerLng, p.latitude, p.longitude);
       p.distanceKm = km;
       const providerRadius = Number(p.maxRadiusKm ?? defaultKm) || defaultKm;
       if (km > providerRadius) continue;
-    } else if (hasCustomerCoords) {
+    } else if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords) {
       // Rule 6 — providers without usable coordinates are not eligible.
       p.distanceKm = null;
       continue;

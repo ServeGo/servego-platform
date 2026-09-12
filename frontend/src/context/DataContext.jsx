@@ -26,6 +26,8 @@ export const DataProvider = ({ children }) => {
 
   const [providers, setProviders] = useState([]);
   const [services, setServices] = useState([]);
+  // Admin-only service list (includes hidden categories, from GET /admin/services).
+  const [adminServices, setAdminServices] = useState([]);
   const [providersByApprovedService, setProvidersByApprovedService] = useState([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   // The provider's own dashboard summary (`GET /providers/me/summary`) — the
@@ -170,23 +172,36 @@ export const DataProvider = ({ children }) => {
     }
   }, []);
 
-  const searchServices = useCallback(async (query = '', location = '', signal) => {
+  const fetchAdminServices = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (query.trim()) params.set('query', query.trim());
-      if (location.trim()) params.set('location', location.trim());
-      const suffix = params.toString();
-      const res = await api(`${API_BASE_URL}/services/search${suffix ? `?${suffix}` : ''}`, { signal });
+      const res = await api(`${API_BASE_URL}/admin/services`);
       const data = await res.json();
-      // Aborted requests return null so the caller never renders a stale or
-      // empty result for a keystroke that was superseded.
-      if (res.error?.name === 'AbortError') return null;
-      return res.ok && Array.isArray(data) ? data : [];
+      // Only replace on a genuine success so a transient failure (or a stale
+      // backend without the route) never wipes the last known admin list —
+      // otherwise hidden services would silently vanish from the Hidden tab.
+      if (res.ok && Array.isArray(data)) setAdminServices(data);
     } catch (err) {
-      if (err?.name === 'AbortError') return null;
-      console.error('Failed to search services:', err);
-      return [];
+      console.error('Failed to fetch admin services:', err);
     }
+  }, []);
+
+  const searchServices = useCallback(async (query = '', location = '', signal) => {
+      try {
+        const params = new URLSearchParams();
+        if (query.trim()) params.set('query', query.trim());
+        if (location.trim()) params.set('location', location.trim());
+        const suffix = params.toString();
+        const res = await api(`${API_BASE_URL}/services/search${suffix ? `?${suffix}` : ''}`, { signal });
+        const data = await res.json();
+        // Aborted requests return null so the caller never renders a stale or
+        // empty result for a keystroke that was superseded.
+        if (res.error?.name === 'AbortError') return null;
+        return res.ok && Array.isArray(data) ? data : [];
+      } catch (err) {
+        if (err?.name === 'AbortError') return null;
+        console.error('Failed to search services:', err);
+      }
+      return [];
   }, []);
 
   // --- Granular single-booking updates (real-time socket events) ---
@@ -483,9 +498,26 @@ export const DataProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (res.ok && data?.id) {
+const data = await res.json();
+      if (res.ok) {
+        // Reflect the hide/unhide instantly so the admin "Hidden" tab updates
+        // without waiting on the refetch (and keeps working even if the admin
+        // list request fails). Hiding is reversible and low-risk (rule 16).
+        const hidden = isHidden === true || isHidden === 'true';
+        setAdminServices(prev =>
+          Array.isArray(prev)
+            ? prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
+            : prev
+        );
+        setServices(prev =>
+          Array.isArray(prev)
+            ? hidden
+              ? prev.filter(s => s.id !== id)
+              : prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
+            : prev
+        );
         await fetchServices();
+        fetchAdminServices();
         return data;
       }
       return data;
@@ -507,6 +539,7 @@ export const DataProvider = ({ children }) => {
         // PATCH is committed — don't wait on the full catalog refetch, that is
         // what makes saves feel slow. Refresh in the background and return now.
         fetchServices();
+        fetchAdminServices();
         return data;
       }
       return data;
@@ -525,6 +558,7 @@ export const DataProvider = ({ children }) => {
       const data = await res.json();
       if (res.ok) {
         await fetchServices();
+        fetchAdminServices();
         return data;
       }
       return data;
@@ -544,6 +578,7 @@ export const DataProvider = ({ children }) => {
       const data = await res.json();
       if (res.ok) {
         await fetchServices();
+        fetchAdminServices();
         return data;
       }
       return data;
@@ -1033,6 +1068,8 @@ export const DataProvider = ({ children }) => {
       fetchProviders,
       fetchMyProviderSummary,
       fetchServices,
+      adminServices,
+      fetchAdminServices,
       searchServices,
       fetchBookings,
       // granular single-booking helpers consumed by real-time socket handlers

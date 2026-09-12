@@ -151,6 +151,7 @@ export const BookingController = {
         const q = String(adminSearch).trim();
         where.OR = [
           { id: { contains: q, mode: 'insensitive' } },
+          { bookingNumber: { contains: q, mode: 'insensitive' } },
           { customer: { name: { contains: q, mode: 'insensitive' } } },
           { provider: { user: { name: { contains: q, mode: 'insensitive' } } } }
         ];

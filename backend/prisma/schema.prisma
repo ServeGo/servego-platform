@@ -25,6 +25,11 @@ model User {
   referralDiscountBalance Float          @default(0)
   referralBonusEarned     Float          @default(0)
   providerId              String?
+  // Business display identifiers (CID-0001 / PID-0001). Minted at signup and
+  // shown everywhere in place of the raw cuid — customer list, provider
+  // directory, booking records, and provider leads.
+  customerNumber          String?        @unique
+  providerNumber          String?        @unique
   verificationCode        String?
   profileComplete         Boolean        @default(false)
   resetToken              String?

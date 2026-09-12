@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth, useData } from '../context/AppContext';
 import { isOpenTicket } from '../utils/normalizeAdminData';
 
@@ -16,6 +16,8 @@ export function useAdminPanelController() {
     updateBookingStatus,
     users,
     services,
+    adminServices,
+    fetchAdminServices,
     createService,
     updateService,
     deleteService,
@@ -28,12 +30,25 @@ export function useAdminPanelController() {
 
   const isAdmin = currentUser?.role === 'admin';
 
+  // Admin ops console shows every category, including hidden ones. The public
+  // catalog (services) never returns hidden rows, so we fetch the admin list on
+  // mount and fall back to the catalog while it loads. The data context also
+  // refreshes it after every create/update/hide/delete.
+  useEffect(() => {
+    fetchAdminServices();
+  }, [fetchAdminServices]);
+
+  const serviceList = Array.isArray(adminServices) && adminServices.length
+    ? adminServices
+    : services;
+
   const [activeTicketId, setActiveTicketId] = useState(null);
   const [ticketResponse, setTicketResponse] = useState('');
 
   // SERVICES admin form
   const [isAddingService, setIsAddingService] = useState(false);
   const [isEditingService, setIsEditingService] = useState(false);
+  const [isSubmittingService, setIsSubmittingService] = useState(false);
   const [editServiceId, setEditServiceId] = useState(null);
 
   const [newServiceForm, setNewServiceForm] = useState({
@@ -92,7 +107,7 @@ export function useAdminPanelController() {
 
   const partnerCountForService = (serviceName) => {
     const sn = normalize(serviceName);
-    const svc = (Array.isArray(services) ? services : []).find(s => normalize(s.name) === sn);
+    const svc = (Array.isArray(serviceList) ? serviceList : []).find(s => normalize(s.name) === sn);
     // Prefer the derived activeSpecialistCount from the backend (correct per spec)
     if (svc && typeof svc.activeSpecialistCount === 'number') return svc.activeSpecialistCount;
     // Fallback: count providers whose category matches
@@ -100,6 +115,7 @@ export function useAdminPanelController() {
   };
 
   const openAddService = () => {
+    setIsSubmittingService(false);
     setServiceAddError('');
     setServiceAddSuccess('');
     setNewServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
@@ -107,12 +123,14 @@ export function useAdminPanelController() {
   };
 
   const closeAddService = () => {
+    setIsSubmittingService(false);
     setIsAddingService(false);
     setServiceAddError('');
     setServiceAddSuccess('');
   };
 
   const openEditService = (cat) => {
+    setIsSubmittingService(false);
     setServiceEditError('');
     setServiceEditSuccess('');
     setEditServiceId(cat.id);
@@ -126,6 +144,7 @@ export function useAdminPanelController() {
   };
 
   const closeEditService = () => {
+    setIsSubmittingService(false);
     setIsEditingService(false);
     setEditServiceId(null);
     setServiceEditError('');
@@ -162,16 +181,22 @@ export function useAdminPanelController() {
       image: imageUrl.trim(),
     };
 
+    setIsSubmittingService(true);
     const resp = await createService(payload);
 
     if (!resp?.id && !resp?.createdAt) {
       setServiceAddError(resp?.message || resp?.error || 'Failed to create service.');
+      setIsSubmittingService(false);
       return;
     }
 
+    // Keep the button locked on "Submitting…" until the modal auto-closes so
+    // there is never a silent gap between the request finishing and the close.
     setServiceAddSuccess('Service added successfully.');
-    setIsAddingService(false);
-    setNewServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
+    setTimeout(() => {
+      setServiceAddSuccess('');
+      closeAddService();
+    }, 650);
   };
 
   const submitEditService = async (e) => {
@@ -198,11 +223,13 @@ export function useAdminPanelController() {
     };
     if (imageUrl.trim()) payload.image = imageUrl.trim();
 
+    setIsSubmittingService(true);
     const resp = await updateService(editServiceId, payload);
 
     const updated = resp?.service || resp?.data?.service || resp;
     if (resp?.error || !updated?.id) {
       setServiceEditError(resp?.message || resp?.error || 'Failed to update service.');
+      setIsSubmittingService(false);
       return;
     }
 
@@ -220,7 +247,7 @@ export function useAdminPanelController() {
     users,
     providers,
     providersList,
-    services,
+    services: serviceList,
     bookings: Array.isArray(bookings) ? bookings : [],
     tickets: Array.isArray(tickets) ? tickets : [],
     customersList,
@@ -243,6 +270,7 @@ export function useAdminPanelController() {
     // services
     isAddingService,
     isEditingService,
+    isSubmittingService,
     editServiceId,
 
     newServiceForm,
@@ -263,10 +291,7 @@ export function useAdminPanelController() {
 
     partnerCountForService,
 
-    deleteService,
     hideService,
-    updateService,
-    createService,
 
     // misc admin
     fetchProviderServiceRequests,

@@ -20,6 +20,8 @@ const PROVIDER_USER_SELECT = {
   referralsCount: true,
   referralBonusEarned: true,
   referralDiscountBalance: true,
+  providerNumber: true,
+  customerNumber: true,
   createdAt: true
 };
 
