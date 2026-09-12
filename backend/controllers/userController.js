@@ -5,6 +5,7 @@ import { generateTokenPair, verifyRefreshToken, isAuthBlocked, recordFailedAuthA
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { validatePasswordStrength } from '../utils/validation.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
+import { nextBusinessNumber } from '../utils/businessNumber.js';
 
 export const UserController = {
   forgotPassword: async (req, res) => {
@@ -140,6 +141,8 @@ export const UserController = {
             referralDiscountBalance: true,
             referralBonusEarned: true, profileComplete: true,
             providerId: true,
+            customerNumber: true,
+            providerNumber: true,
             createdAt: true,
             updatedAt: true,
             // Admin tables render profile scalars only. Don't pull the large
@@ -248,6 +251,10 @@ export const UserController = {
         : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
       const verificationCode = role === 'customer' ? String(Math.floor(1000 + Math.random() * 9000)) : null;
 
+      // Business display identifiers — CID-0001 (customer), PID-0001 (provider).
+      const customerNumber = role === 'customer' ? await nextBusinessNumber('CUSTOMER') : null;
+      const providerNumber = role === 'provider' ? await nextBusinessNumber('PROVIDER') : null;
+
       const newUser = await prisma.user.create({
         data: {
           name: name.trim(),
@@ -263,6 +270,8 @@ export const UserController = {
           longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
           referralCode,
           verificationCode,
+          customerNumber,
+          providerNumber,
           referralsCount: 0,
           referralDiscountBalance: 0
         }
@@ -365,6 +374,8 @@ export const UserController = {
         pincode: newUser.pincode,
         verificationCode: newUser.verificationCode,
         providerId: role === 'provider' ? providerProfile?.id : null,
+        customerNumber: newUser.customerNumber,
+        providerNumber: newUser.providerNumber,
         customerProfile: customerProfile,
         providerProfile: providerProfile,
         referralCode: newUser.referralCode,

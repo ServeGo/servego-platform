@@ -160,6 +160,7 @@ export default function AdminProvidersPanel() {
     if (!res.ok) return { rows: [], total: 0 };
     const rows = (res.data?.providers || []).map((p) => ({
       id: p.id,
+      providerNumber: p.providerNumber || null,
       name: p.name || '',
       email: p.email || '',
       phone: p.phone || '',
@@ -304,6 +305,7 @@ export default function AdminProvidersPanel() {
                     <img className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0" src={p.avatar} alt={p.name} referrerPolicy="no-referrer" />
                     <div className="min-w-0">
                       <h4 className="font-extrabold text-slate-900 text-sm truncate">{p.name}</h4>
+                      <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 mr-1">{p.providerNumber || p.id}</span>
                       <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase font-extrabold tracking-wide inline-block mt-1">
                         {p.category || 'General'} Division
                       </span>

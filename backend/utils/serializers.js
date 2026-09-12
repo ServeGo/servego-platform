@@ -128,10 +128,11 @@ export function providerListItem(provider, opts = {}) {
   const contactUser =
     user.id === undefined
       ? user
-      : pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance']);
+      : pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance', 'providerNumber', 'customerNumber']);
 
   const item = {
     ...pick(provider, PROVIDER_SCALAR_FIELDS),
+    providerNumber: user.providerNumber || null,
     name: user.name || 'Service Provider',
     avatar: provider.photo || user.avatar || null,
     ...(includeContact
@@ -172,6 +173,7 @@ export function providerDetails(provider, opts = {}) {
   const user = provider.user || {};
   const item = {
     ...pick(provider, PROVIDER_SCALAR_FIELDS),
+    providerNumber: user.providerNumber || null,
     name: user.name || 'Service Provider',
     avatar: provider.photo || user.avatar || null,
     ...(includeContact
@@ -192,7 +194,7 @@ export function providerDetails(provider, opts = {}) {
 
   item.user = includeContact
     ? {
-        ...pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance']),
+        ...pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance', 'providerNumber', 'customerNumber']),
         joinedDate: user.createdAt || null
       }
     : pick(user, ['id', 'name', 'avatar']);

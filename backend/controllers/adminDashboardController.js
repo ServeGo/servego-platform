@@ -292,7 +292,7 @@ export const AdminDashboardController = {
         prisma.provider.findMany({
           where,
           include: {
-            user: { select: { id: true, name: true, email: true, phone: true, avatar: true } },
+            user: { select: { id: true, name: true, email: true, phone: true, avatar: true, providerNumber: true, customerNumber: true } },
             // providerListItem renders the review audit only on the owner's own
             // row (never for admin tables), so don't load full review rows here.
             badges: { select: { badgeType: true, awardedAt: true } }

@@ -144,6 +144,7 @@ Rate-limited: `POST /reviews` (review limiter).
 
 | Method | Endpoint | Access |
 |------|----------|--------|
+| GET | /admin/services<br>(includes hidden categories — ops console only) | admin |
 | POST | /services<br> v(createServiceValidation) | admin |
 | PATCH | /services/:id<br> v(updateServiceValidation) | admin |
 | PATCH | /services/:id/hide | admin |

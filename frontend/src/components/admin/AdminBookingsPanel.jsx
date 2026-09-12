@@ -18,7 +18,7 @@ function StatusBadge({ status }) {
   const meta = STATUS_BADGES[key];
   if (!meta) return <span className="text-slate-400 text-[9px] uppercase font-bold">{status}</span>;
   return (
-    <span className={`${meta.cls} border px-2 py-0.5 rounded text-[9px] font-extrabold uppercase`}>
+    <span className={`${meta.cls} inline-flex whitespace-nowrap border px-2 py-0.5 rounded text-[9px] font-extrabold uppercase`}>
       {meta.label}
     </span>
   );
@@ -123,10 +123,10 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
   const [error, setError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending');
   const [timelineBookingId, setTimelineBookingId] = useState(null);
 
-  const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'ongoing', 'completed', 'cancelled'];
+  const STATUS_FILTERS = ['pending', 'confirmed', 'ongoing', 'completed', 'cancelled'];
 
   // Debounce the search box so each keystroke does not fire a request.
   useEffect(() => {
@@ -136,7 +136,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
 
   const fetchPage = useCallback(async ({ cursor = null, append = false } = {}) => {
     const params = new URLSearchParams({ mode: 'cursor', limit: String(PAGE_SIZE) });
-    if (statusFilter !== 'all') params.set('status', statusFilter.toUpperCase());
+    params.set('status', statusFilter.toUpperCase());
     if (debouncedSearch) params.set('adminSearch', debouncedSearch);
     if (cursor) params.set('cursor', cursor);
 
