@@ -40,15 +40,6 @@ export const uploadToCloudinary = (fileBuffer, originalName, folder = UPLOAD_FOL
   });
 };
 
-export const deleteFromCloudinary = async (publicId) => {
-  if (!publicId) return null;
-  try {
-    return await cloudinary.uploader.destroy(publicId);
-  } catch {
-    return null;
-  }
-};
-
 export const uploadBase64ToCloudinary = (base64DataUrl, folder = UPLOAD_FOLDER) => {
   return new Promise((resolve, reject) => {
     const publicId = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

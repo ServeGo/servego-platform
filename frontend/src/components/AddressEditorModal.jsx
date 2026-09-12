@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { Home, Briefcase, MoreHorizontal, MapPin, X, Check, Loader2 } from 'lucide-react';
-import LocationPicker from './LocationPicker';
+import MapLoadingFallback from './MapLoadingFallback';
+
+// maplibre is heavy; load it only when the address editor modal opens.
+const LocationPicker = lazy(() => import('./LocationPicker'));
 
 const LABELS = [
   { id: 'HOME', label: 'Home', icon: Home, active: 'bg-teal-50 border-teal-500 text-teal-700', inactive: 'border-slate-200 text-slate-500 hover:border-slate-300' },
@@ -15,13 +18,20 @@ const LABELS = [
  */
 export default function AddressEditorModal({
   initial = null,
+  usedLabels = [],
   onClose,
   onSave,
   saving = false,
   submitLabel = 'Save Address',
 }) {
   const existing = initial?.id ? initial : null;
-  const [label, setLabel] = useState(existing?.label || 'HOME');
+  // When creating a new address (not editing), any label that already has a
+  // saved entry is a fixed slot that can't be duplicated — tapping it just
+  // jumps to that existing address instead. While editing, the address's own
+  // label stays available.
+  const usedLabelIds = !existing ? new Set((usedLabels || []).map((l) => String(l).toUpperCase())) : new Set();
+  const firstFreeLabel = LABELS.find(({ id }) => !usedLabelIds.has(id))?.id || 'OTHER';
+  const [label, setLabel] = useState(existing?.label || firstFreeLabel);
   const [address, setAddress] = useState(existing?.address || '');
   const [latitude, setLatitude] = useState(existing?.latitude ?? null);
   const [longitude, setLongitude] = useState(existing?.longitude ?? null);
@@ -71,20 +81,42 @@ export default function AddressEditorModal({
           <div>
             <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Save as</span>
             <div className="grid grid-cols-3 gap-2">
-              {LABELS.map(({ id, label: lbl, icon: Icon, active, inactive }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setLabel(id)}
-                  className={`cursor-pointer flex flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-2.5 text-[11px] font-extrabold transition-all ${
-                    label === id ? active : inactive
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {lbl}
-                </button>
-              ))}
+              {LABELS.map(({ id, label: lbl, icon: Icon, active, inactive }) => {
+                const taken = usedLabelIds.has(id);
+                return (
+                  <div
+                    key={id}
+                    className={`relative rounded-xl border-2 transition-all ${
+                      label === id
+                        ? active
+                        : taken
+                          ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                          : inactive
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      disabled={taken}
+                      onClick={() => !taken && setLabel(id)}
+                      className={`cursor-pointer w-full flex flex-col items-center gap-1.5 px-3 py-2.5 text-[11px] font-extrabold transition-all ${taken ? 'opacity-60' : ''}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {lbl}
+                    </button>
+                    {taken && (
+                      <span className="absolute top-1 right-1.5 text-[8px] font-black uppercase tracking-wide bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5">
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+            {usedLabelIds.size > 0 && (
+              <p className="text-[10px] font-semibold text-slate-400 mt-1.5">
+                You already have {Array.from(usedLabelIds).map((l) => LABELS.find((x) => x.id === l)?.label || l).join('/')} saved — edit it from your Saved Addresses instead.
+              </p>
+            )}
           </div>
 
           {/* Map picker */}
@@ -92,15 +124,17 @@ export default function AddressEditorModal({
             <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
               Pick location <span className="text-rose-500">*</span>
             </span>
-            <LocationPicker
-              value={{ latitude, longitude, address }}
-              onChange={({ latitude: lat, longitude: lng, address: addr }) => {
-                setLatitude(lat);
-                setLongitude(lng);
-                setAddress(addr || '');
-              }}
-              error={!!error && !latitude}
-            />
+            <Suspense fallback={<MapLoadingFallback />}>
+              <LocationPicker
+                value={{ latitude, longitude, address }}
+                onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                  setLatitude(lat);
+                  setLongitude(lng);
+                  setAddress(addr || '');
+                }}
+                error={!!error && !latitude}
+              />
+            </Suspense>
           </div>
 
           {/* Landmark / flat detail */}

@@ -31,6 +31,8 @@ function makeClient({ acceptedRows = [], knownProviders = [], booking = {} }) {
         // Only the status='ACCEPTED' query is used for exclusion now — never
         // the whole history.
         findMany: async () => acceptedRows,
+        // Open-lead cap scan (findEligibleProviders) — assume nobody is capped.
+        groupBy: async () => [],
         updateMany: async ({ where, data }) => {
           calls.updates.push({ where, data });
           return { count: 1 };
@@ -69,7 +71,8 @@ function makeClient({ acceptedRows = [], knownProviders = [], booking = {} }) {
       bookingEvent: { create: async () => ({}) },
       providerPerformance: {
         update: async () => ({}),
-        upsert: async () => ({})
+        upsert: async () => ({}),
+        updateMany: async () => ({ count: 0 })
       },
       $executeRaw: async () => {}
     }

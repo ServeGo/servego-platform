@@ -3,9 +3,41 @@ import { getConfig } from './adminConfigService.js';
 import { getDrivingInfo, getRouteGeoJson } from './mapsService.js';
 import { notifyProviderOnTheWay, notifyProviderArrived } from './notificationService.js';
 import { appendStatusHistory } from '../utils/statusHistory.js';
+import { socketMetrics } from './socketMetrics.js';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
+
+// In-memory live-tracking registry, keyed by booking id. The socket path is a
+// fast broadcast channel: latest coords live here so the room can be fed from
+// memory between persistence ticks, and PostgreSQL only touches a booking when
+// the configured minimum interval has elapsed (bounded writes regardless of
+// client cadence — the audit's "1,000 providers × 1 update/sec = 1,000
+// events/sec" case). Capped + pruned so it never grows without bound.
+const liveFixes = new Map(); // bookingId -> { lat, lng, at, persistedAt, dest, destAddress }
+const routeCache = new Map(); // bookingId -> { distanceKm, etaMinutes, routePolyline, at }
+const MAPS_CACHE_TTL_MS = 15_000;
+const LIVE_FIX_IDLE_MS = 30 * 60_000;
+const MAX_LIVE_FIXES = 5000;
+
+function pruneLiveFixes(now = Date.now()) {
+  if (liveFixes.size < MAX_LIVE_FIXES) return;
+  for (const [id, fix] of liveFixes) {
+    if (now - fix.at > LIVE_FIX_IDLE_MS) liveFixes.delete(id);
+  }
+}
+
+function dropLiveFix(bookingId) {
+  liveFixes.delete(bookingId);
+  routeCache.delete(bookingId);
+}
+
+/** Fresh cached Maps result for a booking, or undefined to recompute. */
+function cachedMaps(bookingId, now = Date.now()) {
+  const hit = routeCache.get(bookingId);
+  if (hit && now - hit.at < MAPS_CACHE_TTL_MS) return hit;
+  return undefined;
+}
 
 export function haversineKm(lat1, lng1, lat2, lng2) {
   const dLat = toRad(lat2 - lat1);
@@ -57,8 +89,18 @@ export async function resolveBookingDestination(booking, client = prisma) {
  * Persist a provider location ping for an active booking and push a real-time
  * `location:update` event to the customer's socket room.
  *
- * Called from the socket.io handler (primary path) and the REST fallback. Safe
- * to call without `io` (REST path still returns the computed payload).
+ * Called from the socket.io handler (primary path, high frequency — the audit's
+ * "1,000 providers × 1 update/sec = 1,000 events/sec" case) and the REST
+ * fallback. Safe to call without `io` (REST path still returns the computed
+ * payload).
+ *
+ * Write discipline: the latest fix is kept in the in-memory registry and
+ * broadcast to rooms on EVERY ping (cheap, keeps the marker moving), while
+ * PostgreSQL only receives the `booking.update` + history insert when the
+ * configured minimum interval has elapsed. That bounds DB writes per booking to
+ * ~1/(interval) regardless of how fast the client pushes. The same cadence
+ * bounds external Maps calls via a per-booking TTL cache, so a noisy client
+ * cannot burn DB writes or Google Maps credits on near-identical fixes.
  *
  * Returns { ok, payload } where payload is the tracking snapshot, or throws a
  * tagged error for the REST path to translate.
@@ -100,53 +142,99 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
     throw trackingError('NOT_ASSIGNED', 'You are not assigned to this booking.');
   }
   if (!['CONFIRMED', 'ONGOING'].includes(booking.status)) {
+    if (client === prisma) dropLiveFix(booking.id);
     throw trackingError('BOOKING_NOT_TRACKABLE', 'Location can only be shared while a booking is confirmed or in progress.');
   }
 
-  // Server-side throttle: only persist when the configured minimum interval has
-  // elapsed since the last accepted ping (keeps DB writes bounded regardless of
-  // client cadence). The live position is still updated so the latest fix wins.
+  const now = Date.now();
+  const inMemory = client === prisma ? (liveFixes.get(booking.id) || null) : null;
+
+  // Broadcast the LATEST fix on every ping (the newest ping always wins), so
+  // the customer's marker stays smooth at any client cadence. The registry only
+  // carries the throttle watermark + cached destination — never the position.
+  const liveLat = lat;
+  const liveLng = lng;
+
+  // Server-side throttle: only touch PostgreSQL when the configured minimum
+  // interval has elapsed since the last persisted fix. Memory-first so a
+  // restart (no registry entry yet) falls back to the DB timestamp.
   const minIntervalSec = Math.max(1, Number(await getConfig('locationUpdateMinIntervalSeconds', 3)) || 3);
-  const lastAt = booking.providerLocationUpdatedAt ? new Date(booking.providerLocationUpdatedAt).getTime() : 0;
-  const persisted = Date.now() - lastAt >= minIntervalSec * 1000;
+  const lastPersistedAt = Math.max(
+    inMemory?.persistedAt ?? 0,
+    booking.providerLocationUpdatedAt ? new Date(booking.providerLocationUpdatedAt).getTime() : 0
+  );
+  const persisted = now - lastPersistedAt >= minIntervalSec * 1000;
 
-  const now = new Date();
-  const updateData = {
-    providerLatitude: lat,
-    providerLongitude: lng,
-    providerLocationUpdatedAt: now
-  };
+  if (client === prisma) {
+    if (persisted) {
+      const updateData = {
+        providerLatitude: liveLat,
+        providerLongitude: liveLng,
+        providerLocationUpdatedAt: new Date()
+      };
 
-  if (!booking.startLocation && booking.status === 'CONFIRMED') {
-    updateData.startLocation = { latitude: lat, longitude: lng, capturedAt: now.toISOString() };
+      // First persisted fix during a CONFIRMED booking captures the start point.
+      if (!booking.startLocation && booking.status === 'CONFIRMED') {
+        updateData.startLocation = { latitude: liveLat, longitude: liveLng, capturedAt: new Date().toISOString() };
+      }
+
+      await client.booking.update({ where: { id: booking.id }, data: updateData });
+      socketMetrics.recordDbWrite();
+      await client.bookingLocationUpdate.create({
+        data: { bookingId: booking.id, providerId: provider.id, latitude: liveLat, longitude: liveLng }
+      });
+      socketMetrics.recordDbWrite();
+
+      liveFixes.set(booking.id, {
+        lat: liveLat,
+        lng: liveLng,
+        at: now,
+        persistedAt: now,
+        ...(getDestFrom(inMemory) !== undefined ? { dest: getDestFrom(inMemory), destAddress: inMemory.destAddress || null } : {})
+      });
+    } else {
+      // Sub-cadence ping: keep the registry current in memory only (no DB I/O).
+      liveFixes.set(booking.id, {
+        lat: liveLat,
+        lng: liveLng,
+        at: now,
+        persistedAt: inMemory?.persistedAt ?? (booking.providerLocationUpdatedAt ? new Date(booking.providerLocationUpdatedAt).getTime() : 0),
+        ...(getDestFrom(inMemory) !== undefined ? { dest: getDestFrom(inMemory), destAddress: inMemory.destAddress || null } : {})
+      });
+    }
+    pruneLiveFixes(now);
   }
 
-  await client.booking.update({ where: { id: booking.id }, data: updateData });
+  const destination = await resolveTrackingDestination(booking, client, inMemory);
 
-  if (persisted) {
-    await client.bookingLocationUpdate.create({
-      data: { bookingId: booking.id, providerId: provider.id, latitude: lat, longitude: lng }
-    });
-  }
-
-  const destination = await resolveBookingDestination(booking, client);
   let distanceKm = null;
   let etaMinutes = null;
   let routePolyline = null;
+  let maps = cachedMaps(booking.id);
   if (destination) {
-    const driving = await getDrivingInfo({ latitude: lat, longitude: lng }, destination);
-    distanceKm = driving.distanceKm;
-    etaMinutes = driving.durationMin ?? (await computeEtaMinutes(driving.distanceKm));
-    routePolyline = await getRouteGeoJson({ latitude: lat, longitude: lng }, destination);
+    if (!maps) {
+      socketMetrics.recordMapsCall();
+      const driving = await getDrivingInfo({ latitude: liveLat, longitude: liveLng }, destination);
+      distanceKm = driving.distanceKm;
+      etaMinutes = driving.durationMin ?? (await computeEtaMinutes(driving.distanceKm));
+      socketMetrics.recordMapsCall();
+      routePolyline = await getRouteGeoJson({ latitude: liveLat, longitude: liveLng }, destination);
+      maps = { distanceKm, etaMinutes, routePolyline, at: now };
+      routeCache.set(booking.id, maps);
+    } else {
+      distanceKm = maps.distanceKm;
+      etaMinutes = maps.etaMinutes;
+      routePolyline = maps.routePolyline;
+    }
   }
 
   const payload = {
     bookingId: booking.id,
     status: booking.status,
     providerPhase: booking.providerPhase || null,
-    latitude: lat,
-    longitude: lng,
-    timestamp: now.toISOString(),
+    latitude: liveLat,
+    longitude: liveLng,
+    timestamp: new Date(now).toISOString(),
     distanceKm: distanceKm != null ? Number(distanceKm.toFixed(2)) : null,
     etaMinutes,
     routePolyline,
@@ -155,11 +243,34 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
   };
 
   if (io) {
+    const size = JSON.stringify(payload).length;
     io.to(`user:${booking.customerId}`).emit('location:update', payload);
+    socketMetrics.recordMessage(size);
     if (provider.userId) io.to(`user:${provider.userId}`).emit('location:update', payload);
+    socketMetrics.recordMessage(size);
   }
 
   return { ok: true, payload };
+}
+
+/** Cached resolved destination from a live-fix registry entry (or undefined). */
+function getDestFrom(inMemory) {
+  return inMemory?.dest;
+}
+
+/**
+ * Resolve the booking destination once per registry entry and reuse it across
+ * pings — avoids re-reading the customer row on every `location:update`.
+ */
+async function resolveTrackingDestination(booking, client, inMemory) {
+  if (inMemory && inMemory.dest !== undefined) {
+    return inMemory.dest;
+  }
+  const destination = await resolveBookingDestination(booking, client);
+  if (client === prisma && inMemory) {
+    liveFixes.set(booking.id, { ...inMemory, dest: destination, destAddress: destination?.address || null });
+  }
+  return destination;
 }
 
 /**
@@ -286,6 +397,7 @@ async function resolveProviderBooking({ bookingId, providerUserId, client }) {
       customerId: true,
       providerId: true,
       providerPhase: true,
+      arrivedSource: true,
       endLocation: true,
       startLocation: true,
       providerLatitude: true,
@@ -306,9 +418,19 @@ async function resolveProviderBooking({ bookingId, providerUserId, client }) {
 /**
  * Provider taps "On My Way" — the dispatch phase moves to ON_THE_WAY and the
  * customer is notified in real time (socket + in-app notification).
+ *
+ * Idempotent (rule 18): re-signalling a phase the booking already reached is a
+ * no-op that returns the committed state — it never writes a duplicate
+ * `statusHistory` entry or re-notifies, so a double tap or a socket+REST retry
+ * cannot produce two "on the way" tracklines. Past ARRIVED a trip never
+ * regresses.
  */
 export async function markProviderOnTheWay({ bookingId, providerUserId, io = null, client = prisma }) {
   const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
+
+  if (booking.providerPhase === 'ON_THE_WAY' || booking.providerPhase === 'ARRIVED') {
+    return { ok: true, payload: { bookingId: booking.id, status: booking.status, providerPhase: booking.providerPhase, timestamp: new Date().toISOString() }, booking, alreadyDone: true };
+  }
 
   const updated = await client.booking.update({
     where: { id: booking.id },
@@ -334,9 +456,18 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
  * Provider taps "Arrived / Reached" — the dispatch phase moves to ARRIVED and
  * the customer is notified in real time. `source` records HOW arrival was
  * signalled ('gps' auto-detected vs 'manual' override) for audit/disputes.
+ *
+ * Idempotent (rule 18): a second ARRIVED signal (double tap, socket + REST
+ * retry, GPS auto-arrive racing the manual button) returns the committed state
+ * without appending a duplicate `statusHistory` entry or re-notifying — the
+ * customer can never see two "arrived" tracklines for one trip.
  */
 export async function markProviderArrived({ bookingId, providerUserId, io = null, source = 'gps', client = prisma }) {
   const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
+
+  if (booking.providerPhase === 'ARRIVED') {
+    return { ok: true, payload: { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', arrivedSource: booking.arrivedSource || null, timestamp: new Date().toISOString() }, booking, alreadyDone: true };
+  }
 
   // GPS arrival gate: a GPS-signalled arrival only counts within 150 m of the
   // customer's service location (straight-line). The provider can't spoof a
@@ -394,4 +525,7 @@ export async function resetProviderPhase(bookingId, client = prisma) {
     where: { id: bookingId, providerPhase: { not: null } },
     data: { providerPhase: null }
   });
+  // Drop the in-memory live fix: the trip ended, so the room must stop being
+  // fed and the registry must not hold a stale location for a finished booking.
+  if (client === prisma) dropLiveFix(bookingId);
 }

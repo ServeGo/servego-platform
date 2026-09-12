@@ -69,15 +69,6 @@ export function offsetMeta(total, page, limit) {
 }
 
 /**
- * Build the response `meta` block for cursor pagination. `hasMore` is true
- * when the page was full — the caller issues one extra row (`take + 1`) and
- * drops it here when present.
- */
-export function cursorMeta(total, items, nextCursor, { hasMore } = {}) {
-  return { total, nextCursor, hasMore: hasMore ?? (items.length > 0 && !!nextCursor) };
-}
-
-/**
  * For cursor feeds: fetch `limit + 1` rows, keep only `limit`, and report
  * whether another page exists. Expects `items` ordered by `orderBy desc, id desc`.
  */

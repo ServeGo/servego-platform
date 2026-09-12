@@ -15,7 +15,6 @@
     "migrate:photos": "node scripts/migrate-photos-to-cloudinary.js"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@prisma/client": "^5.20.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",

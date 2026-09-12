@@ -68,12 +68,77 @@ test('onTheWay/arrived reject a booking that is not confirmed/ongoing', async ()
   }
 });
 
+test('markProviderOnTheWay is idempotent: a second signal writes no duplicate history', async () => {
+  const calls = [];
+  const booking = {
+    id: 'b1', status: 'CONFIRMED', customerId: 'c1', providerId: 'p1',
+    providerPhase: 'ON_THE_WAY', arrivedSource: null, endLocation: null, startLocation: null,
+    providerLatitude: null, providerLongitude: null,
+    statusHistory: [{ status: 'ON_THE_WAY', timestamp: '2026-01-01T00:00:00.000Z', note: 'Provider is on the way' }]
+  };
+  const client = {
+    provider: { findUnique: async () => ({ id: 'p1', userId: 'pu1', user: {} }) },
+    booking: {
+      findUnique: async () => booking,
+      update: async ({ data }) => { calls.push(data); return { ...booking, ...data }; }
+    }
+  };
+  const result = await markProviderOnTheWay({ bookingId: 'b1', providerUserId: 'pu1', client });
+  assert.equal(result.alreadyDone, true);
+  assert.equal(result.payload.providerPhase, 'ON_THE_WAY');
+  assert.equal(calls.length, 0, 'no second DB write, no duplicate history entry');
+});
+
+test('markProviderArrived is idempotent: a second signal writes no duplicate history', async () => {
+  const calls = [];
+  const booking = {
+    id: 'b1', status: 'CONFIRMED', customerId: 'c1', providerId: 'p1',
+    providerPhase: 'ARRIVED', arrivedSource: 'gps', endLocation: null, startLocation: null,
+    providerLatitude: null, providerLongitude: null,
+    statusHistory: [{ status: 'ARRIVED', timestamp: '2026-01-01T00:00:00.000Z', note: 'Provider has arrived at your location' }]
+  };
+  const client = {
+    provider: { findUnique: async () => ({ id: 'p1', userId: 'pu1', user: {} }) },
+    booking: {
+      findUnique: async () => booking,
+      update: async ({ data }) => { calls.push(data); return { ...booking, ...data }; }
+    }
+  };
+  const result = await markProviderArrived({ bookingId: 'b1', providerUserId: 'pu1', client });
+  assert.equal(result.alreadyDone, true);
+  assert.equal(result.payload.providerPhase, 'ARRIVED');
+  assert.equal(result.payload.arrivedSource, 'gps');
+  assert.equal(calls.length, 0, 'no second DB write, no duplicate history entry');
+});
+
+test('markProviderOnTheWay never regresses a booking that already arrived', async () => {
+  const calls = [];
+  const booking = {
+    id: 'b1', status: 'CONFIRMED', customerId: 'c1', providerId: 'p1',
+    providerPhase: 'ARRIVED', arrivedSource: 'manual', endLocation: null, startLocation: null,
+    providerLatitude: null, providerLongitude: null,
+    statusHistory: [{ status: 'ARRIVED', timestamp: '2026-01-01T00:00:00.000Z', note: 'Provider has arrived at your location' }]
+  };
+  const client = {
+    provider: { findUnique: async () => ({ id: 'p1', userId: 'pu1', user: {} }) },
+    booking: {
+      findUnique: async () => booking,
+      update: async ({ data }) => { calls.push(data); return { ...booking, ...data }; }
+    }
+  };
+  const result = await markProviderOnTheWay({ bookingId: 'b1', providerUserId: 'pu1', client });
+  assert.equal(result.alreadyDone, true);
+  assert.equal(result.payload.providerPhase, 'ARRIVED', 'stays at ARRIVED, never rewinds to ON_THE_WAY');
+  assert.equal(calls.length, 0);
+});
+
 const purge = async () => {
   if (!dbReady) return;
   await prisma.job.deleteMany({ where: { type: 'notification', payload: { path: ['userId'], equals: 'tracking-test-customer' } } });
   await prisma.notification.deleteMany({ where: { userId: 'tracking-test-customer' } });
+  // Dependent rows must go first (RESTRICT FK from BookingEvent on Booking, etc.).
+  await prisma.bookingEvent.deleteMany({ where: { booking: { customerId: 'tracking-test-customer' } } });
   await prisma.booking.deleteMany({ where: { customerId: 'tracking-test-customer' } });
-  // Dependent rows must go first (RESTRICT FK from wallet, etc.).
   await prisma.provider.deleteMany({ where: { userId: 'tracking-test-provider' } });
   await prisma.user.deleteMany({ where: { id: { in: ['tracking-test-customer', 'tracking-test-provider'] } } });
 };

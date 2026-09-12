@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 import SkeletonLoader from './SkeletonLoader';
 
 const fmtMoney = (v) => {
@@ -70,7 +71,9 @@ export default function WalletView({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const l = await api.get('/wallet/ledger');
+    // Historical spends — safe to read from the shared ledger cache (stays
+    // fresh within 30s; provider-side ambassador list uses the same rows).
+    const l = await cachedRequest('wallet-ledger', () => api.get('/wallet/ledger'));
     if (l.ok) setTransactions(l.data?.transactions || []);
     setLoading(false);
   }, []);

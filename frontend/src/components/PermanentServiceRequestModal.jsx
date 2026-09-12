@@ -1,7 +1,19 @@
-import React, { useState } from 'react';
-import { AlertCircle, Briefcase, ShieldCheck } from 'lucide-react';
+import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
+import { AlertCircle, Briefcase, ShieldCheck, MapPin, Plus, Home, MoreHorizontal } from 'lucide-react';
 import { api } from '../utils/apiClient';
-import LocationPicker from './LocationPicker';
+import { cachedRequest, invalidateCache } from '../utils/requestCache';
+import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
+import MapLoadingFallback from './MapLoadingFallback';
+import AddressEditorModal from './AddressEditorModal';
+
+// maplibre is heavy; load it only when the map picker is shown.
+const LocationPicker = lazy(() => import('./LocationPicker'));
+
+const LABEL_META = {
+  HOME: { label: 'Home', icon: Home },
+  OFFICE: { label: 'Office', icon: Briefcase },
+  OTHER: { label: 'Other', icon: MoreHorizontal },
+};
 
 export default function PermanentServiceRequestModal({ serviceName, onClose, onSuccess }) {
   const [serviceNameInput, setServiceNameInput] = useState(serviceName || '');
@@ -17,6 +29,67 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Saved-address selection (same flow as a real booking): pick a chip for an
+  // existing address or drop a new pin / save it for reuse next time.
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [showMap, setShowMap] = useState(false);
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  const loadSavedAddresses = useCallback(async () => {
+    try {
+      const res = await cachedRequest('customer-addresses', () => api.get('/customer-addresses'));
+      if (res.ok && Array.isArray(res.data?.addresses)) {
+        const saved = normalizeSavedAddresses(res.data.addresses);
+        setSavedAddresses(saved);
+        const def = saved.find((a) => a.isDefault) || saved[0];
+        if (def && def.latitude != null && def.longitude != null) {
+          setActiveId(def.id);
+          setLatitude(def.latitude);
+          setLongitude(def.longitude);
+          setAddress(def.address);
+        }
+      }
+    } catch {
+      // Saved addresses are a convenience — never block the request form.
+    }
+  }, []);
+
+  useEffect(() => { loadSavedAddresses(); }, [loadSavedAddresses]);
+
+  const handlePickSaved = (addr) => {
+    setActiveId(addr.id);
+    setShowMap(false);
+    setLatitude(addr.latitude);
+    setLongitude(addr.longitude);
+    setAddress(addr.address);
+  };
+
+  const handleSaveAddress = async (payload) => {
+    setSavingAddress(true);
+    try {
+      const res = await api.post('/customer-addresses', payload);
+      if (res.ok && res.data?.address) {
+        invalidateCache('customer-addresses');
+        const addr = res.data.address;
+        setSavedAddresses((prev) => normalizeSavedAddresses([addr, ...prev.filter((a) => a.id !== addr.id)]));
+        setShowAddAddress(false);
+        handlePickSaved(addr);
+        return { ok: true, address: addr };
+      }
+      return { ok: false, error: res.data?.message || 'Could not save this address.' };
+    } catch {
+      return { ok: false, error: 'Could not save this address.' };
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const activeSaved = savedAddresses.find((a) => a.id === activeId);
+  const showMapPicker = showMap || !activeSaved;
+  const effectiveAddress = activeSaved?.address || address;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -27,7 +100,7 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
     }
     const serviceCategory = serviceNameInput.trim();
     if (!latitude || !longitude || !address.trim()) {
-      setError('Please select your service location on the map.');
+      setError('Please select your service location from a saved address or the map.');
       return;
     }
     if (!startDate) {
@@ -147,18 +220,90 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+            <span className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
               Service Location <span className="text-rose-500">*</span>
-            </label>
-            <LocationPicker
-              value={{ latitude, longitude, address }}
-              onChange={({ latitude: lat, longitude: lng, address: addr }) => {
-                setLatitude(lat);
-                setLongitude(lng);
-                setAddress(addr);
-              }}
-              error={error && !latitude}
-            />
+            </span>
+
+            {savedAddresses.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                {savedAddresses.map((addr) => {
+                  const meta = LABEL_META[addr.label] || LABEL_META.OTHER;
+                  const Icon = meta.icon;
+                  const isActive = activeId === addr.id;
+                  return (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => handlePickSaved(addr)}
+                      className={`cursor-pointer inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-2 text-[11px] font-extrabold transition-all ${
+                        isActive
+                          ? 'border-teal-500 bg-teal-50 text-teal-700'
+                          : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {meta.label}
+                      {addr.isDefault && <span className="text-[9px] font-black text-teal-600">• Default</span>}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => { setShowAddAddress(true); setShowMap(false); }}
+                  className="cursor-pointer inline-flex items-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 px-3 py-2 text-[11px] font-extrabold text-slate-500 hover:border-teal-400 hover:text-teal-600 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add New
+                </button>
+              </div>
+            )}
+
+            {activeSaved && !showMapPicker && (
+              <div className="rounded-2xl border-2 border-teal-300 bg-teal-50/50 p-3 mb-3">
+                <div className="flex items-start gap-2 min-w-0">
+                  <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-teal-600" />
+                  <p className="text-[11px] font-semibold text-slate-700 leading-relaxed break-words">
+                    {activeSaved.address}
+                    {activeSaved.landmark ? ` · ${activeSaved.landmark}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMap(true)}
+                  className="mt-2 text-[10px] font-bold text-teal-700 underline hover:text-teal-800"
+                >
+                  Pick / change location on map
+                </button>
+              </div>
+            )}
+
+            {showMapPicker && (
+              <Suspense fallback={<MapLoadingFallback />}>
+                <LocationPicker
+                  height="h-48 sm:h-56"
+                  value={{ latitude, longitude, address: effectiveAddress }}
+                  onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                    setAddress(addr);
+                    setActiveId(null);
+                    setShowMap(false);
+                }}
+                error={error && !latitude}
+                />
+              </Suspense>
+            )}
+
+            {savedAddresses.length === 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAddAddress(true)}
+                className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Save this address for next time
+              </button>
+            )}
           </div>
 
           <div>
@@ -273,6 +418,16 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
           </div>
         </form>
       </div>
+
+      {showAddAddress && (
+        <AddressEditorModal
+          onClose={() => setShowAddAddress(false)}
+          onSave={handleSaveAddress}
+          saving={savingAddress}
+          submitLabel="Save & Use"
+          usedLabels={savedAddresses.map((a) => a.label)}
+        />
+      )}
     </div>
   );
 }

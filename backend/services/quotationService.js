@@ -2,7 +2,7 @@ import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
 import { debitWallet, debitWalletAllowNegative, creditWallet } from './walletService.js';
 import { startBookingWork, findEligibleProviders, cancelOpenOffers } from './leadService.js';
-import { recordLeadOffered } from './providerPerformanceService.js';
+import { recordLeadsOffered } from './providerPerformanceService.js';
 import { buildStatusHistory, normalizeBookingStatus } from '../utils/workflow.js';
 import { appendStatusHistory } from '../utils/statusHistory.js';
 
@@ -451,8 +451,8 @@ export async function redistributeAfterDecline({ booking, lead, providerIdToExcl
 
   // Full re-broadcast — exactly the semantics of the original booking
   // broadcast: every eligible provider gets an open offer; first-accept-wins.
-  // The top-ranked provider is recorded as the booking/lead owner until one of
-  // them accepts.
+  // The first eligible provider is recorded as the booking/lead owner until one
+  // of them accepts (required FK only — no ranking).
   const now = new Date();
   const expiryTime = new Date(now.getTime() + 86400 * 1000);
   await client.leadAssignmentHistory.createMany({
@@ -483,7 +483,9 @@ export async function redistributeAfterDecline({ booking, lead, providerIdToExcl
       transferCount: { increment: 1 }
     }
   });
-  for (const p of candidates) await recordLeadOffered(p.id, client);
+  // Offered-count bookkeeping in two statements (base-row insert + one `in`
+  // increment) instead of a 2×N serial loop inside this open transaction.
+  await recordLeadsOffered(candidates.map((p) => p.id), client);
 
   const updatedBooking = await client.booking.update({
     where: { id: booking.id },

@@ -32,26 +32,35 @@ const terminalNote = (status) => {
  * and finally derives a minimal timeline from the row scalars — so a completed
  * (or cancelled) job always shows its journey even when history was never
  * written for it.
+ *
+ * Consecutive duplicates (e.g. a `statusHistory` with two adjacent ARRIVED
+ * rows from a double signal) are collapsed so the same trackline never renders
+ * twice — the backend phase transitions are idempotent, and this is the
+ * render-side safety net for legacy/stray rows.
  */
 export function buildStatusTimeline(booking) {
   if (!booking) return [];
 
-  const fromHistory = (Array.isArray(booking.statusHistory) ? booking.statusHistory : [])
-    .map((h) => ({
-      status: lc(h.status),
-      note: h.note || '',
-      timestamp: h.timestamp || booking.createdAt || null,
-    }))
-    .filter((h) => h.status && h.timestamp);
+  const fromHistory = dedupeConsecutive(
+    (Array.isArray(booking.statusHistory) ? booking.statusHistory : [])
+      .map((h) => ({
+        status: lc(h.status),
+        note: h.note || '',
+        timestamp: h.timestamp || booking.createdAt || null,
+      }))
+      .filter((h) => h.status && h.timestamp)
+  );
 
   if (fromHistory.length === 0) {
-    const fromEvents = (Array.isArray(booking.events) ? booking.events : [])
-      .map((e) => ({
-        status: eventToStatus(e.action),
-        note: e.note || '',
-        timestamp: e.timestamp || e.createdAt || null,
-      }))
-      .filter((e) => e.status && e.timestamp);
+    const fromEvents = dedupeConsecutive(
+      (Array.isArray(booking.events) ? booking.events : [])
+        .map((e) => ({
+          status: eventToStatus(e.action),
+          note: e.note || '',
+          timestamp: e.timestamp || e.createdAt || null,
+        }))
+        .filter((e) => e.status && e.timestamp)
+    );
     if (fromEvents.length > 0) return fromEvents;
   }
 
@@ -202,9 +211,42 @@ export const normalizeAlerts = (payload) => {
   return Array.isArray(list) ? list.map(normalizeAlert) : [];
 };
 
+/**
+ * Canonical saved-address shape. Customers get exactly THREE fixed slots —
+ * HOME, OFFICE, OTHER — one saved address per label (`customerAddress` upserts
+ * by label server-side). This collapses any legacy/duplicate rows (created
+ * before the upsert existed) to one representative per label, preferring the
+ * default, and folds unknown labels into Other so the UI never shows more
+ * than three tiles.
+ */
+export function normalizeSavedAddresses(list) {
+  if (!Array.isArray(list)) return [];
+  const byLabel = new Map([['HOME'], ['OFFICE'], ['OTHER']].map(([l]) => [l, null]));
+  for (const a of list) {
+    if (!a) continue;
+    let label = String(a.label || 'OTHER').toUpperCase();
+    if (!byLabel.has(label)) label = 'OTHER'; // fold legacy/unknown into Other
+    const existing = byLabel.get(label);
+    if (!existing) byLabel.set(label, a);
+    else if (a.isDefault && !existing.isDefault) byLabel.set(label, a);
+  }
+  return ['HOME', 'OFFICE', 'OTHER'].map((l) => byLabel.get(l)).filter(Boolean);
+}
+
 function formatDate(value) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Drop adjacent entries with the same status so a trackline never repeats. */
+function dedupeConsecutive(entries) {
+  const out = [];
+  for (const entry of entries) {
+    const prev = out[out.length - 1];
+    if (prev && prev.status === entry.status) continue;
+    out.push(entry);
+  }
+  return out;
 }

@@ -176,9 +176,15 @@ export async function refreshAllProviderReputations(client = prisma) {
     select: { id: true }
   });
 
+  // Chunked concurrency: refreshProviderReputation runs 4-6 queries per row,
+  // so a serial loop over every provider would be 4-6×N sequential round trips
+  // on one admin request. Running the whole table at once would exhaust the
+  // connection pool — process it in bounded parallel batches instead.
   const results = [];
-  for (const provider of providers) {
-    results.push(await refreshProviderReputation(provider.id, client));
+  const CONCURRENCY = 25;
+  for (let i = 0; i < providers.length; i += CONCURRENCY) {
+    const chunk = providers.slice(i, i + CONCURRENCY);
+    results.push(...(await Promise.all(chunk.map((p) => refreshProviderReputation(p.id, client)))));
   }
 
   return results;

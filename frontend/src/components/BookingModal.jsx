@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { AlertCircle, MapPin, Plus, Home, Briefcase, MoreHorizontal } from 'lucide-react';
-import LocationPicker from './LocationPicker';
+import MapLoadingFallback from './MapLoadingFallback';
 import AddressEditorModal from './AddressEditorModal';
+
+// maplibre is heavy (~whole bundle); load it only when the map picker is shown.
+const LocationPicker = lazy(() => import('./LocationPicker'));
 
 const LABEL_META = {
   HOME: { label: 'Home', icon: Home },
@@ -148,18 +151,20 @@ export default function BookingModal({
 
               {/* Map picker (shows when nothing is selected or user picks on map) */}
               {showMapPicker && (
-                <LocationPicker
-                  height="h-48 sm:h-56"
-                  value={{ latitude, longitude, address: effectiveAddress }}
-                  onChange={({ latitude: lat, longitude: lng, address: addr }) => {
-                    setLatitude(lat);
-                    setLongitude(lng);
-                    setAddress(addr);
-                    setActiveId(null);
-                    setShowMap(false);
-                  }}
-                  error={errorText && !latitude}
-                />
+                <Suspense fallback={<MapLoadingFallback />}>
+                  <LocationPicker
+                    height="h-48 sm:h-56"
+                    value={{ latitude, longitude, address: effectiveAddress }}
+                    onChange={({ latitude: lat, longitude: lng, address: addr }) => {
+                      setLatitude(lat);
+                      setLongitude(lng);
+                      setAddress(addr);
+                      setActiveId(null);
+                      setShowMap(false);
+                    }}
+                    error={errorText && !latitude}
+                  />
+                </Suspense>
               )}
 
               {savedAddresses.length === 0 && (
@@ -210,6 +215,7 @@ export default function BookingModal({
           onSave={handleAddAddressSave}
           saving={savingAddress}
           submitLabel="Save & Use"
+          usedLabels={savedAddresses.map((a) => a.label)}
         />
       )}
     </div>

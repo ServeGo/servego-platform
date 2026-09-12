@@ -9,6 +9,7 @@ import {
   requeueDeadJobs,
   registerJobHandler
 } from '../services/queue/queueService.js';
+import { queueMetrics, avg, p95, idleBackoffMs } from '../services/queue/queueMetrics.js';
 
 // DB-backed tests auto-skip when the database is unreachable (CI / offline),
 // keeping the suite green while the pure unit tests always run.
@@ -40,6 +41,39 @@ test('enqueueJob validates a handler must be a function', () => {
   assert.throws(() => registerJobHandler('bad.handler', 'not-a-function'), /handler function/);
 });
 
+test('idle backoff stays at base for the first few empty cycles, then grows and caps', () => {
+  assert.equal(idleBackoffMs(0, 1500), 1500);
+  assert.equal(idleBackoffMs(1, 1500), 1500);
+  assert.equal(idleBackoffMs(2, 1500), 1500);
+  assert.ok(idleBackoffMs(4, 1500) > 1500, 'backoff should grow after 2 empty cycles');
+  assert.ok(idleBackoffMs(50, 1500) <= 1500 * 4, 'backoff must cap at 4x the base poll');
+});
+
+test('queue metrics aggregate queue wait and processing latencies', () => {
+  assert.equal(avg([]), 0);
+  assert.equal(p95([]), 0);
+  assert.equal(avg([10, 20, 30]), 20);
+  assert.equal(p95([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]), 19);
+
+  queueMetrics.reset();
+  queueMetrics.recordClaim({ queuedFor: 100 });
+  queueMetrics.recordClaim({ queuedFor: 300 });
+  queueMetrics.recordSucceeded({ durationMs: 50 });
+  queueMetrics.recordSucceeded({ durationMs: 150 });
+  queueMetrics.recordQuery(2);
+  queueMetrics.recordQuery(3);
+  queueMetrics.recordCycle({ empty: false });
+
+  const snap = queueMetrics.snapshot();
+  assert.equal(snap.claimed, 2);
+  assert.equal(snap.succeeded, 2);
+  assert.equal(snap.avgQueueWaitMs, 200);
+  assert.equal(snap.avgProcessingMs, 100);
+  assert.equal(snap.queries, 5);
+  assert.equal(snap.queriesPerCycle, 5);
+  assert.ok(snap.cycles >= 1);
+});
+
 const dbTest = dbReady ? test : test.skip;
 
 // A prior crashed run (or a concurrent run) may leave test.* jobs behind.
@@ -68,6 +102,25 @@ dbTest('claim + process runs the handler and settles the job as SUCCEEDED', asyn
   assert.equal(settled.status, 'SUCCEEDED');
   assert.equal(seen.length, 1);
   assert.deepEqual(settled.result, { echoed: 42 });
+
+  await prisma.job.delete({ where: { id: job.id } });
+});
+
+dbTest('the claim + process path records worker metrics', async () => {
+  queueMetrics.reset();
+  registerJobHandler('test.metrics', async () => 'ok');
+
+  const job = await enqueueJob({ type: 'test.metrics', payload: {} });
+  const claimed = (await claimJobs('test.metrics')).find((j) => j.id === job.id);
+  assert.ok(claimed, 'job should have been claimed');
+  await processClaimedJob(claimed);
+
+  const snap = queueMetrics.snapshot();
+  assert.ok(snap.claimed >= 1, 'claim should be recorded');
+  assert.ok(snap.succeeded >= 1, 'success should be recorded');
+  assert.ok(snap.queries >= 3, 'poll + settle queries should be counted (found 2-3 + settle 1)');
+  assert.ok(snap.avgProcessingMs >= 0, 'processing samples should exist');
+  assert.ok(snap.avgQueueWaitMs >= 0, 'queue wait samples should exist');
 
   await prisma.job.delete({ where: { id: job.id } });
 });

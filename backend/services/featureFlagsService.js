@@ -84,14 +84,6 @@ export const FEATURE_FLAGS = {
   }
 };
 
-/** Read a boolean flag, honoring its registered default when never set. */
-export async function isFeatureEnabled(key, fallback = true, client = prisma) {
-  const def = FEATURE_FLAGS[key];
-  const fb = def ? def.default : fallback;
-  const value = await getConfig(key, fb, client);
-  return value !== false && value !== 'false' && value !== 0 && value !== '0';
-}
-
 /** Read a flag's raw stored value (numbers/strings). */
 export async function getFeatureFlagValue(key, client = prisma) {
   const def = FEATURE_FLAGS[key];

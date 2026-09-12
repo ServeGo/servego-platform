@@ -119,6 +119,10 @@ booking UI. Extend that consistently:
 - Long-running flows show inline progress (spinners, disabled buttons with
   "Processing…"), not frozen screens.
 - Lists that paginate keep the previous page visible while the next loads.
+- Heavy dependencies and rarely-visited screens are code-split (`React.lazy`) so
+  they load only when actually needed — pages, maps (MapLibre), exports. Every lazy
+  boundary renders a fallback (spinner/skeleton) in place of the content so the
+  layout never flashes blank while a chunk loads.
 
 ## 16. Optimistic UI should be used carefully
 

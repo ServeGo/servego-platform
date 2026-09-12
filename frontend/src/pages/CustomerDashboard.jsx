@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Loader2, Calendar, Search, Clock, CheckCircle2 } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 import { normalizeBooking } from '../utils/normalizeCustomerData';
 import { getErrorInfo } from '../utils/errorMessages';
 
@@ -91,7 +92,9 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
 
   const [permanentCount, setPermanentCount] = useState(0);
   const fetchPermanentCount = useCallback(async () => {
-    const res = await api.get('/permanent-service-requests/mine');
+    // Same cachedRequest key as PermanentRequestsView — both resolve from ONE
+    // request instead of two when the requests tab and dashboard mount together.
+    const res = await cachedRequest('permanent-service-requests/mine', () => api.get('/permanent-service-requests/mine'));
     if (res.ok && Array.isArray(res.data)) setPermanentCount(res.data.length);
   }, []);
   useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);

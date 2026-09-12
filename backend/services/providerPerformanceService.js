@@ -44,6 +44,26 @@ export async function recordLeadOffered(providerId, client = prisma) {
   return client.providerPerformance.update({ where: { providerId }, data: { totalLeads: { increment: 1 } } });
 }
 
+/**
+ * Batch `recordLeadOffered` for a re-broadcast: two statements no matter how
+ * many providers were offered — an idempotent base-row insert (unnest over the
+ * provider ids) plus one `in` increment on `totalLeads`. Replaces the 2×N
+ * serial round trips the per-provider loop ran inside the open transaction.
+ */
+export async function recordLeadsOffered(providerIds, client = prisma) {
+  const ids = [...new Set(providerIds.filter(Boolean))];
+  if (!ids.length) return null;
+  await client.$executeRaw`
+    INSERT INTO "ProviderPerformance" ("id", "providerId", "updatedAt")
+    SELECT gen_random_uuid(), value, ${new Date()}
+    FROM jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)
+    ON CONFLICT ("providerId") DO NOTHING`;
+  return client.providerPerformance.updateMany({
+    where: { providerId: { in: ids } },
+    data: { totalLeads: { increment: 1 } }
+  });
+}
+
 export async function recordLeadAccepted(providerId, responseTimeMs, client = prisma) {
   const perf = await ensurePerformance(providerId, client);
   const avgMs = (() => {
@@ -84,13 +104,6 @@ export async function recordLeadIgnored(providerId, client = prisma) {
   // `ignoredLeads`, so there is no recompute step.
   await insertBaseRow(client, providerId);
   return client.providerPerformance.update({ where: { providerId }, data: { ignoredLeads: { increment: 1 } } });
-}
-
-export async function recordLeadExpired(providerId, client = prisma) {
-  // Base row race-safe, then a single increment — recomputeRates never reads
-  // `expiredLeads`, so the read + update + recompute triple stays collapsed.
-  await insertBaseRow(client, providerId);
-  return client.providerPerformance.update({ where: { providerId }, data: { expiredLeads: { increment: 1 } } });
 }
 
 /**

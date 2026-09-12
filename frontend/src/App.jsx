@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AppProvider, useAuth, useData, useUI, useRealtime } from './context/AppContext';
 import { api as apiClient } from './utils/apiClient';
 import './cursor.css';
 
-import { Home } from './pages/Home';
-import { CustomerHome } from './pages/CustomerHome';
-import { ProviderHome } from './pages/ProviderHome';
-import { About } from './pages/About';
-import { Services } from './pages/Services';
-import { Contact } from './pages/Contact';
-import { FAQ } from './pages/FAQ';
-import { CustomerDashboard } from './pages/CustomerDashboard';
-import { ProviderDashboard } from './pages/ProviderDashboard';
-import { AdminPanel } from './pages/AdminPanel';
-import { Login } from './pages/Login';
-import { Signup } from './pages/Signup';
-import { ForgotPassword } from './pages/ForgotPassword';
-import { ResetPassword } from './pages/ResetPassword';
+// Pages are lazy-loaded so each becomes its own chunk, pulled in only when the
+// user actually opens it (same pattern as AdminPanelTabsRouter).
+const Home = lazy(() => import('./pages/Home').then((m) => ({ default: m.Home })));
+const CustomerHome = lazy(() => import('./pages/CustomerHome').then((m) => ({ default: m.CustomerHome })));
+const ProviderHome = lazy(() => import('./pages/ProviderHome').then((m) => ({ default: m.ProviderHome })));
+const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
+const Services = lazy(() => import('./pages/Services').then((m) => ({ default: m.Services })));
+const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
+const FAQ = lazy(() => import('./pages/FAQ').then((m) => ({ default: m.FAQ })));
+const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard').then((m) => ({ default: m.CustomerDashboard })));
+const ProviderDashboard = lazy(() => import('./pages/ProviderDashboard').then((m) => ({ default: m.ProviderDashboard })));
+const AdminPanel = lazy(() => import('./pages/AdminPanel').then((m) => ({ default: m.AdminPanel })));
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
+const Signup = lazy(() => import('./pages/Signup').then((m) => ({ default: m.Signup })));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import('./pages/ResetPassword').then((m) => ({ default: m.ResetPassword })));
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -317,54 +319,72 @@ export function MainLayout() {
       return <Login onNavigate={handlePageTransition} />;
     }
 
+    let content;
     switch (currentPage) {
       case 'home':
-        return <Home onNavigate={handlePageTransition} />;
+        content = <Home onNavigate={handlePageTransition} />;
+        break;
       case 'customer-home':
-        return <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerActiveTabExternal(tab); handlePageTransition('dashboard-customer'); }} />;
+        content = <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerActiveTabExternal(tab); handlePageTransition('dashboard-customer'); }} />;
+        break;
       case 'provider-home':
-        return <ProviderHome onGoToTab={(tab) => { setProviderActiveTabExternal(tab); handlePageTransition('dashboard-provider'); }} />;
+        content = <ProviderHome onGoToTab={(tab) => { setProviderActiveTabExternal(tab); handlePageTransition('dashboard-provider'); }} />;
+        break;
       case 'about':
-        return <About />;
+        content = <About />;
+        break;
       case 'services':
-        return <Services onNavigate={handlePageTransition} />;
+        content = <Services onNavigate={handlePageTransition} />;
+        break;
       case 'contact':
-        return <Contact />;
+        content = <Contact />;
+        break;
       case 'faq':
-        return <FAQ />;
+        content = <FAQ />;
+        break;
       case 'login':
-        return <Login onNavigate={handlePageTransition} />;
+        content = <Login onNavigate={handlePageTransition} />;
+        break;
       case 'signup':
-        return <Signup onNavigate={handlePageTransition} />;
+        content = <Signup onNavigate={handlePageTransition} />;
+        break;
       case 'forgot-password':
-        return <ForgotPassword onNavigate={handlePageTransition} />;
+        content = <ForgotPassword onNavigate={handlePageTransition} />;
+        break;
       case 'reset-password':
-        return <ResetPassword onNavigate={handlePageTransition} />;
+        content = <ResetPassword onNavigate={handlePageTransition} />;
+        break;
       case 'dashboard-customer':
-        return (
+        content = (
           <CustomerDashboard
             onNavigate={handlePageTransition}
             activeTab={customerActiveTabExternal}
             setActiveTabExternal={setCustomerActiveTabExternal}
           />
         );
+        break;
       case 'dashboard-provider':
-        return (
+        content = (
           <ProviderDashboard
             activeTab={providerActiveTabExternal}
             setActiveTabExternal={setProviderActiveTabExternal}
           />
         );
+        break;
       case 'admin':
-        return (
+        content = (
           <AdminPanel
             activeTab={adminActiveTabExternal}
             setActiveTabExternal={setAdminActiveTabExternal}
           />
         );
+        break;
       default:
-        return <Home onNavigate={handlePageTransition} />;
+        content = <Home onNavigate={handlePageTransition} />;
+        break;
     }
+
+    return <Suspense fallback={<PageFallback />}>{content}</Suspense>;
   };
 
   // Admin layout has a sidebar, others don't
@@ -829,6 +849,16 @@ export function MainLayout() {
           leadsCount={providerLeadsCount}
         />
       )}
+    </div>
+  );
+}
+
+// Shown while a lazy-loaded page chunk loads (keeps rule 15: no blank screens).
+function PageFallback() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3" role="status">
+      <div className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-teal-600 animate-spin" />
+      <span className="text-xs text-slate-400 font-semibold">Loading…</span>
     </div>
   );
 }

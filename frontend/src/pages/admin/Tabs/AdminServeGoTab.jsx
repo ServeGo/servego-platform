@@ -21,6 +21,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
+import { cachedRequest, invalidateCache } from '../../../utils/requestCache';
 import { exportAllPages } from '../../../utils/exportExcel';
 
 const PAGE_SIZE = 15;
@@ -119,7 +120,9 @@ function ConfigSection() {
 
   const load = useCallback(async () => {
     setLoaded(false);
-    const res = await apiClient.get('/admin/configs');
+    // Same cachedRequest key as AdminPlatformControls — Config tab and Platform
+    // Controls share one /admin/configs response.
+    const res = await cachedRequest('admin-configs', () => apiClient.get('/admin/configs'));
     const stored = res.ok && typeof res.data === 'object' ? res.data : {};
     const merged = {};
     Object.entries(CONFIG_SCHEMA).forEach(([key, schema]) => {
@@ -143,6 +146,7 @@ function ConfigSection() {
     const res = await apiClient.put(`/admin/configs/${key}`, { value });
     setSavingKey(null);
     if (res.ok) {
+      invalidateCache('admin-configs');
       setValues((prev) => ({ ...prev, [key]: value }));
       flash('ok', `Saved ${CONFIG_SCHEMA[key].label}.`);
     } else {
