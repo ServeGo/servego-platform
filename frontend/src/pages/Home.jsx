@@ -12,6 +12,7 @@ import BeforeAfterProof from '../components/home/BeforeAfterProof';
 import CoverageArea from '../components/home/CoverageArea';
 import QualityAudit from '../components/home/QualityAudit';
 import MarketplaceSections from '../components/home/MarketplaceSections';
+import { HOME_SEO } from '../data/seoRoutes';
 
 const HOME_SCHEMA = {
   '@context': 'https://schema.org',
@@ -21,7 +22,12 @@ const HOME_SCHEMA = {
       '@id': 'https://servego24.com/#organization',
       name: 'ServeGo24',
       url: 'https://servego24.com',
-      logo: 'https://servego24.com/favicon.png',
+      logo: {
+        '@type': 'ImageObject',
+        url: 'https://servego24.com/favicon.png',
+        width: 512,
+        height: 512,
+      },
       contactPoint: {
         '@type': 'ContactPoint',
         telephone: '+91-1800-410-2026',
@@ -69,12 +75,20 @@ const HOME_SCHEMA = {
         addressCountry: 'IN',
       },
       geo: { '@type': 'GeoCoordinates', latitude: 17.4399, longitude: 78.3489 },
-      openingHoursSpecification: {
-        '@type': 'OpeningHoursSpecification',
-        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-        opens: '06:00',
-        closes: '22:00',
-      },
+      openingHoursSpecification: [
+        {
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+          opens: '06:00',
+          closes: '22:00',
+        },
+        {
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: ['Sunday'],
+          opens: '08:00',
+          closes: '20:00',
+        },
+      ],
       areaServed: [
         { '@type': 'City', name: 'Hyderabad' },
         { '@type': 'City', name: 'Secunderabad' },
@@ -89,8 +103,19 @@ const HOME_SCHEMA = {
           { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Home Cleaning' } },
           { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Carpentry Services' } },
           { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'CCTV Installation' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Painting Services' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Appliance Repair' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'RO & Water Purifier Service' } },
         ],
       },
+    },
+    {
+      '@type': 'WebPage',
+      '@id': 'https://servego24.com/#webpage',
+      url: 'https://servego24.com',
+      name: 'ServeGo24 – Home Services in Hyderabad',
+      isPartOf: { '@id': 'https://servego24.com/#website' },
+      about: { '@id': 'https://servego24.com/#organization' },
     },
   ],
 };
@@ -103,10 +128,9 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
   const { providers, services, servicesLoading } = useData();
 
   useSEO({
-    title: 'ServeGo24 \u2013 Home Services in Hyderabad | Book Electrician, Plumber, AC Repair',
-    description:
-      'Book verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad. ServeGo24 connects you with trusted local professionals. Fast dispatch, transparent pricing.',
-    path: '/',
+    title: HOME_SEO.title,
+    description: HOME_SEO.description,
+    path: HOME_SEO.path,
     schema: HOME_SCHEMA,
   });
 

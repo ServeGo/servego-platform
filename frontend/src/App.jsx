@@ -9,7 +9,11 @@ const Home = lazy(() => import('./pages/Home').then((m) => ({ default: m.Home })
 const CustomerHome = lazy(() => import('./pages/CustomerHome').then((m) => ({ default: m.CustomerHome })));
 const ProviderHome = lazy(() => import('./pages/ProviderHome').then((m) => ({ default: m.ProviderHome })));
 const Services = lazy(() => import('./pages/Services').then((m) => ({ default: m.Services })));
+const ServiceLanding = lazy(() => import('./pages/ServiceLanding').then((m) => ({ default: m.ServiceLanding })));
 const FAQ = lazy(() => import('./pages/FAQ').then((m) => ({ default: m.FAQ })));
+const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
+const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
+const JoinAsProvider = lazy(() => import('./pages/JoinAsProvider').then((m) => ({ default: m.JoinAsProvider })));
 const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard').then((m) => ({ default: m.CustomerDashboard })));
 const ProviderDashboard = lazy(() => import('./pages/ProviderDashboard').then((m) => ({ default: m.ProviderDashboard })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then((m) => ({ default: m.AdminPanel })));
@@ -80,6 +84,12 @@ const getRoutePath = (page, tab = null) => {
       return '/services';
     case 'faq':
       return '/faq';
+    case 'about':
+      return '/about';
+    case 'contact':
+      return '/contact';
+    case 'join-as-provider':
+      return '/join-as-provider';
     case 'login':
       return '/login';
     case 'signup':
@@ -135,6 +145,9 @@ export function MainLayout() {
   ).length;
 
   const [currentPage, setCurrentPage] = useState('home');
+  const [serviceLandingSlug, setServiceLandingSlug] = useState(null);
+  const [serviceCitySlug, setServiceCitySlug] = useState('hyderabad');
+  const [serviceIntentSlug, setServiceIntentSlug] = useState(null);
 
   const [customerActiveTabExternal, setCustomerActiveTabExternal] = useState('bookings');
   const [providerActiveTabExternal, setProviderActiveTabExternal] = useState('leads');
@@ -213,6 +226,7 @@ export function MainLayout() {
       const segments = path ? path.split('/') : [];
 
       if (!segments.length) {
+        setServiceIntentSlug(null);
         setCurrentPage('home');
         return;
       }
@@ -220,6 +234,32 @@ export function MainLayout() {
       if (segments[0] === 'admin') {
         setCurrentPage('admin');
         setAdminActiveTabExternal(getAdminTabFromRoute(segments[1] || 'dashboard'));
+        return;
+      }
+
+      // /services/:service or /cities/:city/:service — SEO landing pages
+      if (segments[0] === 'services' && segments[1]) {
+        setServiceIntentSlug(null);
+        setServiceLandingSlug(segments[1]);
+        setServiceCitySlug('hyderabad');
+        setCurrentPage('service-landing');
+        return;
+      }
+
+      if (segments[0] === 'cities') {
+        setServiceIntentSlug(null);
+        const citySlug = segments[1] || 'hyderabad';
+        setServiceCitySlug(citySlug);
+        setServiceLandingSlug(segments[2] || null);
+        setCurrentPage('service-landing');
+        return;
+      }
+
+      if (segments[0] === 'help' && segments[1]) {
+        setServiceIntentSlug(segments[1]);
+        setServiceLandingSlug(null);
+        setServiceCitySlug('hyderabad');
+        setCurrentPage('service-landing');
         return;
       }
 
@@ -235,7 +275,7 @@ export function MainLayout() {
       setCurrentPage(nextPage);
     };
 
-    const publicPages = ['home', 'login', 'signup', 'forgot-password', 'reset-password', 'services', 'faq', 'service-details'];
+    const publicPages = ['home', 'cities', 'help', 'login', 'signup', 'forgot-password', 'reset-password', 'services', 'faq', 'about', 'contact', 'join-as-provider', 'service-landing'];
     const currentPath = (window.location.pathname || '/').split('?')[0].replace(/^\/+|\/+$/g, '');
     const currentSegment = currentPath ? currentPath.split('/')[0] : '';
     if (!currentUser && !publicPages.includes(currentSegment)) {
@@ -357,8 +397,20 @@ export function MainLayout() {
       case 'services':
         content = <Services onNavigate={handlePageTransition} />;
         break;
+      case 'service-landing':
+        content = <ServiceLanding slug={serviceLandingSlug} intentSlug={serviceIntentSlug} citySlug={serviceCitySlug} routeType={window.location.pathname.startsWith('/services/') ? 'service' : 'city'} onNavigate={handlePageTransition} />;
+        break;
       case 'faq':
         content = <FAQ />;
+        break;
+      case 'about':
+        content = <About />;
+        break;
+      case 'contact':
+        content = <Contact />;
+        break;
+      case 'join-as-provider':
+        content = <JoinAsProvider onNavigate={handlePageTransition} />;
         break;
       case 'login':
         content = <Login onNavigate={handlePageTransition} />;

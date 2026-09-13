@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { CheckCircle2, MapPin, Mail, Phone, Landmark, Send, Loader2 } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { useSEO } from '../hooks/useSEO';
+import { CONTACT_SEO } from '../data/seoRoutes';
 
 export const Contact = () => {
   const { submitSupportTicket } = useData();
   const { currentUser } = useAuth();
 
   useSEO({
-    title: 'Contact ServeGo24 – Customer Support & Service Enquiries',
-    description:
-      'Need help with a booking, refund or provider registration? Contact the ServeGo24 support team in Hyderabad. Call 1800-410-2026 or email support@servego.com.',
-    path: '/contact',
+    title: CONTACT_SEO.title,
+    description: CONTACT_SEO.description,
+    path: CONTACT_SEO.path,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'ContactPage',

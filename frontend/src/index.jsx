@@ -22,7 +22,11 @@ window.addEventListener(
   true
 );
 
-createRoot(document.getElementById('root')).render(
+  // Public SEO routes may contain a build-time HTML shell. The SPA owns the
+  // interactive root after startup, so remove only that static shell first.
+  document.getElementById('seo-static-content')?.remove();
+  
+  createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
   </StrictMode>,

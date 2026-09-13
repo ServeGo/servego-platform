@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 
-const BASE_URL = 'https://servego24.com';
+export const BASE_URL = 'https://servego24.com';
 const DEFAULT_IMAGE = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg';
+const DEFAULT_IMAGE_WIDTH = '1200';
+const DEFAULT_IMAGE_HEIGHT = '630';
 
 function setMeta(name, content, attr = 'name') {
   if (!content) return;
@@ -24,22 +26,37 @@ function setCanonical(url) {
   el.setAttribute('href', url);
 }
 
+function removeSchemas() {
+  document.querySelectorAll('script[data-seo-schema]').forEach((el) => el.remove());
+}
+
+function injectSchema(payload) {
+  const el = document.createElement('script');
+  el.type = 'application/ld+json';
+  el.setAttribute('data-seo-schema', 'true');
+  el.textContent = JSON.stringify(payload);
+  document.head.appendChild(el);
+}
+
 /**
  * useSEO — call at the top of every public page component.
  *
  * @param {object} opts
- * @param {string} opts.title        - Full page <title>
- * @param {string} opts.description  - Meta description (≤160 chars)
- * @param {string} opts.path         - Canonical path, e.g. '/services'
- * @param {string} [opts.robots]     - 'index,follow' | 'noindex,nofollow'
- * @param {string} [opts.ogImage]    - Absolute image URL for OG/Twitter
- * @param {object} [opts.schema]     - JSON-LD structured data object
+ * @param {string}        opts.title        - Full page <title>
+ * @param {string}        opts.description  - Meta description (≤160 chars)
+ * @param {string}        opts.path         - Canonical path, e.g. '/services'
+ * @param {string}        [opts.robots]     - 'index,follow' | 'noindex,nofollow'
+ * @param {string}        [opts.ogImage]    - Absolute image URL for OG/Twitter
+ * @param {string}        [opts.ogType]     - OG type, default 'website'
+ * @param {object|object[]} [opts.schema]   - JSON-LD structured data (single or array)
  */
-export function useSEO({ title, description, path, robots = 'index,follow', ogImage, schema } = {}) {
+export function useSEO({ title, description, path, robots = 'index,follow', ogImage, ogType = 'website', schema } = {}) {
   useEffect(() => {
     if (title) document.title = title;
 
-    const canonicalUrl = `${BASE_URL}${path || '/'}`;
+    const canonicalPath = path ? `/${path.replace(/^\/+|\/+$/g, '')}` : '/';
+    // Homepage canonical is the bare domain (no trailing slash)
+    const canonicalUrl = canonicalPath === '/' ? BASE_URL : `${BASE_URL}${canonicalPath}`;
     const image = ogImage || DEFAULT_IMAGE;
 
     setMeta('description', description);
@@ -47,33 +64,39 @@ export function useSEO({ title, description, path, robots = 'index,follow', ogIm
     setCanonical(canonicalUrl);
 
     // Open Graph
+    setMeta('og:type', ogType, 'property');
     setMeta('og:title', title, 'property');
     setMeta('og:description', description, 'property');
     setMeta('og:url', canonicalUrl, 'property');
     setMeta('og:image', image, 'property');
+    setMeta('og:image:width', DEFAULT_IMAGE_WIDTH, 'property');
+    setMeta('og:image:height', DEFAULT_IMAGE_HEIGHT, 'property');
+    setMeta('og:image:alt', title, 'property');
 
-    // Twitter
-    setMeta('twitter:title', title, 'name');
-    setMeta('twitter:description', description, 'name');
-    setMeta('twitter:image', image, 'name');
+    // Twitter / X
+    setMeta('twitter:card', 'summary_large_image');
+    setMeta('twitter:title', title);
+    setMeta('twitter:description', description);
+    setMeta('twitter:image', image);
+    setMeta('twitter:image:alt', title);
 
-    // JSON-LD structured data
-    const schemaId = 'seo-schema-ld';
-    let schemaEl = document.getElementById(schemaId);
+    // JSON-LD — remove previous page schemas, inject fresh ones.
+    // Supports a single schema object, an array of schema objects, or
+    // an object with '@graph' (passed through as-is).
+    removeSchemas();
     if (schema) {
-      if (!schemaEl) {
-        schemaEl = document.createElement('script');
-        schemaEl.id = schemaId;
-        schemaEl.type = 'application/ld+json';
-        document.head.appendChild(schemaEl);
+      if (Array.isArray(schema)) {
+        // Wrap in a single @graph document for clean JSON-LD
+        injectSchema({ '@context': 'https://schema.org', '@graph': schema });
+      } else {
+        // Single schema object — ensure @context is present
+        const payload = schema['@context'] ? schema : { '@context': 'https://schema.org', ...schema };
+        injectSchema(payload);
       }
-      schemaEl.textContent = JSON.stringify(schema);
-    } else if (schemaEl) {
-      schemaEl.remove();
     }
 
     return () => {
-      // Reset to noindex on unmount so private pages never accidentally stay indexed
+      removeSchemas();
     };
-  }, [title, description, path, robots, ogImage, schema]);
+  }, [title, description, path, robots, ogImage, ogType, schema]);
 }

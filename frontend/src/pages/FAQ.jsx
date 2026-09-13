@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Search, Info, HelpCircle } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
+import { FAQ_SEO } from '../data/seoRoutes';
 
 
 
@@ -54,10 +55,9 @@ export const FAQ = () => {
   ];
 
   useSEO({
-    title: 'Frequently Asked Questions – ServeGo24 Home Services',
-    description:
-      'Got questions about booking home services, cancellations, payments or joining as a provider? Find answers to the most common ServeGo24 questions here.',
-    path: '/faq',
+    title: FAQ_SEO.title,
+    description: FAQ_SEO.description,
+    path: FAQ_SEO.path,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'FAQPage',

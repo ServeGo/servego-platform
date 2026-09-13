@@ -4,51 +4,118 @@
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
         http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
-  <!-- Homepage -->
+  <!-- ===== Core pages ===== -->
   <url>
     <loc>https://servego24.com/</loc>
-    <lastmod>2025-01-01</lastmod>
+    <lastmod>2025-07-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
 
-  <!-- Services listing -->
   <url>
     <loc>https://servego24.com/services</loc>
-    <lastmod>2025-01-01</lastmod>
+    <lastmod>2025-07-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
 
-  <!-- About -->
   <url>
-    <loc>https://servego24.com/about</loc>
-    <lastmod>2025-01-01</lastmod>
+    <loc>https://servego24.com/join-as-provider</loc>
+    <lastmod>2025-07-14</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.9</priority>
   </url>
 
-  <!-- Contact -->
-  <url>
-    <loc>https://servego24.com/contact</loc>
-    <lastmod>2025-01-01</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-
-  <!-- FAQ -->
   <url>
     <loc>https://servego24.com/faq</loc>
-    <lastmod>2025-01-01</lastmod>
+    <lastmod>2025-07-14</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
-  <!-- Provider registration / join -->
   <url>
-    <loc>https://servego24.com/join-as-provider</loc>
-    <lastmod>2025-01-01</lastmod>
+    <loc>https://servego24.com/about</loc>
+    <lastmod>2025-07-14</lastmod>
     <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/contact</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- ===== City hub page ===== -->
+  <url>
+    <loc>https://servego24.com/cities/hyderabad</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- ===== Service + City landing pages (Hyderabad) ===== -->
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/electrician</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/plumber</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/ac-repair</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/home-cleaning</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/carpenter</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/cctv-installation</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/painter</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/appliance-repair</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <url>
+    <loc>https://servego24.com/cities/hyderabad/ro-service</loc>
+    <lastmod>2025-07-14</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 

@@ -5,6 +5,7 @@ import { useSEO } from '../hooks/useSEO';
 import { api as apiClient } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
 import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
+import { SERVICES_SEO } from '../data/seoRoutes';
 
 // Components
 import ServiceHeader from '../components/ServiceHeader';
@@ -37,25 +38,43 @@ export const Services = ({ onNavigate }) => {
   const { currentUser } = useAuth();
 
   useSEO({
-    title: 'Home Services in Hyderabad – Book Electrician, Plumber, AC Repair | ServeGo24',
-    description:
-      'Browse and book verified home service professionals in Hyderabad. Electricians, plumbers, AC technicians, cleaners, carpenters and more. Instant booking, transparent pricing.',
-    path: '/services',
-    schema: {
-      '@context': 'https://schema.org',
-      '@type': 'ItemList',
-      name: 'Home Services in Hyderabad',
-      description: 'On-demand home services available for booking in Hyderabad',
-      url: 'https://servego24.com/services',
-      itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Electrician Services', url: 'https://servego24.com/services?query=electrician' },
-        { '@type': 'ListItem', position: 2, name: 'Plumbing Services', url: 'https://servego24.com/services?query=plumber' },
-        { '@type': 'ListItem', position: 3, name: 'AC Repair & Service', url: 'https://servego24.com/services?query=ac+repair' },
-        { '@type': 'ListItem', position: 4, name: 'Home Cleaning', url: 'https://servego24.com/services?query=cleaning' },
-        { '@type': 'ListItem', position: 5, name: 'Carpentry Services', url: 'https://servego24.com/services?query=carpenter' },
-        { '@type': 'ListItem', position: 6, name: 'CCTV Installation', url: 'https://servego24.com/services?query=cctv' },
-      ],
-    },
+    title: SERVICES_SEO.title,
+    description: SERVICES_SEO.description,
+    path: SERVICES_SEO.path,
+    schema: [
+      {
+        '@type': 'WebPage',
+        '@id': 'https://servego24.com/services#webpage',
+        url: 'https://servego24.com/services',
+        name: 'Home Services in Hyderabad',
+        description: 'Browse and book verified home service professionals in Hyderabad.',
+        isPartOf: { '@id': 'https://servego24.com/#website' },
+        breadcrumb: {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://servego24.com/' },
+            { '@type': 'ListItem', position: 2, name: 'Services', item: 'https://servego24.com/services' },
+          ],
+        },
+      },
+      {
+        '@type': 'ItemList',
+        name: 'Home Services in Hyderabad',
+        description: 'On-demand home services available for booking in Hyderabad',
+        url: 'https://servego24.com/services',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Electrician Services', url: 'https://servego24.com/cities/hyderabad/electrician' },
+          { '@type': 'ListItem', position: 2, name: 'Plumbing Services', url: 'https://servego24.com/cities/hyderabad/plumber' },
+          { '@type': 'ListItem', position: 3, name: 'AC Repair & Service', url: 'https://servego24.com/cities/hyderabad/ac-repair' },
+          { '@type': 'ListItem', position: 4, name: 'Home Cleaning', url: 'https://servego24.com/cities/hyderabad/home-cleaning' },
+          { '@type': 'ListItem', position: 5, name: 'Carpentry Services', url: 'https://servego24.com/cities/hyderabad/carpenter' },
+          { '@type': 'ListItem', position: 6, name: 'CCTV Installation', url: 'https://servego24.com/cities/hyderabad/cctv-installation' },
+          { '@type': 'ListItem', position: 7, name: 'Painting Services', url: 'https://servego24.com/cities/hyderabad/painter' },
+          { '@type': 'ListItem', position: 8, name: 'Appliance Repair', url: 'https://servego24.com/cities/hyderabad/appliance-repair' },
+          { '@type': 'ListItem', position: 9, name: 'RO & Water Purifier Service', url: 'https://servego24.com/cities/hyderabad/ro-service' },
+        ],
+      },
+    ],
   });
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
