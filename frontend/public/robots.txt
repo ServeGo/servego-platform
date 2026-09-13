@@ -1,14 +1,22 @@
 User-agent: *
-Allow: /
-Allow: /services
-Allow: /faq
-Allow: /about
-Allow: /contact
-Allow: /join-as-provider
 
-# Block private/authenticated areas
+# Public indexable pages
+Allow: /$
+Allow: /services$
+Allow: /faq$
+Allow: /about$
+Allow: /contact$
+Allow: /join-as-provider$
+Allow: /cities/
+Allow: /cities/hyderabad$
+Allow: /cities/hyderabad/
+Allow: /help/
+
+# Block private / authenticated areas
 Disallow: /dashboard-customer
+Disallow: /dashboard-customer/
 Disallow: /dashboard-provider
+Disallow: /dashboard-provider/
 Disallow: /customer-home
 Disallow: /provider-home
 Disallow: /admin
@@ -20,5 +28,12 @@ Disallow: /reset-password
 
 # Block API routes
 Disallow: /api/
+Disallow: /api
 
-Sitemap: https://servego24.com/sitemap.xml
+# Block query-parameter duplicates (search results are not standalone pages)
+Disallow: /services?*
+
+# Block any future parameter-based city/service duplicates
+Disallow: /cities?*
+
+Sitemap: https://servego24.com/sitemap-index.xml

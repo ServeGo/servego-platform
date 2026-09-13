@@ -2,13 +2,13 @@ import React from 'react';
 import { Shield, Users, Award, Landmark, MapPin, Milestone, Sparkles } from 'lucide-react';
 import { CITIES } from '../data';
 import { useSEO } from '../hooks/useSEO';
+import { ABOUT_SEO } from '../data/seoRoutes';
 
 export const About = () => {
   useSEO({
-    title: 'About ServeGo24 – Verified Home Services Marketplace in Hyderabad',
-    description:
-      'ServeGo24 is a Hyderabad-based home services marketplace connecting customers with verified electricians, plumbers, AC technicians and more. Learn about our mission, values and growth story.',
-    path: '/about',
+    title: ABOUT_SEO.title,
+    description: ABOUT_SEO.description,
+    path: ABOUT_SEO.path,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'AboutPage',
@@ -69,23 +69,23 @@ export const About = () => {
 
           <div className="lg:col-span-5 grid grid-cols-2 gap-4">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <h4 className="text-3xl font-extrabold text-indigo-400">200+</h4>
-              <p className="text-xs text-slate-300 mt-1 font-semibold">Registered Masters</p>
-            </div>
-            
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <h4 className="text-3xl font-extrabold text-indigo-400">4,500+</h4>
-              <p className="text-xs text-slate-300 mt-1 font-semibold">Jobs Completed</p>
+              <h4 className="text-2xl font-extrabold text-indigo-400">Hyderabad-first</h4>
+              <p className="text-xs text-slate-300 mt-1 font-semibold">Live local coverage</p>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <h4 className="text-3xl font-extrabold text-emerald-400">4.85★</h4>
-              <p className="text-xs text-slate-300 mt-1 font-semibold">Average Feedback</p>
+              <h4 className="text-2xl font-extrabold text-indigo-400">Verified</h4>
+              <p className="text-xs text-slate-300 mt-1 font-semibold">Professional onboarding</p>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <h4 className="text-3xl font-extrabold text-rose-400">60m</h4>
-              <p className="text-xs text-slate-300 mt-1 font-semibold">Service Slashed SLA</p>
+              <h4 className="text-2xl font-extrabold text-emerald-400">Transparent</h4>
+              <p className="text-xs text-slate-300 mt-1 font-semibold">Clear pricing flow</p>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+              <h4 className="text-2xl font-extrabold text-rose-400">Local</h4>
+              <p className="text-xs text-slate-300 mt-1 font-semibold">Area-based matching</p>
             </div>
           </div>
         </div>
