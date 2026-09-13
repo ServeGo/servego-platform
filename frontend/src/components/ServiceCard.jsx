@@ -72,7 +72,7 @@ export default function ServiceCard({
           className="w-full bg-slate-900 hover:bg-teal-600 text-white text-xs sm:text-sm rounded-2xl py-3 flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
         >
           <span className="font-black">Book Now</span>
-          <span className="text-[10px] sm:text-[11px] font-bold text-teal-100">₹199/-</span>
+          <span className="text-[10px] sm:text-[11px] font-bold text-teal-100">₹249/-</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

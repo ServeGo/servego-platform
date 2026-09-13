@@ -396,7 +396,7 @@ export async function notifyPromotion(io, providerUserId, payload) {
     io,
     providerUserId,
     `Congratulations! You reached ${payload?.toLevel || ''}`,
-    'You have been promoted to a higher provider level with better visibility and discounts.',
+    'You have been promoted to a higher provider level for this month. Level incentives are credited to your wallet on level-up.',
     'PROMOTION',
     'promotion',
     payload

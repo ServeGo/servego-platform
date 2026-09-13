@@ -1,16 +1,36 @@
-import React from 'react';
-import { Download, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Download, X, Star } from 'lucide-react';
 import Logo from './Logo';
+import { api } from '../utils/apiClient';
+import { API_BASE_URL } from '../utils/apiClient';
 
 export default function InvoiceModal({ booking, onClose }) {
+  const [review, setReview] = useState(null);
   const issuedLabel = booking.bookingDateLabel || booking.createdAt;
+  const quotation = booking.quotation;
+  const items = Array.isArray(quotation?.items) ? quotation.items : [];
+
+  useEffect(() => {
+    if (!booking.reviewed || !booking.id) return;
+    const fetchReview = async () => {
+      try {
+        const res = await api.get(`${API_BASE_URL}/bookings/${booking.id}/review`);
+        if (res.ok && res.data) {
+          setReview(res.data.review || res.data);
+        }
+      } catch {
+        // silently ignore — receipt still renders without review
+      }
+    };
+    fetchReview();
+  }, [booking.id, booking.reviewed]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 receipt-modal">
       <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl max-h-[80dvh] sm:max-h-[90dvh] flex flex-col overflow-hidden text-slate-800 text-left">
 
-        {/* Header — always visible */}
-        <div className="shrink-0 px-4 pt-3 pb-2.5 border-b border-slate-100 flex items-center justify-between gap-3">
+        {/* Header */}
+        <div className="shrink-0 px-4 pt-3 pb-2.5 border-b border-slate-100 flex items-center justify-between gap-3 print-hidden">
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-900 tracking-tight">Payment Receipt</h3>
             <span className="text-[10px] text-slate-400 font-mono font-semibold block mt-0.5 break-all">#{booking.id}</span>
@@ -25,7 +45,7 @@ export default function InvoiceModal({ booking, onClose }) {
         </div>
 
         {/* Scrollable receipt body */}
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4">
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 receipt-printable">
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-5 sm:px-6">
 
             {/* Brand */}
@@ -64,7 +84,46 @@ export default function InvoiceModal({ booking, onClose }) {
               </div>
             </div>
 
-            {/* Line item */}
+            {/* Quotation Line Items */}
+            {items.length > 0 && (
+              <div className="mt-3">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1.5">Quotation Items</span>
+                <table className="w-full text-xs font-semibold text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-[9px] text-slate-400 uppercase tracking-wider font-bold">
+                      <th className="py-1.5">Item</th>
+                      <th className="py-1.5 text-right">Qty</th>
+                      <th className="py-1.5 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-dashed border-slate-100">
+                        <td className="py-1.5 text-slate-800">{item.name || item.description || `Item ${idx + 1}`}</td>
+                        <td className="py-1.5 text-right text-slate-600">{item.quantity || 1}</td>
+                        <td className="py-1.5 text-right text-slate-900 font-bold">
+                          {item.amount != null ? `₹${Number(item.amount).toFixed(0)}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {quotation?.serviceFee > 0 && (
+                      <tr className="border-b border-dashed border-slate-100">
+                        <td className="py-1.5 text-slate-600" colSpan={2}>Service Fee</td>
+                        <td className="py-1.5 text-right text-slate-900 font-bold">₹{Number(quotation.serviceFee).toFixed(0)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {quotation?.totalAmount != null && (
+                  <div className="flex justify-between items-center mt-1.5 text-xs">
+                    <span className="font-bold text-slate-900">Total</span>
+                    <span className="font-extrabold text-indigo-600">₹{Number(quotation.totalAmount).toFixed(0)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Service Line */}
             <table className="w-full text-xs font-semibold text-left mt-3">
               <thead>
                 <tr className="border-b border-slate-200 text-[9px] text-slate-400 uppercase tracking-wider font-bold">
@@ -98,14 +157,33 @@ export default function InvoiceModal({ booking, onClose }) {
               </div>
             </div>
 
+            {/* Customer Review */}
+            {review && (
+              <div className="mt-4 border-t border-slate-200 pt-3">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1.5">Your Review</span>
+                <div className="flex items-center gap-1 mb-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`w-3.5 h-3.5 ${s <= (review.rating || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`}
+                    />
+                  ))}
+                  <span className="text-[10px] text-slate-500 font-bold ml-1">{review.rating}/5</span>
+                </div>
+                {review.comment && (
+                  <p className="text-[11px] text-slate-600 leading-relaxed italic">"{review.comment}"</p>
+                )}
+              </div>
+            )}
+
             <p className="mt-3 text-center text-[10px] text-slate-400 font-medium">
               Thank you for choosing servego24!
             </p>
           </div>
         </div>
 
-        {/* Actions — always visible */}
-        <div className="shrink-0 px-4 pb-4 pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
+        {/* Actions */}
+        <div className="shrink-0 px-4 pb-4 pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row gap-2 print-hidden">
           <button
             onClick={() => window.print()}
             className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold p-2.5 rounded-xl text-xs flex items-center justify-center gap-2 focus:outline-none"
@@ -121,6 +199,31 @@ export default function InvoiceModal({ booking, onClose }) {
           </button>
         </div>
       </div>
+
+      {/* Print-only styles: hide everything except the receipt */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .receipt-modal, .receipt-modal * { visibility: visible !important; }
+          .receipt-modal {
+            position: absolute !important;
+            inset: 0 !important;
+            background: white !important;
+            z-index: 99999 !important;
+            padding: 0 !important;
+            backdrop-filter: none !important;
+          }
+          .receipt-modal > div {
+            max-height: none !important;
+            max-width: 100% !important;
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .print-hidden { display: none !important; }
+          .receipt-printable { overflow: visible !important; max-height: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

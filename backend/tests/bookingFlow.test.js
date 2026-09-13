@@ -209,7 +209,10 @@ test('RULE 1: createBookingWithLead broadcasts open offers to EVERY eligible pro
   const creates = [];
   const client2 = {
     ...client,
-    businessSequenceCounter: { upsert: async () => ({ value: 1 }) },
+    businessSequenceCounter: {
+      findUnique: async () => ({ value: 1 }),
+      update: async ({ data }) => ({ value: data.value.increment })
+    },
     booking: {
       create: async ({ data }) => ({ id: 'b1', ...data })
     },
@@ -312,8 +315,10 @@ function makeRejectClient({ lead = baseLead(), remaining = 1, nextOffer = null, 
         calls.bookingUpdates.push(data);
         if (data.status === 'CANCELLED') calls.cancels.push(data);
         return { ...(lead.booking ?? {}), ...data };
-      }
+      },
+      updateMany: async () => ({ count: 1 })
     },
+    bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
     bookingEvent: { create: async (args) => calls.bookingEvents.push(args) },
     $executeRaw: async () => {},
     providerPerformance: {
@@ -598,7 +603,10 @@ test('RULE 4: a different service is allowed while another booking is active (pa
         aggregate: async () => ({ _max: { maxRadiusKm: 50 } }),
         findMany: async () => [activeProvider]
       },
-      businessSequenceCounter: { upsert: async () => ({ value: 2 }) },
+      businessSequenceCounter: {
+        findUnique: async () => ({ value: 2 }),
+        update: async ({ data }) => ({ value: data.value.increment })
+      },
       bookingEvent: { create: async () => ({}) },
       lead: {
         create: async ({ data }) => ({ id: 'lead-2', ...data }),
@@ -631,6 +639,98 @@ test('RULE 4: a different service is allowed while another booking is active (pa
   assert.equal(res.body.data.booking.serviceCategory, 'Electrician');
   assert.equal(res.body.data.booking.providerId, 'p1', 'first eligible provider owns the booking');
   assert.deepEqual(created.filter((c) => c.offerCount != null).map((c) => c.offerCount), [1], 'one provider got an offer');
+});
+
+test('BLOCKER 4: rejectLead loads the lead WITH its booking so the last-decline path actually cancels the booking', async () => {
+  // Mirrors production reality: `lead.booking` exists ONLY if the query asks for
+  // `include: { booking: true }`. If the code ever drops the include, `booking`
+  // is null here and the settle path stops cancelling — the regression fails.
+  const queryArgs = {};
+  const lead = baseLead();
+  const client = {
+    lead: {
+      findUnique: async (args) => {
+        Object.assign(queryArgs, args);
+        if (!args?.include?.booking) return { ...lead, booking: null };
+        return lead;
+      },
+      update: async ({ data }) => {
+        if (data.status === 'EXPIRED') calls.expirations.push(data);
+        return { ...lead, ...data };
+      }
+    },
+    leadAssignmentHistory: {
+      updateMany: async ({ where, data }) => {
+        calls.withdrawn.push({ where, data });
+        return { count: 1 };
+      },
+      count: async () => 0,
+      findFirst: async () => null
+    },
+    booking: {
+      update: async ({ data }) => {
+        calls.bookingUpdates.push(data);
+        if (data.status === 'CANCELLED') calls.cancels.push(data);
+        return { ...(lead.booking ?? {}), ...data };
+      },
+      updateMany: async () => ({ count: 1 })
+    },
+    bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
+    bookingEvent: { create: async (args) => calls.bookingEvents.push(args) },
+    $executeRaw: async () => {},
+    providerPerformance: {
+      findUniqueOrThrow: async () => ({ ...perfRow }),
+      update: async ({ data }) => ({ ...perfRow, ...data })
+    }
+  };
+  const calls = { withdrawn: [], leadUpdates: [], bookingUpdates: [], bookingEvents: [], expirations: [], cancels: [] };
+  const result = await rejectLead({ leadId: 'lead-1', providerId: 'p1', reason: 'BUSY', client });
+
+  assert.ok(queryArgs.include?.booking, 'rejectLead must query the lead with include.booking');
+  assert.equal(result.settled, true, 'last provider declined — lead settles');
+  assert.equal(result.exhausted, true);
+  assert.equal(calls.expirations.length, 1, 'lead marked EXPIRED');
+  assert.equal(calls.cancels.length, 1, 'booking cancelled when every provider declined (was stuck PENDING forever before the fix)');
+});
+
+test('BLOCKER 4: when other providers remain, rejectLead also re-points the BOOKING (not just the lead) to the next provider', async () => {
+  // Pre-fix, the missing `lead.booking` made this branch silently skip the
+  // booking.update, leaving the declining provider as booking owner while the
+  // lead rotated to the next provider.
+  const lead = baseLead();
+  const bookingSpy = { updates: [] };
+  const client = {
+    lead: {
+      findUnique: async (args) => (args?.include?.booking ? lead : { ...lead, booking: null }),
+      update: async ({ data }) => ({ ...lead, ...data })
+    },
+    leadAssignmentHistory: {
+      updateMany: async () => ({ count: 1 }),
+      count: async () => 2,
+      findFirst: async () => ({ providerId: 'p2' })
+    },
+    booking: {
+      update: async ({ where, data }) => {
+        bookingSpy.updates.push({ where, data });
+        return { id: 'b1', providerId: data.providerId, status: 'PENDING' };
+      },
+      updateMany: async () => ({ count: 1 })
+    },
+    bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
+    bookingEvent: { create: async () => ({}) },
+    $executeRaw: async () => {},
+    providerPerformance: {
+      findUniqueOrThrow: async () => ({ ...perfRow }),
+      update: async ({ data }) => ({ ...perfRow, ...data })
+    }
+  };
+
+  const result = await rejectLead({ leadId: 'lead-1', providerId: 'p1', reason: 'BUSY', client });
+
+  assert.equal(result.settled, false, 'another provider still holds an offer');
+  assert.equal(bookingSpy.updates.length, 1, 'the booking is re-pointed to the next provider');
+  assert.equal(bookingSpy.updates[0].data.providerId, 'p2');
+  assert.equal(result.booking.providerId, 'p2');
 });
 
 // ---- RULE 5: unranked distribution ------------------------------------------
@@ -703,7 +803,10 @@ test('RULE 5: createBookingWithLead assigns the first eligible provider (determi
     customerLng: 78.4867,
     client: {
       ...client,
-      businessSequenceCounter: { upsert: async () => ({ value: 1 }) },
+      businessSequenceCounter: {
+      findUnique: async () => ({ value: 1 }),
+      update: async ({ data }) => ({ value: data.value.increment })
+    },
       booking: { create: async ({ data }) => ({ id: 'b1', ...data }) },
       bookingEvent: { create: async () => ({}) },
       lead: {
@@ -722,16 +825,136 @@ test('RULE 5: createBookingWithLead assigns the first eligible provider (determi
   assert.equal(result.eligibleCount, 2, 'but both providers still received the broadcast offer');
 });
 
+// ---- BLOCKER 3: role-gated terminal transitions -------------------------------
+// PATCH /bookings/:id/status must never let a customer drive a booking to
+// ONGOING/COMPLETED (that runs the commission debit, payout math, performance
+// records and promotions). The matrix gate fires BEFORE any DB access, so a
+// blocked request must not even reach `booking.findUnique` — no side effect can
+// ever run for an attacker. Legit flows (provider COMPLETED, owner CANCELLED,
+// admin override) must still pass the gate and reach the normal handler path.
+
+test('BLOCKER 3: a customer cannot force a booking to COMPLETED (403, no DB side effect)', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'c1', role: 'customer' }, body: { status: 'COMPLETED' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.code, 'FORBIDDEN');
+  assert.equal(dbTouched, false, 'gate rejects before any DB access — no side effect can run');
+});
+
+test('BLOCKER 3: a customer cannot force a booking to ONGOING (403, no DB side effect)', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'c1', role: 'customer' }, body: { status: 'ONGOING' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.code, 'FORBIDDEN');
+  assert.equal(dbTouched, false, 'gate rejects before any DB access');
+});
+
+test('BLOCKER 3: a status typo like COMPLETE (which normalizes to PENDING) is rejected, not silently started as ONGOING', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'c1', role: 'customer' }, body: { status: 'COMPLETE' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 403);
+  assert.equal(dbTouched, false, 'previous bug: COMPLETE normalized to PENDING and fell through to startBookingWork');
+});
+
+test('BLOCKER 3: the assigned provider CAN transition to COMPLETED — legit flow still reaches the handler', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'u-p1', role: 'provider' }, body: { status: 'completed' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.body.code, 'NOT_FOUND');
+  assert.equal(dbTouched, true, 'provider passes the matrix gate and reaches the normal handler path');
+});
+
+test('BLOCKER 3: a customer can still CANCELLED their own booking — owner flow untouched', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'c1', role: 'customer' }, body: { status: 'cancelled' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.body.code, 'NOT_FOUND');
+  assert.equal(dbTouched, true, 'customer passes the matrix gate for CANCELLED and reaches the handler');
+});
+
+test('BLOCKER 3: an admin CAN override to CONFIRMED or CANCELLED — admin manual-fix flow untouched', async () => {
+  for (const status of ['CONFIRMED', 'cancelled']) {
+    let dbTouched = false;
+    const res = mockRes();
+    await withPrismaStubs(
+      { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+      () =>
+        BookingController.updateStatus(
+          { user: { id: 'admin-1', role: 'admin' }, body: { status }, params: { id: 'b1' } },
+          res
+        )
+    );
+    assert.equal(res.statusCode, 404, `admin ${status} passes the gate`);
+    assert.equal(res.body.code, 'NOT_FOUND');
+    assert.equal(dbTouched, true, `admin ${status} reaches the handler`);
+  }
+});
+
+test('BLOCKER 3: the assigned provider CAN transition to ONGOING (provider-only work start via status)', async () => {
+  let dbTouched = false;
+  const res = mockRes();
+  await withPrismaStubs(
+    { booking: { findUnique: async () => { dbTouched = true; return null; } } },
+    () =>
+      BookingController.updateStatus(
+        { user: { id: 'u-p1', role: 'provider' }, body: { status: 'ongoing' }, params: { id: 'b1' } },
+        res
+      )
+  );
+  assert.equal(res.statusCode, 404);
+  assert.equal(dbTouched, true, 'provider passes the matrix gate for ONGOING');
+});
+
 test('RULE 5: provider level rises with completed jobs (level engine thresholds)', async () => {
   invalidateLevelCache();
   const client = {
     providerLevelRule: {
       findMany: async () => [
-        { level: 'BRONZE', minJobs: 0, discountPercent: 0 },
-        { level: 'SILVER', minJobs: 5, discountPercent: 5 },
-        { level: 'GOLD', minJobs: 20, discountPercent: 10 },
-        { level: 'PLATINUM', minJobs: 50, discountPercent: 15 },
-        { level: 'DIAMOND', minJobs: 100, discountPercent: 20 }
+        { level: 'BRONZE', minJobs: 0, incentivePercent: 0 },
+        { level: 'SILVER', minJobs: 5, incentivePercent: 5 },
+        { level: 'GOLD', minJobs: 20, incentivePercent: 10 },
+        { level: 'PLATINUM', minJobs: 50, incentivePercent: 15 },
+        { level: 'DIAMOND', minJobs: 100, incentivePercent: 20 }
       ]
     }
   };

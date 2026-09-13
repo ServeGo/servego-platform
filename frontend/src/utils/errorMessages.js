@@ -126,7 +126,6 @@ const NETWORK_PATTERNS = [
   /network request failed/i,
   /could not reach/i,
   /request failed after retries/i,
-  /both render and localhost/i,
   /connect to server/i,
   /load failed/i,
 ];

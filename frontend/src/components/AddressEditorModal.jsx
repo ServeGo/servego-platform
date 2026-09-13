@@ -25,22 +25,38 @@ export default function AddressEditorModal({
   submitLabel = 'Save Address',
 }) {
   const existing = initial?.id ? initial : null;
-  // When creating a new address (not editing), any label that already has a
-  // saved entry is a fixed slot that can't be duplicated — tapping it just
-  // jumps to that existing address instead. While editing, the address's own
-  // label stays available.
-  const usedLabelIds = !existing ? new Set((usedLabels || []).map((l) => String(l).toUpperCase())) : new Set();
-  const firstFreeLabel = LABELS.find(({ id }) => !usedLabelIds.has(id))?.id || 'OTHER';
-  const [label, setLabel] = useState(existing?.label || firstFreeLabel);
+  // Fixed-slot design: while CREATING, any label that already has a saved
+  // entry is a taken slot that can't be duplicated. While EDITING, the label
+  // is locked to the slot the user tapped — re-labelling would silently move
+  // the address out of its Home/Office/Other tile (and could collide with an
+  // already-saved label), which reads as "the update didn't go through".
+  const savedLabelIds = new Set((usedLabels || []).map((l) => String(l).toUpperCase()));
+  const usedLabelIds = existing
+    ? new Set(['HOME', 'OFFICE', 'OTHER'].filter((id) => id !== existing.label))
+    : savedLabelIds;
+  const firstFreeLabel = existing?.label
+    || LABELS.find(({ id }) => !savedLabelIds.has(id))?.id
+    || 'OTHER';
+  const [label, setLabel] = useState(firstFreeLabel);
   const [address, setAddress] = useState(existing?.address || '');
   const [latitude, setLatitude] = useState(existing?.latitude ?? null);
   const [longitude, setLongitude] = useState(existing?.longitude ?? null);
   const [landmark, setLandmark] = useState(existing?.landmark || '');
   const [isDefault, setIsDefault] = useState(Boolean(existing?.isDefault));
+  // LocationPicker reports whether the current pin is confirmed ("chosen").
+  // Save stays disabled until it is, so a drag that moved the pin but wasn't
+  // confirmed can never commit a stale location.
+  const [pickerConfirmed, setPickerConfirmed] = useState(
+    Boolean(existing && existing.latitude != null && existing.longitude != null)
+  );
   const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!pickerConfirmed) {
+      setError('Please confirm the location on the map before saving the address.');
+      return;
+    }
     if (!address.trim()) {
       setError('Please pick a location on the map — the address is auto-filled.');
       return;
@@ -83,6 +99,7 @@ export default function AddressEditorModal({
             <div className="grid grid-cols-3 gap-2">
               {LABELS.map(({ id, label: lbl, icon: Icon, active, inactive }) => {
                 const taken = usedLabelIds.has(id);
+                const saved = savedLabelIds.has(id);
                 return (
                   <div
                     key={id}
@@ -103,7 +120,7 @@ export default function AddressEditorModal({
                       <Icon className="w-4 h-4" />
                       {lbl}
                     </button>
-                    {taken && (
+                    {saved && (
                       <span className="absolute top-1 right-1.5 text-[8px] font-black uppercase tracking-wide bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5">
                         Saved
                       </span>
@@ -112,9 +129,9 @@ export default function AddressEditorModal({
                 );
               })}
             </div>
-            {usedLabelIds.size > 0 && (
+            {!existing && savedLabelIds.size > 0 && (
               <p className="text-[10px] font-semibold text-slate-400 mt-1.5">
-                You already have {Array.from(usedLabelIds).map((l) => LABELS.find((x) => x.id === l)?.label || l).join('/')} saved — edit it from your Saved Addresses instead.
+                You already have {Array.from(savedLabelIds).map((l) => LABELS.find((x) => x.id === l)?.label || l).join('/')} saved — edit it from your Saved Addresses instead.
               </p>
             )}
           </div>
@@ -132,7 +149,8 @@ export default function AddressEditorModal({
                   setLongitude(lng);
                   setAddress(addr || '');
                 }}
-                error={!!error && !latitude}
+                onConfirmState={setPickerConfirmed}
+                error={!!error && !pickerConfirmed}
               />
             </Suspense>
           </div>
@@ -184,7 +202,7 @@ export default function AddressEditorModal({
             </button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !pickerConfirmed}
               className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-teal-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-60"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}

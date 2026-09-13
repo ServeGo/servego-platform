@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   Inbox,
   Clock,
@@ -18,11 +18,16 @@ import {
   Send,
   FileText
 } from 'lucide-react';
-import { useRealtime, useData } from '../context/AppContext';
+import { useRealtime, useData, useFeatureFlags } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { getErrorInfo } from '../utils/errorMessages';
 import SkeletonLoader from './SkeletonLoader';
 import QuotationModal from './QuotationModal';
+import MapLoadingFallback from './MapLoadingFallback';
+
+// Leaflet map is heavy; load it only when a provider card actually renders a
+// live-tracking view (Active Duty with the "Live Tracking (Providers)" flag on).
+const LiveTrackingMap = lazy(() => import('./LiveTrackingMap').then((m) => ({ default: m.LiveTrackingMap })));
 
 const LEAD_STATUS_LABELS = {
   NEW: 'New',
@@ -79,6 +84,69 @@ const haversineMeters = (a, b) => {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371000 * Math.asin(Math.sqrt(s));
+};
+
+// Clean a geocoded formatted address down to the parts that actually help
+// navigation. Formatted addresses from geocoders carry admin boilerplate
+// (ward numbers, municipal corporation + zone, mandal designation, district)
+// that the Maps destination needs to reach a precise pin. We strip it and
+// collapse duplicate neighbourhood/city tokens, keeping the street/landmark
+// chain, city, state and PIN.
+const cleanAddress = (raw) => {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+
+  // "Ward 107", "Ward No. 107", "Ward-107", "ward#107"
+  s = s.replace(/\bward\s*(?:no\.?|#|-)?\s*\d+\b/gi, ',');
+  // "GHMC" / "Greater Hyderabad Municipal Corporation West Zone"
+  s = s.replace(/\bghmc\b/gi, ',');
+  s = s.replace(
+    /\b(?:(?:greater|hyderabad)\s+)?[\w'-]+\s+municipal\s+corporation(?:\s+(?:west|east|north|south|central)\s+zone)?\b/gi,
+    ','
+  );
+  s = s.replace(/\b(?:west|east|north|south|central)\s+zone\b/gi, ',');
+  // "Serilingampalle mandal," — strip the mandal designation only when it
+  // terminates a token (a "near mandal office" street name is left alone).
+  s = s.replace(/\b\w+\s+mandal\b(?=[,;]|$)/gi, ',');
+  s = s.replace(/\b\w+\s+mandal(?:palli|pet)?\b(?=[,;]|$)/gi, ',');
+  // District boilerplate: "Ranga Reddy", "Rangareddy", "Hyderabad District"
+  s = s.replace(/\b(?:ranga\s+reddy|rangareddy)(?:\s+district)?\b/gi, ',');
+  s = s.replace(/\bhyderabad\s+district\b/gi, ',');
+  // Trailing country name (address already implies it via city + PIN).
+  s = s.replace(/,\s*india\s*$/i, '');
+
+  const seen = new Set();
+  const parts = s
+    .split(',')
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((p) => {
+      const key = p.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+  return parts.join(', ');
+};
+
+// Build the destination for Google Maps navigation. Origin is left unspecified
+// so Maps resolves the provider's current GPS position as the start point and
+// immediately offers turn-by-turn directions (driving).
+const buildDirections = (booking) => {
+  const destination = cleanAddress([booking.locationAddress, booking.city].filter(Boolean).join(', '));
+  if (!destination) return null;
+  const web = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  if (/android/i.test(ua)) {
+    // Android (Capacitor WebView / Chrome): launch the native navigation intent.
+    return { web, intent: `google.navigation:q=${encodeURIComponent(destination)}`, native: true };
+  }
+  if (/iphone|ipad|ipod/i.test(ua)) {
+    // iOS (Safari / app shell): hand off to the Google Maps app when installed.
+    return { web, intent: `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=driving`, native: true };
+  }
+  return { web, intent: web, native: false };
 };
 
 const fmtTime = (d) => {
@@ -475,6 +543,44 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   );
 }
 
+/**
+ * "Show Direction" for an active duty booking. On mobile (the Capacitor
+ * WebView and mobile Safari) it opens the Google Maps native app via its
+ * intent/deep-link scheme for instant turn-by-turn navigation; if the app
+ * isn't installed the scheme fails silently, so we fall back to the universal
+ * Google Maps dir URL (which still auto-launches Maps on Android/iOS when
+ * available). Desktop simply opens the dir URL in a new tab.
+ */
+function ShowDirectionLink({ booking }) {
+  const links = buildDirections(booking);
+  if (!links) return null;
+
+  const open = (e) => {
+    if (!links.native) return;
+    e.preventDefault();
+    const fallback = () => { window.location.href = links.web; };
+    const t = window.setTimeout(fallback, 1200);
+    // If the native app opened, the page is backgrounded → blur fires → the
+    // web fallback is cancelled (otherwise we'd hijack the tab on return).
+    window.addEventListener('blur', () => window.clearTimeout(t), { once: true });
+    window.location.href = links.intent;
+  };
+
+  return (
+    <a
+      href={links.web}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={open}
+      className="inline-flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-black rounded-full px-3 py-1.5 transition-colors shrink-0"
+      title="Open directions in Google Maps"
+    >
+      <Navigation className="w-3 h-3" />
+      Show Direction
+    </a>
+  );
+}
+
 function QuotationActionButtons({ quotation, busy, onQuote, arrived }) {
   const status = quotation && String(quotation.status).toUpperCase();
   // A live quotation (submitted / accepted / still pending) always supersedes
@@ -566,6 +672,7 @@ function EmptyInbox({ filter }) {
 
 function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onComplete }) {
   const { getBookingLocation } = useRealtime();
+  const { liveTrackingProviders } = useFeatureFlags();
   const now = useNowTick(lead.status === 'NEW' || lead.status === 'VIEWED');
   const booking = lead.booking || {};
   const actionable = lead.status === 'NEW' || lead.status === 'VIEWED';
@@ -577,6 +684,11 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
   // hidden until a booking is actually active.
   const activeDuty = bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING';
   const canShowPhone = activeDuty;
+  // Feature flag (admin "Tracking" section): when ON, the Active Duty card
+  // swaps the plain service address for a live-tracking map. OFF = address as
+  // usual. Defaults OFF — providers opt in, matching the registry.
+  const showLiveTracking = activeDuty && liveTrackingProviders === true;
+  const liveLocation = showLiveTracking ? getBookingLocation(booking.id) : null;
 
   // Dispatch phase read live-first (socket/realtime) with the persisted value
   // from GET /leads as the reload fallback.
@@ -619,6 +731,7 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
               {expired ? 'Expired' : `Expires in ${formatCountdown(expiryMs)}`}
             </span>
           )}
+          {activeDuty && <ShowDirectionLink booking={booking} />}
           <span className="text-[10px] font-mono font-bold bg-slate-50 text-slate-500 px-2 py-0.5 rounded">#{(booking.bookingNumber || lead.id).slice(0, 10)}</span>
         </div>
       </div>
@@ -660,11 +773,20 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-bold text-xs text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
-        <div>
-          <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Address</span>
-          <span className="text-slate-800 leading-tight block">{booking.locationAddress || '—'}{booking.city ? `, ${booking.city}` : ''}</span>
-        </div>
+      <div className="grid grid-cols-1 gap-4 font-bold text-xs text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
+        {showLiveTracking ? (
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block mb-1.5">Live Tracking</span>
+            <Suspense fallback={<MapLoadingFallback />}>
+              <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+            </Suspense>
+          </div>
+        ) : (
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Address</span>
+            <span className="text-slate-800 leading-tight block">{booking.locationAddress || '—'}{booking.city ? `, ${booking.city}` : ''}</span>
+          </div>
+        )}
         <div>
           <span className="text-[10px] text-slate-400 uppercase block mb-1">Customer Requirements</span>
           <p className="text-slate-700 font-semibold">"{booking.instructions || 'No special notes.'}"</p>

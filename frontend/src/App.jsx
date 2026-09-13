@@ -43,7 +43,6 @@ import {
   ShieldCheck,
   Sparkles,
   ClipboardList,
-  Wrench,
   Flag,
   X,
   MoreHorizontal,
@@ -95,9 +94,9 @@ const getRoutePath = (page, tab = null) => {
     case 'reset-password':
       return '/reset-password';
     case 'dashboard-customer':
-      return '/dashboard-customer';
+      return tab && tab !== 'bookings' ? `/dashboard-customer/${tab}` : '/dashboard-customer';
     case 'dashboard-provider':
-      return '/dashboard-provider';
+      return tab && tab !== 'leads' ? `/dashboard-provider/${tab}` : '/dashboard-provider';
     case 'admin':
       return tab && tab !== 'dashboard' ? `/admin/${tab}` : '/admin/dashboard';
     default:
@@ -125,6 +124,15 @@ export function MainLayout() {
       ['pending', 'confirmed', 'ongoing'].includes(b.status)
   ).length;
 
+  // Live bookings for this customer (pending/confirmed/ongoing) — the badge
+  // shown on the mobile "Bookings" bottom-nav tab, mirroring the provider leads
+  // badge. "PENDING → CONFIRMED → ONGOING" are all still in flight.
+  const customerActiveBookingsCount = (bookings || []).filter(
+    (b) =>
+      b.customerId === currentUser?.id &&
+      ['pending', 'confirmed', 'ongoing'].includes(b.status)
+  ).length;
+
   // Unreviewed alerts (every existing alert row is action-required and
   // unreviewed by construction).
   const unreadAlerts = (alerts || []).filter(
@@ -138,6 +146,17 @@ export function MainLayout() {
   const [adminActiveTabExternal, setAdminActiveTabExternal] = useState('dashboard');
   const [adminMoreOpen, setAdminMoreOpen] = useState(false);
 
+  // Wrapper: set customer tab AND update URL so refresh preserves the tab
+  const setCustomerTab = (tab) => {
+    setCustomerActiveTabExternal(tab);
+    updateBrowserRoute('dashboard-customer', tab);
+  };
+  // Wrapper: set provider tab AND update URL
+  const setProviderTab = (tab) => {
+    setProviderActiveTabExternal(tab);
+    updateBrowserRoute('dashboard-provider', tab);
+  };
+
   // Admin mobile "More" sheet: close on Escape.
   useEffect(() => {
     if (!adminMoreOpen) return undefined;
@@ -148,10 +167,9 @@ export function MainLayout() {
     return () => window.removeEventListener('keydown', onKey);
   }, [adminMoreOpen]);
 
-  // Public feature flags: maintenance mode + the single "what's new" announcement
-  // (targeted to one audience — customers OR providers — at a time).
+  // Public feature flags: the single "what's new" announcement (targeted to
+  // one audience — customers OR providers — at a time).
   const [siteFlags, setSiteFlags] = useState({
-    maintenance: false,
     newFeature: { enabled: false, audience: 'customer', text: '' }
   });
   const [dismissedAnnouncement, setDismissedAnnouncement] = useState(false);
@@ -165,7 +183,6 @@ export function MainLayout() {
         const data = res.data?.data || {};
         const flags = data.flags || {};
         setSiteFlags({
-          maintenance: data.maintenanceMode === true,
           newFeature: {
             enabled: flags.newFeatureEnabled === true,
             audience: flags.newFeatureAudience || 'customer',
@@ -181,7 +198,7 @@ export function MainLayout() {
     if (!user) return 'login';
     if (user.role === 'admin') return 'admin';
     if (user.role === 'provider') return 'provider-home';
-    return 'dashboard-customer';
+    return 'customer-home';
   };
   const isAllowedForCurrentUser = (page, user) => {
     if (!RESTRICTED_ROUTES.includes(page)) return true;
@@ -207,15 +224,23 @@ export function MainLayout() {
 
       if (segments[0] === 'admin') {
         setCurrentPage('admin');
-        setAdminActiveTabExternal(getAdminTabFromRoute(segments[1] || 'dashboard'));
+        setAdminActiveTabExternal(getAdminTabFromRoute(sements[1] || 'dashboard'));
         return;
       }
 
       const nextPage = segments[0];
+
+      if (nextPage === 'dashboard-customer' && segments[1]) {
+        setCustomerActiveTabExternal(segments[1]);
+      }
+      if (nextPage === 'dashboard-provider' && segments[1]) {
+        setProviderActiveTabExternal(segments[1]);
+      }
+
       setCurrentPage(nextPage);
     };
 
-    const publicPages = ['forgot-password', 'reset-password'];
+    const publicPages = ['home', 'login', 'signup', 'forgot-password', 'reset-password', 'about', 'services', 'contact', 'faq', 'service-details'];
     const currentPath = (window.location.pathname || '/').split('?')[0].replace(/^\/+|\/+$/g, '');
     const currentSegment = currentPath ? currentPath.split('/')[0] : '';
     if (!currentUser && !publicPages.includes(currentSegment)) {
@@ -254,7 +279,7 @@ export function MainLayout() {
     }
   }, [currentUser, currentPage]);
 
-  const handlePageTransition = (page) => {
+  const handlePageTransition = (page, tab) => {
     if (RESTRICTED_ROUTES.includes(page) && !currentUser) {
       setCurrentPage('login');
       updateBrowserRoute('login');
@@ -272,6 +297,10 @@ export function MainLayout() {
 
     if (page === 'admin') {
       updateBrowserRoute('admin', null, adminActiveTabExternal);
+    } else if (page === 'dashboard-customer') {
+      updateBrowserRoute('dashboard-customer', tab || customerActiveTabExternal);
+    } else if (page === 'dashboard-provider') {
+      updateBrowserRoute('dashboard-provider', tab || providerActiveTabExternal);
     } else {
       updateBrowserRoute(page);
     }
@@ -325,10 +354,10 @@ export function MainLayout() {
         content = <Home onNavigate={handlePageTransition} />;
         break;
       case 'customer-home':
-        content = <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerActiveTabExternal(tab); handlePageTransition('dashboard-customer'); }} />;
+        content = <CustomerHome onNavigate={handlePageTransition} onGoToTab={(tab) => { setCustomerTab(tab); handlePageTransition('dashboard-customer', tab); }} />;
         break;
       case 'provider-home':
-        content = <ProviderHome onGoToTab={(tab) => { setProviderActiveTabExternal(tab); handlePageTransition('dashboard-provider'); }} />;
+        content = <ProviderHome onGoToTab={(tab) => { setProviderTab(tab); handlePageTransition('dashboard-provider', tab); }} />;
         break;
       case 'about':
         content = <About />;
@@ -359,7 +388,7 @@ export function MainLayout() {
           <CustomerDashboard
             onNavigate={handlePageTransition}
             activeTab={customerActiveTabExternal}
-            setActiveTabExternal={setCustomerActiveTabExternal}
+            setActiveTabExternal={setCustomerTab}
           />
         );
         break;
@@ -367,7 +396,7 @@ export function MainLayout() {
         content = (
           <ProviderDashboard
             activeTab={providerActiveTabExternal}
-            setActiveTabExternal={setProviderActiveTabExternal}
+            setActiveTabExternal={setProviderTab}
           />
         );
         break;
@@ -758,30 +787,6 @@ export function MainLayout() {
     );
   }
 
-  // Maintenance mode: the public API 503s, so non-admins see a maintenance
-  // screen instead of a broken app. Admins stay in so they can turn it off.
-  if (siteFlags.maintenance && currentUser?.role !== 'admin') {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-center px-6">
-        <div className="w-14 h-14 rounded-2xl bg-teal-500/20 flex items-center justify-center mb-5">
-          <Wrench className="w-7 h-7 text-teal-400" />
-        </div>
-        <h1 className="text-2xl font-extrabold text-white tracking-tight">Under Maintenance</h1>
-        <p className="text-slate-400 text-sm mt-2 max-w-sm">
-          servego24 is undergoing scheduled maintenance. We will be back shortly — please check again in a few minutes.
-        </p>
-        {currentUser && (
-          <button
-            onClick={handleSignOutAction}
-            className="mt-6 px-4 py-2 rounded-xl text-xs font-black bg-white/10 text-white hover:bg-white/20"
-          >
-            Sign out
-          </button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen">
       <ActionSpinnerOverlay isOpen={!!actionSpinner?.isOpen} message={actionSpinner?.message} />
@@ -823,9 +828,9 @@ export function MainLayout() {
         onNavigate={handlePageTransition}
         currentPage={currentPage}
         customerActiveTab={customerActiveTabExternal}
-        setCustomerActiveTab={setCustomerActiveTabExternal}
+        setCustomerActiveTab={setCustomerTab}
         providerActiveTab={providerActiveTabExternal}
-        setProviderActiveTab={setProviderActiveTabExternal}
+        setProviderActiveTab={setProviderTab}
       />
 
       <main className="flex-1">{renderContent()}</main>
@@ -843,8 +848,9 @@ export function MainLayout() {
           currentPage={currentPage}
           activeTab={customerActiveTabExternal}
           onNavigate={handlePageTransition}
-          setCustomerActiveTab={setCustomerActiveTabExternal}
+          setCustomerActiveTab={setCustomerTab}
           alertsCount={unreadAlerts}
+          activeBookingsCount={customerActiveBookingsCount}
         />
       )}
 
@@ -853,7 +859,7 @@ export function MainLayout() {
         <ProviderBottomNav
           currentPage={currentPage}
           activeTab={providerActiveTabExternal}
-          setProviderActiveTab={setProviderActiveTabExternal}
+          setProviderActiveTab={setProviderTab}
           onNavigate={handlePageTransition}
           leadsCount={providerLeadsCount}
         />

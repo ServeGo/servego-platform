@@ -87,6 +87,24 @@
   }
 }
 
+/* Leaflet live-tracking tweaks (free OSM + OSRM stack). */
+.live-map-provider-div,
+.live-map-dest-div {
+  background: transparent;
+  border: none;
+}
+.sg-live-leaflet .leaflet-container {
+  background: #0f172a;
+}
+.sg-live-leaflet .leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.sg-live-leaflet .leaflet-routing-container,
+.sg-live-leaflet .leaflet-routing-collapsible {
+  display: none;
+}
+
 /* Force dark map chrome over the tile layer */
 .maplibregl-map {
   background: #0f172a;

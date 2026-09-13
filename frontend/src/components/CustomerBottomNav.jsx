@@ -19,7 +19,7 @@ const MORE_TABS = ['profile', 'wallet', 'requests', 'tickets'];
  * Sticky bottom navigation for the Customer role on mobile (native-app feel).
  * Hidden from tablet/desktop (md+) where the top Navbar handles navigation.
  *
- * Primary items: Home, Bookings, Alerts (badged).
+ * Primary items: Home, Bookings (badged when active), Alerts (badged).
  * "More" opens a bottom sheet for Profile, Wallet, Requests, Tickets.
  */
 export default function CustomerBottomNav({
@@ -28,6 +28,7 @@ export default function CustomerBottomNav({
   onNavigate,
   setCustomerActiveTab,
   alertsCount = 0,
+  activeBookingsCount = 0,
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const { logout } = useAuth();
@@ -37,7 +38,7 @@ export default function CustomerBottomNav({
     setMoreOpen(false);
     setCustomerActiveTab?.(tab);
     if (!onDashboard) {
-      onNavigate('dashboard-customer');
+      onNavigate('dashboard-customer', tab);
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -62,6 +63,7 @@ export default function CustomerBottomNav({
       label: 'Bookings',
       icon: CalendarCheck,
       isActive: onDashboard && activeTab === 'bookings',
+      badge: activeBookingsCount,
       onClick: () => goToTab('bookings'),
     },
     {

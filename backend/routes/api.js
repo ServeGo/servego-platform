@@ -85,6 +85,7 @@ apiRouter.post('/bookings/:id/quotation/confirm', requireAuth, requireRole('cust
 apiRouter.post('/bookings/:id/quotation/cancel', requireAuth, requireRole('customer'), QuotationController.cancel);
 apiRouter.post('/bookings/:id/messages', requireAuth, BookingController.addMessage);
 apiRouter.get('/bookings/:id/messages', requireAuth, BookingController.getMessages);
+apiRouter.get('/bookings/:id/review', requireAuth, ReviewController.getByBooking);
 
 // --- Notifications ---
 apiRouter.get('/notifications', requireAuth, NotificationController.getAll);

@@ -498,25 +498,15 @@ export const DataProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-const data = await res.json();
+      const data = await res.json();
       if (res.ok) {
-        // Reflect the hide/unhide instantly so the admin "Hidden" tab updates
-        // without waiting on the refetch (and keeps working even if the admin
-        // list request fails). Hiding is reversible and low-risk (rule 16).
-        const hidden = isHidden === true || isHidden === 'true';
-        setAdminServices(prev =>
-          Array.isArray(prev)
-            ? prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
-            : prev
-        );
-        setServices(prev =>
-          Array.isArray(prev)
-            ? hidden
-              ? prev.filter(s => s.id !== id)
-              : prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
-            : prev
-        );
-        await fetchServices();
+        // Backend returns { success: true, data: { id, name, ... } }
+        const newSvc = data?.data || data;
+        if (newSvc?.id) {
+          setAdminServices(prev => Array.isArray(prev) ? [...prev, newSvc] : [newSvc]);
+          setServices(prev => Array.isArray(prev) ? [...prev, newSvc] : [newSvc]);
+        }
+        fetchServices();
         fetchAdminServices();
         return data;
       }
@@ -536,8 +526,17 @@ const data = await res.json();
       });
       const data = await res.json();
       if (res.ok) {
-        // PATCH is committed — don't wait on the full catalog refetch, that is
-        // what makes saves feel slow. Refresh in the background and return now.
+        // Backend returns { success: true, data: { service: updated } }.
+        // apiClient already unwraps to { service: { id, ... } }.
+        const updated = data?.service || data?.data || data;
+        if (updated?.id) {
+          setAdminServices(prev =>
+            Array.isArray(prev) ? prev.map(s => s.id === updated.id ? { ...s, ...updated } : s) : prev
+          );
+          setServices(prev =>
+            Array.isArray(prev) ? prev.map(s => s.id === updated.id ? { ...s, ...updated } : s) : prev
+          );
+        }
         fetchServices();
         fetchAdminServices();
         return data;
@@ -557,7 +556,9 @@ const data = await res.json();
       });
       const data = await res.json();
       if (res.ok) {
-        await fetchServices();
+        setAdminServices(prev => Array.isArray(prev) ? prev.filter(s => s.id !== id) : prev);
+        setServices(prev => Array.isArray(prev) ? prev.filter(s => s.id !== id) : prev);
+        fetchServices();
         fetchAdminServices();
         return data;
       }
@@ -577,7 +578,18 @@ const data = await res.json();
       });
       const data = await res.json();
       if (res.ok) {
-        await fetchServices();
+        const hidden = isHidden === true || isHidden === 'true';
+        setAdminServices(prev =>
+          Array.isArray(prev) ? prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s)) : prev
+        );
+        setServices(prev =>
+          Array.isArray(prev)
+            ? hidden
+              ? prev.filter(s => s.id !== id)
+              : prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
+            : prev
+        );
+        fetchServices();
         fetchAdminServices();
         return data;
       }
@@ -711,9 +723,15 @@ const data = await res.json();
       });
       const data = await res.json();
       if (res.ok) {
-        fetchProviders(); // Refresh providers to show new rating
-        fetchBookings(); // Refresh bookings to show reviewed status
-        fetchMyProviderSummary(); // Refresh the owner dashboard review audit
+        // Optimistically mark the booking as reviewed so the UI updates instantly
+        setBookings(prev =>
+          Array.isArray(prev)
+            ? prev.map(b => (b.id === bookingId ? { ...b, reviewed: true } : b))
+            : prev
+        );
+        fetchProviders();
+        fetchBookings();
+        fetchMyProviderSummary();
       }
     } catch (err) {
       console.error('Failed to submit review:', err);
@@ -902,17 +920,6 @@ const data = await res.json();
     } catch (err) {
       console.error('Failed to add notification:', err);
     }
-  };
-
-  const getCustomerLoyaltyTier = (completedCount) => {
-    if (completedCount >= 10) {
-      return { tier: 'Platinum Star', discountPercent: 12, color: 'text-purple-600 bg-purple-100 border-purple-200', desc: '12% premium automated discount on checkout' };
-    } else if (completedCount >= 5) {
-      return { tier: 'Gold Shield', discountPercent: 8, color: 'text-amber-600 bg-amber-50 border-amber-200', desc: '8% gold standard discount on checkout' };
-    } else if (completedCount >= 2) {
-      return { tier: 'Silver Care', discountPercent: 5, color: 'text-slate-600 bg-slate-100 border-slate-200', desc: '5% silver starter discount on checkout' };
-    }
-    return { tier: 'Bronze Member', discountPercent: 0, color: 'text-teal-700 bg-teal-50 border-teal-100', desc: 'Book more to unlock automatic savings' };
   };
 
   const sendChatMessage = async (bookingId, text, senderRole) => {
@@ -1107,7 +1114,6 @@ const data = await res.json();
       markAllNotificationsRead,
       clearNotifications,
       addSystemNotification,
-      getCustomerLoyaltyTier,
       sendChatMessage,
       fetchProviderAnalytics,
       fetchProviderServiceRequests,

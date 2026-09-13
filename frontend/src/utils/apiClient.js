@@ -2,8 +2,26 @@
  * Production-grade API client with retry logic, error handling, and token refresh
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
+// API base URLs are imported ONLY from the build environment (.env /
+// Vercel dashboard variables). There is deliberately no hardcoded fallback:
+// a missing VITE_API_URL / VITE_SOCKET_URL is a build misconfiguration and is
+// surfaced loudly below instead of silently sending browsers to a fixed URL.
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
+
+if (!API_BASE_URL) {
+  console.error(
+    '[apiClient] VITE_API_URL is not set for this build — the app cannot reach the backend. ' +
+    'Set VITE_API_URL in the build environment (.env or Vercel dashboard variables).'
+  );
+}
+if (!SOCKET_URL) {
+  console.error(
+    '[apiClient] VITE_SOCKET_URL is not set for this build — realtime updates will not connect. ' +
+    'Set VITE_SOCKET_URL in the build environment.'
+  );
+}
+
 const API_BASES = [API_BASE_URL];
 
 // Rule 19: stable, actionable copy for transport-level failures (used instead
@@ -99,7 +117,7 @@ async function refreshAccessToken() {
         }
         break;
       } catch {
-        // Try localhost only after the deployed backend cannot be reached.
+        // Try the next configured base URL if the refresh endpoint cannot be reached.
       }
     }
     clearTokens();

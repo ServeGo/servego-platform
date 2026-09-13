@@ -33,12 +33,15 @@ const POPULAR_SERVICES = [
 
 export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   const { currentUser } = useAuth();
-  const { alerts } = useData();
+  const { alerts, bookings } = useData();
   const { selectedArea } = useUI();
 
   const firstName = (currentUser?.name || 'Customer').split(' ')[0];
   const areaLabel = selectedArea || 'Hyderabad';
   const alertCount = (alerts || []).filter((a) => a.userId === currentUser?.id).length;
+  const activeBookingsCount = (bookings || []).filter(
+    (b) => b.customerId === currentUser?.id && ['pending', 'confirmed', 'ongoing'].includes(b.status)
+  ).length;
 
   const goBook = (serviceId) => {
     // Intent handoff to the Services page: it auto-opens the temporary/permanent
@@ -48,7 +51,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   };
 
   const quickTiles = [
-    { label: 'My Bookings', sub: 'Track & manage', icon: CalendarCheck, tone: 'bg-teal-500/15 text-teal-600', onClick: () => onGoToTab('bookings') },
+    { label: 'My Bookings', sub: activeBookingsCount > 0 ? (activeBookingsCount === 1 ? '1 active' : `${activeBookingsCount} active`) : 'Track & manage', icon: CalendarCheck, tone: 'bg-teal-500/15 text-teal-600', badge: activeBookingsCount, onClick: () => onGoToTab('bookings') },
     { label: 'Wallet', sub: 'Balance & fees', icon: Wallet, tone: 'bg-indigo-500/15 text-indigo-600', onClick: () => onGoToTab('wallet') },
     { label: 'Requests', sub: 'Permanent visits', icon: ClipboardList, tone: 'bg-amber-500/15 text-amber-600', onClick: () => onGoToTab('requests') },
     { label: 'Alerts', sub: alertCount > 0 ? `${alertCount} waiting` : 'Updates here', icon: Bell, tone: 'bg-rose-500/15 text-rose-600', badge: alertCount, onClick: () => onGoToTab('notifications') },
@@ -107,7 +110,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
             </span>
             Explore Services
           </span>
-          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1">BOOK NOW <span className="text-slate-600">₹199/-</span></span>
+          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1">BOOK NOW <span className="text-slate-600">₹249/-</span></span>
         </button>
       </section>
 
@@ -168,7 +171,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
                   <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-teal-600">
-                    Book now · <span className="text-slate-500">₹199/-</span> <ArrowRight className="w-2.5 h-2.5" />
+                    Book now · <span className="text-slate-500">₹249/-</span> <ArrowRight className="w-2.5 h-2.5" />
                   </span>
                 </span>
               </button>

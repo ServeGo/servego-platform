@@ -19,23 +19,17 @@ import PermanentRequestsView from '../components/PermanentRequestsView';
 import WalletView from '../components/WalletView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
-  const { currentUser, applyReferralCode, updateUserProfile } = useAuth();
+  const { currentUser, updateUserProfile } = useAuth();
   const {
     bookings, updateBookingStatus, submitReview, refreshBooking,
     tickets, submitSupportTicket,
-    getCustomerLoyaltyTier, sendChatMessage,
+    sendChatMessage,
     alerts, reviewAlert, reviewAllAlerts
   } = useData();
 
   const [internalActiveTab, setInternalActiveTab] = useState('bookings');
   const activeTab = activeTabProp || internalActiveTab;
   const setActiveTab = setActiveTabExternal || setInternalActiveTab;
-
-  // Referral states
-  const [referralInput, setReferralInput] = useState('');
-  const [refError, setRefError] = useState('');
-  const [refSuccess, setRefSuccess] = useState('');
-  const [copied, setCopied] = useState(false);
 
   // Modal states
   const [reviewBooking, setReviewBooking] = useState(null);
@@ -99,31 +93,6 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   }, []);
   useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);
 
-  // Loyalty progression based on completed bookings.
-  const completedCount = useMemo(
-    () => userBookings.filter(b => ['completed', 'reviewed'].includes(b.status)).length,
-    [userBookings]
-  );
-  const loyaltyProgress = useMemo(() => {
-    const tiers = [
-      { threshold: 2, name: 'Silver Care' },
-      { threshold: 5, name: 'Gold Shield' },
-      { threshold: 10, name: 'Platinum Star' },
-    ];
-    const next = tiers.find(t => completedCount < t.threshold);
-    if (!next) {
-      return { nextTierName: null, bookingsNeeded: 0, progressPercent: 100 };
-    }
-    const prevThreshold = tiers.filter(t => t.threshold <= next.threshold && completedCount >= t.threshold).pop()?.threshold || 0;
-    const span = next.threshold - prevThreshold;
-    const done = completedCount - prevThreshold;
-    return {
-      nextTierName: next.name,
-      bookingsNeeded: next.threshold - completedCount,
-      progressPercent: span > 0 ? Math.round((done / span) * 100) : 0,
-    };
-  }, [completedCount]);
-
   // Actions
   const handlePublishReview = async (e) => {
     e.preventDefault();
@@ -158,27 +127,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     }
   };
 
-  const handleApplyReferral = async (e) => {
-    e.preventDefault();
-    const res = await applyReferralCode(referralInput);
-    if (res?.success) {
-      setRefSuccess(res.message);
-      setRefError('');
-      setReferralInput('');
-    } else {
-      setRefError(res?.message || 'Failed to apply referral code.');
-      setRefSuccess('');
-    }
-  };
-
   const handleSaveProfile = (form) => updateUserProfile(currentUser?.id, form);
-
-  const handleCopyCode = () => {
-    const code = currentUser?.referralCode || `SERVEGO-CUST-${currentUser?.id.substring(currentUser?.id.length - 3).toUpperCase()}`;
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div id="customer-dashboard-page" className="bg-slate-50 min-h-screen py-10 px-4 pb-24 md:pb-10">
@@ -253,22 +202,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         )}
 
         {activeTab === 'wallet' && (
-          <WalletView
-            user={currentUser}
-            loyaltyTier={getCustomerLoyaltyTier(completedCount)}
-            completedCount={completedCount}
-            bookingsNeeded={loyaltyProgress.bookingsNeeded}
-            progressPercent={loyaltyProgress.progressPercent}
-            nextTierName={loyaltyProgress.nextTierName}
-            referralCode={currentUser?.referralCode || `SERVEGO-CUST-NEW`}
-            referralInput={referralInput}
-            setReferralInput={setReferralInput}
-            onApplyCode={handleApplyReferral}
-            onCopyCode={handleCopyCode}
-            copied={copied}
-            refError={refError}
-            refSuccess={refSuccess}
-          />
+          <WalletView user={currentUser} />
         )}
 
       </div>

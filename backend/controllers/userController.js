@@ -252,30 +252,53 @@ export const UserController = {
       const verificationCode = role === 'customer' ? String(Math.floor(1000 + Math.random() * 9000)) : null;
 
       // Business display identifiers — CID-0001 (customer), PID-0001 (provider).
-      const customerNumber = role === 'customer' ? await nextBusinessNumber('CUSTOMER') : null;
-      const providerNumber = role === 'provider' ? await nextBusinessNumber('PROVIDER') : null;
+      // Retry loop: if a rare race causes a unique-constraint collision on the
+      // generated number, fetch the next one and try again (max 3 attempts).
+      let customerNumber = null;
+      let providerNumber = null;
+      let createdUser = null;
 
-      const newUser = await prisma.user.create({
-        data: {
-          name: name.trim(),
-          email: normalizedEmail,
-          phone: String(phone).trim(),
-          role,
-          password: hashedPassword,
-          avatar,
-          status: 'ACTIVE',
-          address: address?.trim() || null,
-          pincode: pincode ? String(pincode).trim() : null,
-          latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
-          longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
-          referralCode,
-          verificationCode,
-          customerNumber,
-          providerNumber,
-          referralsCount: 0,
-          referralDiscountBalance: 0
+      for (let attempt = 0; attempt < 3 && !createdUser; attempt++) {
+        customerNumber = role === 'customer' ? await nextBusinessNumber('CUSTOMER') : null;
+        providerNumber = role === 'provider' ? await nextBusinessNumber('PROVIDER') : null;
+
+        try {
+          createdUser = await prisma.user.create({
+            data: {
+              name: name.trim(),
+              email: normalizedEmail,
+              phone: String(phone).trim(),
+              role,
+              password: hashedPassword,
+              avatar,
+              status: 'ACTIVE',
+              address: address?.trim() || null,
+              pincode: pincode ? String(pincode).trim() : null,
+              latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
+              longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
+              referralCode,
+              verificationCode,
+              customerNumber,
+              providerNumber,
+              referralsCount: 0,
+              referralDiscountBalance: 0
+            }
+          });
+        } catch (err) {
+          if (err.code === 'P2002' && attempt < 2) {
+            // Unique constraint collision on customerNumber/providerNumber —
+            // retry with the next business number.
+            continue;
+          }
+          throw err;
         }
-      });
+      }
+
+      if (!createdUser) {
+        return sendApiError(res, 500, 'REGISTRATION_FAILED', 'Could not complete registration. Please try again.');
+      }
+
+      const newUser = createdUser;
 
       let customerProfile = null;
       let providerProfile = null;

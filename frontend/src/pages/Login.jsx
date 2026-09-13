@@ -29,6 +29,10 @@ export function Login({ onNavigate }) {
       setErrorMsg('Please enter your email address.');
       return;
     }
+    if (!/^[^\s@]+@gmail\.com$/i.test(email.trim())) {
+      setErrorMsg('Please enter a valid Gmail address (example@gmail.com).');
+      return;
+    }
     if (!password) {
       setErrorMsg('Please enter your password.');
       return;
@@ -76,9 +80,9 @@ export function Login({ onNavigate }) {
           }
         }
         if (destRole === 'customer') {
-          onNavigate('dashboard-customer');
+          onNavigate('customer-home');
         } else if (destRole === 'provider') {
-          onNavigate('dashboard-provider');
+          onNavigate('provider-home');
         } else if (destRole === 'admin') {
           onNavigate('admin');
         }

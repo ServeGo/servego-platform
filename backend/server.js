@@ -6,17 +6,18 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 
 import apiRouter from './routes/api.js';
+import { SECRET } from './utils/auth.js';
 import { seedServicesIfEmpty } from './seeders/servicesSeed.js';
 import { getCorsConfig, resolvePort } from './utils/runtimeConfig.js';
 import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/security.js';
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
+import { sweepClosedLocationHistory } from './services/trackingService.js';
 import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
 import { socketMetrics } from './services/socketMetrics.js';
 import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
-import { maintenanceMode } from './middleware/maintenance.js';
 
 dotenv.config();
 
@@ -120,10 +121,8 @@ async function bootstrap() {
     });
   });
 
-  // API routes (maintenance gate first: the whole public surface 503s while
-  // `maintenanceMode` is on, except admin/login/public feature-flag reads —
-  // see middleware).
-  app.use('/api/v1', maintenanceMode, apiRouter);
+  // API routes
+  app.use('/api/v1', apiRouter);
 
   // Socket.io
   // Authenticate sockets from the connection token so privileged handlers can
@@ -134,7 +133,7 @@ async function bootstrap() {
     const token = socket.handshake?.auth?.token || socket.handshake?.query?.token;
     if (!token) return next();
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'servego-dev-secret');
+      const decoded = jwt.verify(token, SECRET);
       socket.userId = decoded.id;
       socket.userRole = decoded.role;
     } catch {
@@ -157,7 +156,7 @@ async function bootstrap() {
 
     socket.on('authenticate', (token) => {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'servego-dev-secret');
+        const decoded = jwt.verify(token, SECRET);
         socket.userId = decoded.id;
         socket.userRole = decoded.role;
         socket.join(`user:${decoded.id}`);
@@ -293,6 +292,25 @@ async function bootstrap() {
       .catch((err) => {
         console.error('Queue recovery failed:', err.message);
       });
+
+    // Fail-safe location sweep: any booking that is COMPLETED/CANCELLED must
+    // not keep its pings or stale live fix. Reruns every 15 minutes; a
+    // long-running pass never overlaps the next tick.
+    let locationSweepRunning = false;
+    const runLocationSweep = () => {
+      if (locationSweepRunning) return;
+      locationSweepRunning = true;
+      sweepClosedLocationHistory()
+        .then(({ cleared, liveFixesCleared }) => {
+          if (cleared || liveFixesCleared) {
+            console.log(`🧹 Location sweep: ${cleared} pings, ${liveFixesCleared} live fixes cleared for closed bookings`);
+          }
+        })
+        .catch((err) => console.error('Location sweep failed:', err.message))
+        .finally(() => { locationSweepRunning = false; });
+    };
+    runLocationSweep();
+    setInterval(runLocationSweep, 15 * 60 * 1000);
   });
 
   httpServer.on('error', (err) => {

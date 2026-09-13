@@ -246,7 +246,7 @@ export default function ProviderLevelAnalytics({ providerId }) {
                     Promoted to {p.toLevel}!
                   </h4>
                   <p className="text-xs text-slate-600 font-semibold">
-                    Reached at {p.completedJobsAtPromotion} completed jobs — you now enjoy higher ranking priority and plan discounts.
+                    Reached at {p.completedJobsAtPromotion} completed jobs this month{p.incentiveAmount > 0 ? ` — a ${p.incentiveAmount} wallet incentive is on its way in.` : ''}
                   </p>
                 </div>
               </div>

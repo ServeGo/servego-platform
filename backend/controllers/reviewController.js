@@ -149,5 +149,21 @@ export const ReviewController = {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to record customer review log',
         process.env.NODE_ENV !== 'production' ? err.message : undefined);
     }
+  },
+
+  getByBooking: async (req, res) => {
+    try {
+      const { id: bookingId } = req.params;
+      if (!bookingId) return sendApiError(res, 400, 'MISSING_FIELDS', 'Booking ID is required');
+
+      const review = await prisma.review.findFirst({
+        where: { bookingId },
+        select: { id: true, rating: true, comment: true, reviewerName: true, createdAt: true }
+      });
+
+      return sendApiSuccess(res, 200, { review: review || null });
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch review', err.message);
+    }
   }
 };

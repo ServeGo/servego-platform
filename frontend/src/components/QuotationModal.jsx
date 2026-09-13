@@ -6,7 +6,7 @@ import { getErrorInfo } from '../utils/errorMessages';
 // The customer's fixed service fee row. The authoritative value returns in the
 // submitted quotation from the backend (AdminConfig `serviceFeeDefault`); the
 // UI keeps its own constant so the composer can render a live total.
-export const SERVICE_FEE_DEFAULT = 199;
+export const SERVICE_FEE_DEFAULT = 249;
 
 const fmtMoney = (v) => {
   const n = Number(v || 0);
