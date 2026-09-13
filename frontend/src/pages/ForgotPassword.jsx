@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AppContext';
 import { Mail, ArrowRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 export function ForgotPassword({ onNavigate }) {
+  useSEO({ title: 'Forgot Password – ServeGo24', description: 'Reset your ServeGo24 password.', path: '/forgot-password', robots: 'noindex,nofollow' });
   const { forgotPassword } = useAuth();
 
   const [email, setEmail] = useState('');

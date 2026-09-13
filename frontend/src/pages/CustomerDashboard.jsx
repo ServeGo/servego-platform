@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Loader2, Calendar, Search, Clock, CheckCircle2, MapPin } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
+import { useSEO } from '../hooks/useSEO';
 import { api } from '../utils/apiClient';
 import { cachedRequest } from '../utils/requestCache';
 import { normalizeBooking } from '../utils/normalizeCustomerData';
@@ -19,6 +20,7 @@ import PermanentRequestsView from '../components/PermanentRequestsView';
 import WalletView from '../components/WalletView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
+  useSEO({ title: 'My Dashboard – ServeGo24', description: 'Manage your bookings and account.', path: '/dashboard-customer', robots: 'noindex,nofollow' });
   const { currentUser, updateUserProfile } = useAuth();
   const {
     bookings, updateBookingStatus, submitReview, refreshBooking,

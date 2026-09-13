@@ -1,8 +1,28 @@
 import React from 'react';
 import { Shield, Users, Award, Landmark, MapPin, Milestone, Sparkles } from 'lucide-react';
 import { CITIES } from '../data';
+import { useSEO } from '../hooks/useSEO';
 
 export const About = () => {
+  useSEO({
+    title: 'About ServeGo24 – Verified Home Services Marketplace in Hyderabad',
+    description:
+      'ServeGo24 is a Hyderabad-based home services marketplace connecting customers with verified electricians, plumbers, AC technicians and more. Learn about our mission, values and growth story.',
+    path: '/about',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'AboutPage',
+      name: 'About ServeGo24',
+      url: 'https://servego24.com/about',
+      description:
+        'ServeGo24 is a Hyderabad-based on-demand home services marketplace. We connect customers with verified local professionals for electrical, plumbing, AC repair, cleaning and more.',
+      publisher: {
+        '@type': 'Organization',
+        name: 'ServeGo24',
+        url: 'https://servego24.com',
+      },
+    },
+  });
   return (
     <div id="about-page" className="bg-slate-50 min-h-screen py-12 px-4">
       {/* Editorial Header */}

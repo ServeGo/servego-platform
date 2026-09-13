@@ -1,12 +1,12 @@
 import React from 'react';
-import { Instagram, Twitter, Linkedin } from 'lucide-react';
+import { Instagram, Linkedin, Youtube } from 'lucide-react';
 import Logo from './Logo';
 
 export default function Footer() {
   const socials = [
-    { icon: Instagram, label: 'Instagram' },
-    { icon: Twitter, label: 'Twitter' },
-    { icon: Linkedin, label: 'LinkedIn' },
+    { icon: Instagram, label: 'Instagram', href: 'https://www.instagram.com/servego_24/' },
+    { icon: Linkedin, label: 'LinkedIn', href: 'https://www.linkedin.com/company/servego24' },
+    { icon: Youtube, label: 'YouTube', href: 'https://www.youtube.com/@servego24' },
   ];
 
   return (
@@ -23,10 +23,12 @@ export default function Footer() {
             <p className="mt-3 leading-relaxed text-slate-500">A verified local marketplace for getting everyday home services done.</p>
 
             <div className="mt-5 flex items-center gap-2">
-              {socials.map(({ icon: Icon, label }) => (
+              {socials.map(({ icon: Icon, label, href }) => (
                 <a
                   key={label}
-                  href="#"
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={label}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/60 text-slate-400 transition-colors hover:border-teal-500/40 hover:text-teal-400"
                 >

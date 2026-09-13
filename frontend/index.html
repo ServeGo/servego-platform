@@ -1,28 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-IN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#0f766e" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta
-      name="description"
-      content="servego24 - Trusted Local Home Services"
-    />
-    <title>servego24 - Trusted Local Home Services</title>
 
-    <!-- Leaflet CSS & JS (free, keyless map rendering) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Default SEO meta — overridden per-page by useSEO hook -->
+    <title>ServeGo24 – Trusted Home Services in Hyderabad | Book Electrician, Plumber, AC Repair</title>
+    <meta name="description" content="Book verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad. ServeGo24 connects you with trusted local professionals. Fast dispatch, transparent pricing." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://servego24.com/" />
 
-    <!-- Leaflet Routing Machine CSS & JS (free OSRM driving routes) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ServeGo24" />
+    <meta property="og:title" content="ServeGo24 – Trusted Home Services in Hyderabad" />
+    <meta property="og:description" content="Book verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad. Fast dispatch, transparent pricing." />
+    <meta property="og:url" content="https://servego24.com/" />
+    <meta property="og:image" content="https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_IN" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ServeGo24 – Trusted Home Services in Hyderabad" />
+    <meta name="twitter:description" content="Book verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad." />
+    <meta name="twitter:image" content="https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg" />
+
+    <!-- Preconnect to CDN origins for faster image loading -->
+    <link rel="preconnect" href="https://res.cloudinary.com" />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+    <link rel="preconnect" href="https://unpkg.com" />
+
+    <!-- Leaflet CSS — non-blocking via media trick, swapped to all after load -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" media="print" onload="this.media='all'" />
+
+    <!-- Leaflet JS — deferred so it never blocks first paint -->
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script defer src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>
+      <div style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:20px;text-align:center">
+        <h1>ServeGo24 – Home Services in Hyderabad</h1>
+        <p>Book trusted electricians, plumbers, AC technicians, cleaners and more in Hyderabad. Please enable JavaScript to use the full ServeGo24 platform.</p>
+        <p>Call us: <a href="tel:18004102026">1800-410-2026</a> | Email: <a href="mailto:support@servego.com">support@servego.com</a></p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/index.jsx"></script>
   </body>
 </html>
-

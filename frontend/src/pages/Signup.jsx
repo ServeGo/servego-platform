@@ -3,6 +3,7 @@ import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import Logo from '../components/Logo';
 import MapLoadingFallback from '../components/MapLoadingFallback';
+import { useSEO } from '../hooks/useSEO';
 
 // maplibre is heavy; load it only once the signup form actually needs the map.
 const LocationPicker = lazy(() => import('../components/LocationPicker'));
@@ -39,6 +40,7 @@ function FieldIcon({ icon: Icon }) {
 
 export function Signup({ onNavigate }) {
   const { registerUser } = useAuth();
+  useSEO({ title: 'Sign Up – ServeGo24', description: 'Create your ServeGo24 account.', path: '/signup', robots: 'noindex,nofollow' });
 
   const [role, setRole] = useState('customer');
   const isProvider = role === 'provider';

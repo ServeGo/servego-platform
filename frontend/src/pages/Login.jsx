@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AppContext';
 import Logo from '../components/Logo';
 import { Mail, Lock, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
-
-
+import { useSEO } from '../hooks/useSEO';
 
 export function Login({ onNavigate }) {
+  useSEO({ title: 'Login – ServeGo24', description: 'Sign in to your ServeGo24 account.', path: '/login', robots: 'noindex,nofollow' });
   const { login } = useAuth();
 
   // Read redirect intent from URL query param (set by booking flow when unauthenticated)

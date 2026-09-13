@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Search, Info, HelpCircle } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 
 
@@ -51,6 +52,29 @@ export const FAQ = () => {
       a: "Only if they have successfully undergone basic registration and background checks. Bringing unvetted helpers to a job violates our trust guidelines and may get your account suspended."
     }
   ];
+
+  useSEO({
+    title: 'Frequently Asked Questions – ServeGo24 Home Services',
+    description:
+      'Got questions about booking home services, cancellations, payments or joining as a provider? Find answers to the most common ServeGo24 questions here.',
+    path: '/faq',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        ...customerFAQs.map((f) => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+        ...partnerFAQs.map((f) => ({
+          '@type': 'Question',
+          name: f.q,
+          acceptedAnswer: { '@type': 'Answer', text: f.a },
+        })),
+      ],
+    },
+  });
 
   const handleToggleCustomer = (idx) => {
     setActiveCustomerIndex(activeCustomerIndex === idx ? null : idx);

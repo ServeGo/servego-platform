@@ -1,63 +1,99 @@
 import React from 'react';
-import { MapPin, Search, ArrowRight, ShieldCheck, RadioTower, Star, LifeBuoy, Download } from 'lucide-react';
+import { MapPin, Search, ArrowRight } from 'lucide-react';
 import { HYDERABAD_NEIGHBORHOODS } from '../data';
+
+const HERO_IMAGE = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg';
 
 export default function Hero({ onSearch, selectedArea, setArea, inputQuery, setInputQuery, onQuickSearch }) {
   return (
-    <section className="relative isolate overflow-hidden bg-slate-950 text-white min-h-[100vh] py-12 lg:py-20 px-4 border-b border-slate-800 flex items-center">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(129,140,248,0.18),_transparent_25%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size,80px_80px] opacity-20" />
-      
-      <div className="max-w-6xl mx-auto flex flex-col items-center text-center relative z-10 h-full w-full">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-500/10 text-teal-300 text-xs font-bold uppercase tracking-[0.25em] rounded-full border border-teal-500/20 mb-6 shadow-lg shadow-teal-500/10">
-          <ShieldCheck className="w-4 h-4" />
-          <span>Verified Home Services for Hyderabad</span>
-        </div>
+    <section className="relative isolate w-full overflow-hidden bg-slate-950 text-white md:flex md:min-h-[calc(100vh-72px)] md:flex-col md:justify-center">
+      <div className="relative block h-[46vw] min-h-40 max-h-60 overflow-hidden md:hidden">
+        <img src={HERO_IMAGE} alt="Happy family using Servego home services" className="h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent" />
+      </div>
+      {/* Background image */}
+      <div className="absolute inset-0 hidden md:block">
+        <img
+          src={HERO_IMAGE}
+          alt="Happy family using Servego home services"
+          className="h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#081a2d]/95 via-[#0b2940]/65 to-[#0b2940]/10" />
+      </div>
 
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight max-w-4xl leading-[0.95]">
-          Book Trusted Home Experts <span className="text-teal-400">in Minutes</span>
-        </h1>
-        
-        <p className="mt-5 text-slate-300 text-sm sm:text-base max-w-2xl font-medium leading-relaxed">
-          Search the catalog and share your location — servego24 broadcasts your request to every eligible
-          specialist in your area, and the first to accept gets the job. Verified providers, live tracking,
-          and admin-backed support.
-        </p>
+      {/* Content */}
+      <div className="relative z-10 mx-auto w-full max-w-7xl bg-slate-950 px-4 py-6 sm:px-6 md:bg-transparent md:py-20 lg:px-8">
+        <div className="max-w-2xl">
+          {/* Badge */}
+          <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-[0.2em] px-3 py-1 rounded-full border border-white/20 mb-5">
+            15-Min Dispatch in Hyderabad
+          </span>
 
-        <div className="mt-8 w-full max-w-3xl rounded-[24px] border border-slate-200/80 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/20 backdrop-blur">
-          <form onSubmit={onSearch} className="flex flex-col md:flex-row gap-2">
-            <div className="relative flex items-center bg-slate-100 rounded-2xl px-3 py-2 md:w-1/3 text-slate-800">
-              <MapPin className="w-4 h-4 text-teal-700 mr-2 shrink-0" />
-              <div className="text-left w-full">
-                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Your Location</label>
-                <select value={selectedArea} onChange={(e) => setArea(e.target.value)} className="w-full bg-transparent text-xs font-bold outline-none border-none mt-1 text-slate-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1">
-                  <option value="">All Hyderabad Area</option>
-                  {HYDERABAD_NEIGHBORHOODS.map(area => <option key={area} value={area}>{area}</option>)}
-                </select>
+          {/* Headline */}
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08] drop-shadow-lg">
+            Home Services.
+            <br className="hidden sm:block" />
+            <span className="text-emerald-300">Done Right.</span>
+          </h1>
+
+          <p className="mt-3 text-sm md:mt-4 md:text-lg text-white/80 font-medium max-w-lg leading-relaxed">
+            Verified professionals at your doorstep. Book trusted electricians,
+            plumbers, cleaners & more — in minutes, not hours.
+          </p>
+
+          {/* Search bar */}
+          <div className="mt-5 w-full max-w-xl rounded-2xl border border-white/20 bg-white/10 backdrop-blur-md p-2 shadow-2xl md:mt-8">
+            <form onSubmit={onSearch} className="flex flex-col md:flex-row gap-2">
+              {/* Location */}
+              <div className="relative flex items-center bg-white/15 rounded-xl px-3 py-2.5 md:w-[38%] text-white">
+                <MapPin className="w-4 h-4 text-emerald-300 mr-2 shrink-0" />
+                <div className="text-left w-full">
+                  <label className="block text-[9px] font-bold text-white/60 uppercase tracking-[0.2em] leading-none">Your Location</label>
+                  <select
+                    value={selectedArea}
+                    onChange={(e) => setArea(e.target.value)}
+                    className="w-full bg-transparent text-[11px] font-bold outline-none border-none mt-0.5 text-white cursor-pointer"
+                  >
+                    <option value="" className="text-slate-900">All Hyderabad Area</option>
+                    {HYDERABAD_NEIGHBORHOODS.map(area => <option key={area} value={area} className="text-slate-900">{area}</option>)}
+                  </select>
+                </div>
               </div>
-            </div>
-            <div className="relative flex-1 flex items-center bg-slate-100 rounded-2xl px-3 py-2 text-slate-800">
-              <Search className="w-4 h-4 text-slate-500 mr-2 shrink-0" />
-              <div className="text-left w-full">
-                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none">Find a Service</label>
-                <input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Electrician, plumber, painter, cleaner..." className="w-full bg-transparent text-xs font-semibold outline-none border-none mt-1 text-slate-800 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1" />
+              
+              {/* Search */}
+              <div className="relative flex-1 flex items-center bg-white/15 rounded-xl px-3 py-2.5 text-white">
+                <Search className="w-4 h-4 text-emerald-300 mr-2 shrink-0" />
+                <div className="text-left w-full">
+                  <label className="block text-[9px] font-bold text-white/60 uppercase tracking-[0.2em] leading-none">Find a Service</label>
+                  <input
+                    type="text"
+                    value={inputQuery}
+                    onChange={(e) => setInputQuery(e.target.value)}
+                    placeholder="Search AC repair, cleaning, electrician, chef..."
+                    className="w-full bg-transparent text-[11px] font-bold outline-none border-none mt-0.5 text-white placeholder-white/50"
+                  />
+                </div>
               </div>
-            </div>
-            <button type="submit" className="bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-2xl text-xs px-6 py-3.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"><span>Search Services</span><ArrowRight className="w-3.5 h-3.5" /></button>
-          </form>
-        </div>
-        <a href="/apk/servego.apk" download="servego.apk" className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 transition-all hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"><Download className="w-4 h-4" />Download Android App</a>
-        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full max-w-4xl text-left text-xs">
-          <TrustIndicator icon={<ShieldCheck className="w-4 h-4" />} title="Verified Providers" desc="Profile-approved experts" />
-          <TrustIndicator icon={<RadioTower className="w-4 h-4" />} title="Broadcast Booking" desc="Offered to every eligible specialist" />
-          <TrustIndicator icon={<Star className="w-4 h-4" />} title="Rated Professionals" desc="Reviews after every completed job" colorClass="text-emerald-400" bgColorClass="bg-emerald-500/20" />
-          <TrustIndicator icon={<LifeBuoy className="w-4 h-4" />} title="Admin Support" desc="Tickets & platform oversight" colorClass="text-rose-400" bgColorClass="bg-rose-500/20" />
+
+              <button
+                type="submit"
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl px-5 py-3 text-xs transition-colors shrink-0 flex items-center justify-center gap-1.5"
+              >
+                Search
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+
+          {/* Quick stats */}
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-[11px] text-white/80 font-medium md:mt-6 md:text-xs">
+            <span>Popular:</span>
+            {['AC Repair', 'Cleaning', 'Plumbing', 'Electrician', 'Chef', 'Carpentry'].map((item) => (
+              <button type="button" key={item} onClick={() => onQuickSearch?.(item)} className="rounded-full border border-white/25 bg-white/15 px-2.5 py-1 hover:bg-white/25">{item}</button>
+            ))}
+          </div>
         </div>
       </div>
     </section>
   );
-}
-
-function TrustIndicator({ icon, title, desc, colorClass = "text-teal-400", bgColorClass = "bg-teal-500/20" }) {
-  return <div className="bg-white/8 border border-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center gap-2.5 hover:-translate-y-0.5 transition-transform"><div className={`p-2 rounded-xl ${bgColorClass} ${colorClass}`}>{icon}</div><div><h4 className="font-bold text-white">{title}</h4><p className="text-[10px] text-slate-400 mt-0.5 font-medium">{desc}</p></div></div>;
 }

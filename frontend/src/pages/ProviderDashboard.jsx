@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-
+import { useSEO } from '../hooks/useSEO';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';

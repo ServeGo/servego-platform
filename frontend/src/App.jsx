@@ -8,9 +8,7 @@ import './cursor.css';
 const Home = lazy(() => import('./pages/Home').then((m) => ({ default: m.Home })));
 const CustomerHome = lazy(() => import('./pages/CustomerHome').then((m) => ({ default: m.CustomerHome })));
 const ProviderHome = lazy(() => import('./pages/ProviderHome').then((m) => ({ default: m.ProviderHome })));
-const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
 const Services = lazy(() => import('./pages/Services').then((m) => ({ default: m.Services })));
-const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
 const FAQ = lazy(() => import('./pages/FAQ').then((m) => ({ default: m.FAQ })));
 const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard').then((m) => ({ default: m.CustomerDashboard })));
 const ProviderDashboard = lazy(() => import('./pages/ProviderDashboard').then((m) => ({ default: m.ProviderDashboard })));
@@ -78,12 +76,8 @@ const getRoutePath = (page, tab = null) => {
       return '/customer-home';
     case 'provider-home':
       return '/provider-home';
-    case 'about':
-      return '/about';
     case 'services':
       return '/services';
-    case 'contact':
-      return '/contact';
     case 'faq':
       return '/faq';
     case 'login':
@@ -241,7 +235,7 @@ export function MainLayout() {
       setCurrentPage(nextPage);
     };
 
-    const publicPages = ['home', 'login', 'signup', 'forgot-password', 'reset-password', 'about', 'services', 'contact', 'faq', 'service-details'];
+    const publicPages = ['home', 'login', 'signup', 'forgot-password', 'reset-password', 'services', 'faq', 'service-details'];
     const currentPath = (window.location.pathname || '/').split('?')[0].replace(/^\/+|\/+$/g, '');
     const currentSegment = currentPath ? currentPath.split('/')[0] : '';
     if (!currentUser && !publicPages.includes(currentSegment)) {
@@ -360,14 +354,8 @@ export function MainLayout() {
       case 'provider-home':
         content = <ProviderHome onGoToTab={(tab) => { setProviderTab(tab); handlePageTransition('dashboard-provider', tab); }} />;
         break;
-      case 'about':
-        content = <About />;
-        break;
       case 'services':
         content = <Services onNavigate={handlePageTransition} />;
-        break;
-      case 'contact':
-        content = <Contact />;
         break;
       case 'faq':
         content = <FAQ />;
