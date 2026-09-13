@@ -277,3 +277,56 @@ Rules:
   ids/timestamps from the server, never local clocks alone.
 - While disconnected, mark realtime-dependent UI as stale (e.g. a banner) and
   keep full refetch as the recovery path.
+
+## 24. No-Provider manual booking flow
+
+A new request type `NO_PROVIDER` allows customers to submit service requests
+when no provider is available for their needed service category.
+
+Flow:
+1. Customer submits a `NO_PROVIDER` permanent service request (requires `serviceCategory`,
+   `locationAddress`, `additionalInfo`).
+2. Request lands in admin queue with status `PENDING`.
+3. Admin views requests in **AdminManualBookingRequestsTab**, fetches eligible
+   providers via `/providers/by-approved-service?serviceName=...`.
+4. Admin selects a verified, active provider approved for that service and
+   clicks **Assign** → `PATCH /permanent-service-requests/:id` with
+   `status: APPROVED, assignedProviderId`.
+5. Backend validates provider eligibility, then calls
+   `leadService.createManuallyAssignedBookingWithLead()` which:
+   - Creates a `Booking` with status `CONFIRMED` and status history
+   - Creates a `Lead` with status `ACCEPTED`
+   - Creates `LeadAssignmentHistory` with reason `ADMIN_MANUAL_ASSIGNMENT`
+   - Emits realtime events: `booking:created`, `booking:statusChanged` to
+     customer; `lead:new` to provider
+6. Request status becomes `APPROVED` with `assignedProviderId` set.
+
+Validation rules (in `validation.js` and controller):
+- `NO_PROVIDER` only requires `serviceCategory`, `locationAddress`, `additionalInfo`
+- `PERMANENT` requires all contract fields (engagementType, startDate, monthlyBudget, etc.)
+- `CUSTOM` only requires `customServiceName`, `customServiceDescription`
+
+Controller endpoint:
+- `POST /permanent-service-requests` — create (validates by requestType)
+- `PATCH /permanent-service-requests/:id` — update status, assign provider
+- `GET /permanent-service-requests?requestType=NO_PROVIDER&status=PENDING` — admin list
+
+Frontend:
+- `AdminManualBookingRequestsTab.jsx` — admin UI to view, filter, assign providers
+- Added to `AdminPanelTabsRouter.jsx`
+
+## 25. Quotation decline — external payment model
+
+When a customer declines a live quotation, payment is now settled externally
+between customer and provider. The customer wallet is **never debited** for the
+service fee. Instead:
+
+- Platform commission (configurable %, default 10%) is debited from the
+  **provider's wallet** (`COMMISSION` category, `debitWalletAllowNegative`).
+- Provider receives the service fee compensation externally (off-platform).
+- Quotation CAS (`where: { id, status: 'PENDING' }`) guarantees the settlement
+  runs exactly once — retries are no-ops.
+- Return value includes `feeDebited: false`, `commission`, `providerCompensation`.
+
+This removes the risk of negative customer balances and simplifies the decline
+flow to a single provider-wallet write.

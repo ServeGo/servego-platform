@@ -267,10 +267,10 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
       ) : (
         <>
           {/* Free tile map (Leaflet + OpenStreetMap + OSRM route) */}
-          <div className="relative h-56 border-b border-slate-800 overflow-hidden">
-            <div ref={containerRef} className="sg-live-leaflet absolute inset-0 w-full h-full" />
+          <div className="relative isolate h-56 border-b border-slate-800 overflow-hidden">
+            <div ref={containerRef} className="sg-live-leaflet absolute inset-0 z-0 w-full h-full" />
 
-            <div className="absolute right-3 top-2 z-[1000] bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1 pointer-events-none">
+            <div className="absolute right-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1 pointer-events-none">
               {booking.providerAvatar ? (
                 <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-600" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
               ) : (
@@ -287,7 +287,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
                 href={googleMapsDirections(destination.latitude, destination.longitude)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="absolute left-3 bottom-2 z-[1000] inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold rounded-full pl-2.5 pr-3.5 py-1.5 shadow-lg transition-colors"
+                className="absolute left-3 bottom-2 z-10 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold rounded-full pl-2.5 pr-3.5 py-1.5 shadow-lg transition-colors"
               >
                 <Navigation className="w-3 h-3" />
                 Navigate

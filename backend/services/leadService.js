@@ -483,6 +483,85 @@ export async function createBookingWithLead({
 }
 
 /**
+ * Create the normal booking/lead records after an admin manually assigns a
+ * previously unassigned no-provider request to a provider.
+ */
+export async function createManuallyAssignedBookingWithLead({
+  customerId,
+  providerId,
+  serviceCategory,
+  locationAddress = '',
+  city = 'Hyderabad',
+  instructions = '',
+  serviceLatitude = null,
+  serviceLongitude = null,
+  contactPhone = null,
+  client = prisma
+}) {
+  return withClientTransaction(client, async (tx) => {
+    const timestamp = new Date();
+    const bookingNumber = await nextBusinessNumber('BOOKING', tx);
+    const booking = await tx.booking.create({
+      data: {
+        bookingNumber,
+        customerId,
+        providerId,
+        serviceCategory,
+        locationAddress,
+        city,
+        instructions,
+        contactPhone: contactPhone || null,
+        serviceLatitude: serviceLatitude != null ? Number(serviceLatitude) : null,
+        serviceLongitude: serviceLongitude != null ? Number(serviceLongitude) : null,
+        ...(serviceLatitude != null && serviceLongitude != null
+          ? { endLocation: { address: locationAddress, latitude: Number(serviceLatitude), longitude: Number(serviceLongitude) } }
+          : {}),
+        messages: [],
+        reviewed: false,
+        status: 'CONFIRMED',
+        statusHistory: [
+          { status: 'PENDING', timestamp: timestamp.toISOString(), note: 'Booking created after admin manual assignment' },
+          { status: 'CONFIRMED', timestamp: timestamp.toISOString(), note: 'Provider assigned directly by admin' }
+        ]
+      },
+      include: { customer: { select: { id: true, name: true, phone: true, avatar: true } } }
+    });
+
+    await tx.bookingEvent.create({
+      data: {
+        bookingId: booking.id,
+        actorId: customerId,
+        actorRole: 'customer',
+        action: 'ASSIGNED',
+        note: 'Provider assigned directly by admin'
+      }
+    });
+
+    const lead = await tx.lead.create({
+      data: {
+        bookingId: booking.id,
+        customerId,
+        providerId,
+        serviceCategory,
+        status: 'ACCEPTED',
+        notes: instructions || null,
+        acceptedAt: timestamp
+      }
+    });
+
+    await tx.leadAssignmentHistory.create({
+      data: { leadId: lead.id, providerId, status: 'ACCEPTED', isCurrent: true, assignedAt: timestamp, actionAt: timestamp, reason: 'ADMIN_MANUAL_ASSIGNMENT' }
+    });
+
+    const provider = await tx.provider.findUnique({
+      where: { id: providerId },
+      include: { user: { select: { id: true, name: true } } }
+    });
+    return { booking, lead, provider };
+  });
+}
+
+/**
  * 24-hour reminder — re-broadcast an unanswered lead to every currently
  * eligible provider. Uses the same eligibility pass as the original broadcast,
  * so providers who came online since then (or whose offer was withdrawn) get a

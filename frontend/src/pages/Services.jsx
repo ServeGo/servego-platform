@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, UserX, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
 import { api as apiClient } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
@@ -56,9 +56,10 @@ export const Services = ({ onNavigate }) => {
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
   const [contactPhone, setContactPhone] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [errorText, setErrorText] = useState('');
   const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
-  const [showNoProvidersModal, setShowNoProvidersModal] = useState(false);
+  const [showManualRequestSuccess, setShowManualRequestSuccess] = useState(false);
 
   // Saved addresses (Blinkit-style) — shown in the booking popup so the user
   // picks an existing address instead of dropping a pin every time.
@@ -172,20 +173,11 @@ export const Services = ({ onNavigate }) => {
     setCategory(catId);
     if (currentUser?.role === 'customer') {
       setBookingServiceId(catId);
-      // If the service has no active providers on the catalog, show the
-      // "No Providers Available" popup immediately instead of the booking form.
-      const cat = (results || []).find(
-        (c) => String(c.id) === String(catId) || String(c.name || '').toLowerCase() === String(catId).toLowerCase()
-      );
-      if (cat && Number(cat.activeSpecialistCount) === 0) {
-        setShowNoProvidersModal(true);
-        return;
-      }
-      // Eligible providers exist — open the Temporary Service booking form.
       setAddress('');
       setLatitude(null);
       setLongitude(null);
       setContactPhone(currentUser?.phone || '');
+      setInstructions('');
       setErrorText('');
       setBookingStep(1);
       loadSavedAddresses();
@@ -250,13 +242,27 @@ export const Services = ({ onNavigate }) => {
         serviceLatitude: latitude,
         serviceLongitude: longitude,
         city: 'Hyderabad',
-        contactPhone
+        contactPhone,
+        instructions
       });
 
       if (!created || created.error) {
         if (created?.code === 'NO_ELIGIBLE_PROVIDERS') {
-          setBookingStep(0);
-          setShowNoProvidersModal(true);
+          const request = await apiClient.post('/permanent-service-requests', {
+            requestType: 'NO_PROVIDER',
+            serviceCategory: bookingServiceName,
+            additionalInfo: instructions.trim(),
+            locationAddress: address,
+            serviceLatitude: latitude,
+            serviceLongitude: longitude
+          });
+          if (request.ok) {
+            setBookingStep(0);
+            setShowManualRequestSuccess(true);
+          } else {
+            setErrorText(request.data?.message || 'Could not send your request to admin. Please try again.');
+            setBookingStep(1);
+          }
           return;
         }
         setErrorText(created?.error || 'Could not complete the booking. Please try again.');
@@ -363,31 +369,22 @@ export const Services = ({ onNavigate }) => {
           />
         )}
 
-        {showNoProvidersModal && (
+        {showManualRequestSuccess && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full relative shadow-2xl animate-fade-in text-center">
-              <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-5">
-                <UserX className="w-8 h-8 text-amber-500" />
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full shadow-2xl animate-fade-in text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-5">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">No Providers Available</h3>
-              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6 max-w-xs mx-auto">
-                There are no service providers available in your area right now. Please try again later or explore other services.
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Request received</h3>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6">
+                There is currently no provider available for this service. We have sent your request to our admin team, who will arrange and assign a suitable provider.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <button
-                  onClick={() => setShowNoProvidersModal(false)}
-                  className="cursor-pointer px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-                >
-                  Try Again Later
-                </button>
-                <button
-                  onClick={() => { setShowNoProvidersModal(false); onNavigate('services'); }}
-                  className="cursor-pointer px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center justify-center gap-1.5"
-                >
-                  Browse Services
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <button
+                onClick={() => { setShowManualRequestSuccess(false); onNavigate('dashboard-customer'); }}
+                className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                View My Requests
+              </button>
             </div>
           </div>
         )}
@@ -400,6 +397,7 @@ export const Services = ({ onNavigate }) => {
             latitude={latitude} longitude={longitude}
             setLatitude={setLatitude} setLongitude={setLongitude}
             contactPhone={contactPhone} setContactPhone={setContactPhone}
+            instructions={instructions} setInstructions={setInstructions}
             onSubmit={handleCompleteCheckout}
             savedAddresses={savedAddresses}
             onPickSaved={handlePickSaved}

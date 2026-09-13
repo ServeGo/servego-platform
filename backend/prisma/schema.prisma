@@ -755,6 +755,7 @@ model PermanentServiceRequest {
 enum ServiceRequestType {
   PERMANENT
   CUSTOM
+  NO_PROVIDER
 }
 
 enum PermanentEngagementType {

@@ -5,8 +5,10 @@ import {
   notifyAdminPermanentServiceRequest,
   notifyPermanentServiceRequestApproved,
   notifyPermanentServiceRequestRejected,
-  notifyPermanentServiceRequestSubmitted
+  notifyPermanentServiceRequestSubmitted,
+  notifyNewLead
 } from '../services/notificationService.js';
+import { createManuallyAssignedBookingWithLead, buildLeadPayload } from '../services/leadService.js';
 
 const REQUEST_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -26,8 +28,8 @@ export const PermanentServiceRequestController = {
   create: async (req, res) => {
     try {
       const requestType = String(req.body.requestType || 'PERMANENT').trim().toUpperCase();
-      if (!['PERMANENT', 'CUSTOM'].includes(requestType)) {
-        return sendApiError(res, 400, 'VALIDATION_ERROR', 'Request type must be PERMANENT or CUSTOM.');
+      if (!['PERMANENT', 'CUSTOM', 'NO_PROVIDER'].includes(requestType)) {
+        return sendApiError(res, 400, 'VALIDATION_ERROR', 'Request type must be PERMANENT, CUSTOM, or NO_PROVIDER.');
       }
 
       const locationAddress = req.body.locationAddress ? String(req.body.locationAddress).trim() : null;
@@ -36,6 +38,35 @@ export const PermanentServiceRequestController = {
         serviceLatitude: req.body.serviceLatitude != null ? Number(req.body.serviceLatitude) : null,
         serviceLongitude: req.body.serviceLongitude != null ? Number(req.body.serviceLongitude) : null
       };
+
+      if (requestType === 'NO_PROVIDER') {
+        const serviceCategory = String(req.body.serviceCategory || '').trim();
+        const additionalInfo = String(req.body.additionalInfo || '').trim();
+        if (!serviceCategory || !locationAddress) {
+          return sendApiError(res, 400, 'VALIDATION_ERROR', 'Service and service location are required.');
+        }
+        const request = await prisma.permanentServiceRequest.create({
+          data: {
+            customerId: req.user.id,
+            requestType: 'NO_PROVIDER',
+            serviceCategory,
+            additionalInfo,
+            status: 'PENDING',
+            ...serviceLocation
+          },
+          include: REQUEST_INCLUDE
+        });
+        const io = req.app.get('socketio');
+        if (io) {
+          await notifyAdminPermanentServiceRequest(io, {
+            requestId: request.id,
+            serviceCategory,
+            requestType: 'NO_PROVIDER',
+            customerId: req.user.id
+          });
+        }
+        return sendApiSuccess(res, 201, request);
+      }
 
       if (requestType === 'CUSTOM') {
         // Custom service request — a service not in the catalog. Only a name
@@ -232,7 +263,26 @@ export const PermanentServiceRequestController = {
         return sendApiError(res, 400, 'VALIDATION_ERROR', 'A provider must be assigned to approve this request.');
       }
 
-      const updated = await prisma.permanentServiceRequest.update({
+      if (existing.requestType === 'NO_PROVIDER' && nextStatus === 'APPROVED') {
+        const provider = await prisma.provider.findUnique({
+          where: { id: providerId },
+          select: { id: true, isVerified: true, accountStatus: true, user: { select: { status: true } } }
+        });
+        const approvedService = provider
+          ? await prisma.providerService.findFirst({
+              where: {
+                providerId,
+                service: { name: { equals: existing.serviceCategory, mode: 'insensitive' } }
+              },
+              select: { id: true }
+            })
+          : null;
+        if (!provider || !provider.isVerified || provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE' || !approvedService) {
+          return sendApiError(res, 409, 'PROVIDER_UNAVAILABLE', 'Choose an active, verified provider approved for this service.');
+        }
+      }
+
+      let updated = await prisma.permanentServiceRequest.update({
         where: { id },
         data: {
           status: nextStatus,
@@ -244,6 +294,23 @@ export const PermanentServiceRequestController = {
 
       const io = req.app.get('socketio');
       if (nextStatus === 'APPROVED') {
+        if (existing.requestType === 'NO_PROVIDER') {
+          const assignment = await createManuallyAssignedBookingWithLead({
+            customerId: existing.customerId,
+            providerId,
+            serviceCategory: existing.serviceCategory,
+            locationAddress: existing.locationAddress || '',
+            serviceLatitude: existing.serviceLatitude,
+            serviceLongitude: existing.serviceLongitude,
+            instructions: existing.additionalInfo || ''
+          });
+          updated = { ...updated, bookingId: assignment.booking.id };
+          if (io && assignment.provider?.user?.id) {
+            await notifyNewLead(io, assignment.provider.user.id, buildLeadPayload(assignment.lead, assignment.booking, assignment.provider));
+            io.to(`user:${existing.customerId}`).emit('booking:created', { bookingId: assignment.booking.id, status: 'CONFIRMED' });
+            io.to(`user:${existing.customerId}`).emit('booking:statusChanged', { bookingId: assignment.booking.id, status: 'CONFIRMED' });
+          }
+        }
         await notifyPermanentServiceRequestApproved(existing.customerId, { requestId: id, assignedProviderId: providerId, requestType: existing.requestType });
         if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:approved', { requestId: id, status: 'APPROVED' });
       } else {

@@ -306,7 +306,10 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   }, [fetchLeads]);
 
   const categorized = useMemo(() => {
-    const actionable = leads.filter((l) => l.status === 'NEW' || l.status === 'VIEWED');
+    const actionable = leads.filter((l) => {
+      const bookingStatus = l.booking?.status;
+      return (l.status === 'NEW' || l.status === 'VIEWED') && bookingStatus !== 'CONFIRMED' && bookingStatus !== 'ONGOING';
+    });
     const active = leads.filter((l) => {
       const bs = l.booking?.status;
       return bs === 'CONFIRMED' || bs === 'ONGOING';
@@ -686,9 +689,20 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
   const canShowPhone = activeDuty;
   // Feature flag (admin "Tracking" section): when ON, the Active Duty card
   // swaps the plain service address for a live-tracking map. OFF = address as
-  // usual. Defaults OFF — providers opt in, matching the registry.
-  const showLiveTracking = activeDuty && liveTrackingProviders === true;
-  const liveLocation = showLiveTracking ? getBookingLocation(booking.id) : null;
+  // usual. If the provider has no usable GPS fix, keep the address visible.
+  // Defaults OFF — providers opt in, matching the registry.
+  const realtimeLocation = getBookingLocation(booking.id);
+  const hasProviderGps = (location) => (
+    location?.latitude != null &&
+    location?.longitude != null &&
+    Number.isFinite(Number(location.latitude)) &&
+    Number.isFinite(Number(location.longitude))
+  );
+  const showLiveTracking = activeDuty && liveTrackingProviders === true && (
+    hasProviderGps(realtimeLocation) ||
+    hasProviderGps({ latitude: booking.providerLatitude, longitude: booking.providerLongitude })
+  );
+  const liveLocation = showLiveTracking ? realtimeLocation : null;
 
   // Dispatch phase read live-first (socket/realtime) with the persisted value
   // from GET /leads as the reload fallback.

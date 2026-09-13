@@ -21,6 +21,7 @@ export default function BookingModal({
   onSubmit,
 
   contactPhone, setContactPhone,
+  instructions, setInstructions,
 
   savedAddresses = [],
   onPickSaved,
@@ -196,6 +197,19 @@ export default function BookingModal({
                 required
               />
               <p className="text-[10px] font-semibold text-slate-400 mt-1.5">The assigned specialist will call you on this number.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+                Service details <span className="text-slate-400 normal-case font-semibold">(optional)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="Tell us what you need help with"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-800 outline-none resize-y"
+              />
             </div>
           </div>
 

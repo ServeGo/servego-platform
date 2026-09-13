@@ -71,7 +71,7 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[2000] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 max-w-xl w-full relative shadow-2xl animate-fade-in m-auto text-left max-h-[calc(100vh-2rem)] overflow-y-auto hide-scrollbar">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
           <div>

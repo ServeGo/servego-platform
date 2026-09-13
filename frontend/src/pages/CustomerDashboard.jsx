@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Loader2, Calendar, Search, Clock, CheckCircle2 } from 'lucide-react';
+import { Loader2, Calendar, Search, Clock, CheckCircle2, MapPin } from 'lucide-react';
 import { useAuth, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { cachedRequest } from '../utils/requestCache';
@@ -85,11 +85,15 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const userAlerts = useMemo(() => alerts.filter(a => a.userId === currentUser?.id), [alerts, currentUser]);
 
   const [permanentCount, setPermanentCount] = useState(0);
+  const [pendingManualRequests, setPendingManualRequests] = useState([]);
   const fetchPermanentCount = useCallback(async () => {
     // Same cachedRequest key as PermanentRequestsView — both resolve from ONE
     // request instead of two when the requests tab and dashboard mount together.
     const res = await cachedRequest('permanent-service-requests/mine', () => api.get('/permanent-service-requests/mine'));
-    if (res.ok && Array.isArray(res.data)) setPermanentCount(res.data.length);
+    if (res.ok && Array.isArray(res.data)) {
+      setPermanentCount(res.data.length);
+      setPendingManualRequests(res.data.filter((request) => request.requestType === 'NO_PROVIDER' && request.status === 'PENDING'));
+    }
   }, []);
   useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);
 
@@ -163,10 +167,10 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
         {activeTab === 'bookings' && (
           <div className="space-y-6">
             <h3 className="text-lg font-bold text-slate-900 text-center md:text-left">Your Booking Orders</h3>
-            {userBookings.length === 0 ? (
+            {userBookings.length === 0 && pendingManualRequests.length === 0 ? (
               <EmptyBookings onNavigate={onNavigate} />
             ) : (
-              <BookingSubTabs bookings={userBookings} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
+              <BookingSubTabs bookings={userBookings} manualRequests={pendingManualRequests} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
         )}
@@ -242,12 +246,13 @@ const TAB_STATUS_QUERY = {
 
 const TAB_PAGE_SIZE = 10;
 
-function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuotationConfirm, onQuotationCancel, openChatBookingId, setOpenChatBookingId, onSendMessage, onNavigate }) {
+function BookingSubTabs({ bookings, manualRequests = [], onDownloadReceipt, onCancel, onReview, onQuotationConfirm, onQuotationCancel, openChatBookingId, setOpenChatBookingId, onSendMessage, onNavigate }) {
   const [subTab, setSubTab] = useState('active');
   const [tabItems, setTabItems] = useState({});
   const [tabMeta, setTabMeta] = useState({});
 
   const items = tabItems[subTab] || [];
+  const visibleManualRequests = subTab === 'pending' ? manualRequests : [];
   const meta = tabMeta[subTab] || {};
 
   const fetchPage = useCallback(async ({ tab, cursor = null, append = false } = {}) => {
@@ -367,8 +372,9 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
     BOOKING_SUB_TABS.forEach(t => {
       result[t.id] = bookings.filter(b => t.statuses.includes((b.status || '').toLowerCase())).length;
     });
+    result.pending += manualRequests.length;
     return result;
-  }, [bookings]);
+  }, [bookings, manualRequests]);
 
   return (
     <div className="space-y-4">
@@ -395,7 +401,7 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
             Retry
           </button>
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && visibleManualRequests.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-2xs max-w-sm mx-auto">
           <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
             {subTab === 'active' && <Clock className="w-7 h-7 text-slate-400" />}
@@ -422,6 +428,9 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
         </div>
       ) : (
         <div className="space-y-6">
+          {visibleManualRequests.map((request) => (
+            <ManualBookingRequestCard key={request.id} request={request} />
+          ))}
           {items.map(bk => (
             <BookingCard
               key={bk.id}
@@ -451,5 +460,29 @@ function BookingSubTabs({ bookings, onDownloadReceipt, onCancel, onReview, onQuo
         </div>
       )}
     </div>
+  );
+}
+
+function ManualBookingRequestCard({ request }) {
+  return (
+    <article className="bg-white rounded-xl border border-amber-200 p-4 sm:p-5 shadow-2xs text-left">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-extrabold uppercase tracking-widest text-amber-600">Manual provider arrangement</p>
+          <h4 className="mt-1 text-sm font-extrabold text-slate-900">{request.serviceCategory || 'Service request'}</h4>
+        </div>
+        <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[9px] font-black uppercase text-amber-800">Pending</span>
+      </div>
+      <p className="mt-3 text-xs font-semibold leading-relaxed text-slate-600">
+        No provider is currently available. Our admin team will arrange and assign a provider for you.
+      </p>
+      <div className="mt-3 flex items-start gap-1.5 text-[11px] font-semibold text-slate-600">
+        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        <span>{request.locationAddress || 'Service location pending'}</span>
+      </div>
+      {request.additionalInfo && (
+        <p className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-[11px] font-medium text-slate-600">{request.additionalInfo}</p>
+      )}
+    </article>
   );
 }
