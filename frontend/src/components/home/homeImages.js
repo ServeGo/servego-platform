@@ -12,25 +12,25 @@ export const HERO_BG =
 
 // ── Verified Specialists On Demand (category cards) ──────────────────────────
 export const CATEGORY_IMAGES = {
-  'AC Repair': '/service-ac-repair.png',
-  'AC Repair & Service': '/service-ac-repair.png',
-  'Deep Home Cleaning': '/service-cleaning.png',
-  'Deep Cleaning': '/service-cleaning.png',
-  'Home Cleaning': '/service-cleaning.png',
-  Cleaning: '/service-cleaning.png',
-  Electrician: '/service-electrician.png',
-  'Electrical Repair': '/service-electrician.png',
-  Plumber: '/service-plumbing.png',
-  Plumbing: '/service-plumbing.png',
-  Carpentry: '/service-carpentry.png',
-  'Furniture Assembly': '/service-carpentry.png',
-  Chef: '/service-chef.png',
-  'Home Chef': '/service-chef.png',
-  Cooking: '/service-chef.png',
-  cooking: '/service-chef.png',
+  'AC Repair': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=700&q=85',
+  'AC Repair & Service': 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=700&q=85',
+  'Deep Home Cleaning': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=700&q=85',
+  'Deep Cleaning': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=700&q=85',
+  'Home Cleaning': 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?auto=format&fit=crop&w=700&q=85',
+  Cleaning: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?auto=format&fit=crop&w=700&q=85',
+  Electrician: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=700&q=85',
+  'Electrical Repair': 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=700&q=85',
+  Plumber: 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=700&q=85',
+  Plumbing: 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=700&q=85',
+  Carpentry: 'https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=700&q=85',
+  'Furniture Assembly': 'https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=700&q=85',
+  Chef: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85',
+  'Home Chef': 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85',
+  Cooking: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85',
+  cooking: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=700&q=85',
   Painting:
     'https://images.unsplash.com/photo-1562259929-b4e1fd3aef09?auto=format&fit=crop&w=600&q=80',
-  'Appliance Repair': '/service-appliance-repair.png',
+  'Appliance Repair': 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329517/servego/public/libj5xwayqp6hdxhw3pd.png',
   'Home Maintenance':
     'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
 };
@@ -41,14 +41,12 @@ export const CATEGORY_FALLBACK =
 
 export function getCategoryImage(name) {
   const normalizedName = String(name || '').trim().toLowerCase();
-  const matchedKey = Object.keys(CATEGORY_IMAGES).find(
-    (key) => key.toLowerCase() === normalizedName
-  );
-  return matchedKey ? CATEGORY_IMAGES[matchedKey] : CATEGORY_FALLBACK;
+  const key = Object.keys(CATEGORY_IMAGES).find((item) => item.toLowerCase() === normalizedName);
+  return key ? CATEGORY_IMAGES[key] : CATEGORY_FALLBACK;
 }
 
 // ── Live Tracking Showcase ───────────────────────────────────────────────────
-export const TRACKING_MAP = '/tracking-technician.png';
+export const TRACKING_MAP = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329516/servego/public/elvgllb287vgfwjjdcsg.jpg';
 export const TRACKING_PHONE =
   'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&w=400&q=80';
 
@@ -56,30 +54,30 @@ export const TRACKING_PHONE =
 export const BEFORE_AFTER = [
   {
     title: 'Spotless Finishes, Visible Transformation',
-    image: '/before-after-bathroom.png',
+    image: 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329513/servego/public/dspaonzfvlyo7hxbynca.jpg',
   },
   {
     title: 'Gleaming Surfaces, Deep-Cleaned & Shiny',
-    image: '/before-after-kitchen.png',
+    image: 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329513/servego/public/yj66iurcnlmx6t3r8gzc.jpg',
   },
 ];
 
 // ── Coverage Area ────────────────────────────────────────────────────────────
-export const COVERAGE_IMAGE = '/hyderabad-coverage.png';
+export const COVERAGE_IMAGE = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329503/servego/public/rca7ba3hy5gdgp27q1tp.jpg';
 
 // ── Quality Audit ────────────────────────────────────────────────────────────
 export const AUDIT_IMAGES = [
-  '/audit-verification.png',
-  '/audit-skills.png',
-  '/audit-safety.png',
-  '/audit-supervision.png',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329284/servego/images/quality-audit-background-verification.jpg',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329285/servego/images/quality-audit-skills-assessment.jpg',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329286/servego/images/quality-audit-safety-compliance.jpg',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329287/servego/images/quality-audit-on-job-supervision.jpg',
   'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=400&q=80',
 ];
 
 // ── Quality Guarantee ────────────────────────────────────────────────────────
 export const GUARANTEE_IMAGES = [
-  '/appliance-restoration.png',
-  '/household-care.png',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/w3iudhvztzn8ffipdtbb.jpg',
+  'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329502/servego/public/p5mhyrbya0xu6pc4pcod.jpg',
   'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=600&q=80',
 ];
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
+import { useSEO } from '../hooks/useSEO';
 import { api as apiClient } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
 import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
@@ -34,6 +35,28 @@ export const Services = ({ onNavigate }) => {
   } = useUI();
   const { searchServices, createBooking } = useData();
   const { currentUser } = useAuth();
+
+  useSEO({
+    title: 'Home Services in Hyderabad – Book Electrician, Plumber, AC Repair | ServeGo24',
+    description:
+      'Browse and book verified home service professionals in Hyderabad. Electricians, plumbers, AC technicians, cleaners, carpenters and more. Instant booking, transparent pricing.',
+    path: '/services',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      name: 'Home Services in Hyderabad',
+      description: 'On-demand home services available for booking in Hyderabad',
+      url: 'https://servego24.com/services',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Electrician Services', url: 'https://servego24.com/services?query=electrician' },
+        { '@type': 'ListItem', position: 2, name: 'Plumbing Services', url: 'https://servego24.com/services?query=plumber' },
+        { '@type': 'ListItem', position: 3, name: 'AC Repair & Service', url: 'https://servego24.com/services?query=ac+repair' },
+        { '@type': 'ListItem', position: 4, name: 'Home Cleaning', url: 'https://servego24.com/services?query=cleaning' },
+        { '@type': 'ListItem', position: 5, name: 'Carpentry Services', url: 'https://servego24.com/services?query=carpenter' },
+        { '@type': 'ListItem', position: 6, name: 'CCTV Installation', url: 'https://servego24.com/services?query=cctv' },
+      ],
+    },
+  });
 
   const [inputSearch, setInputSearch] = useState(searchQuery);
   const [results, setResults] = useState([]);

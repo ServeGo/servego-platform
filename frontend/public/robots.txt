@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+Allow: /services
+Allow: /faq
+Allow: /about
+Allow: /contact
+Allow: /join-as-provider
+
+# Block private/authenticated areas
+Disallow: /dashboard-customer
+Disallow: /dashboard-provider
+Disallow: /customer-home
+Disallow: /provider-home
+Disallow: /admin
+Disallow: /admin/
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+
+# Block API routes
+Disallow: /api/
+
+Sitemap: https://servego24.com/sitemap.xml

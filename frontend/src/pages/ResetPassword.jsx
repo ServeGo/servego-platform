@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AppContext';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 export function ResetPassword({ onNavigate }) {
+  useSEO({ title: 'Reset Password – ServeGo24', description: 'Set a new password for your ServeGo24 account.', path: '/reset-password', robots: 'noindex,nofollow' });
   const { resetPassword } = useAuth();
 
   const [token, setToken] = useState('');

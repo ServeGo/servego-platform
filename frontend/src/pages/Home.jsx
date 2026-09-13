@@ -1,20 +1,114 @@
 import React, { useState } from 'react';
 import { useData, useUI } from '../context/AppContext';
+import { useSEO } from '../hooks/useSEO';
 
 // Components
 import Hero from '../components/Hero';
 import CategoryGrid from '../components/CategoryGrid';
 import HowItWorks from '../components/HowItWorks';
-import TrustBanner from '../components/TrustBanner';
-import RealtimeFeatures from '../components/RealtimeFeatures';
 import SkeletonLoader from '../components/SkeletonLoader';
+import LiveTrackingShowcase from '../components/home/LiveTrackingShowcase';
+import BeforeAfterProof from '../components/home/BeforeAfterProof';
+import CoverageArea from '../components/home/CoverageArea';
+import QualityAudit from '../components/home/QualityAudit';
+import MarketplaceSections from '../components/home/MarketplaceSections';
 
-export const Home = ({ onNavigate }) => {
+const HOME_SCHEMA = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://servego24.com/#organization',
+      name: 'ServeGo24',
+      url: 'https://servego24.com',
+      logo: 'https://servego24.com/favicon.png',
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: '+91-1800-410-2026',
+        contactType: 'customer service',
+        areaServed: 'IN',
+        availableLanguage: ['English', 'Hindi', 'Telugu'],
+      },
+      sameAs: [
+        'https://www.instagram.com/servego_24/',
+        'https://www.linkedin.com/company/servego24',
+        'https://www.youtube.com/@servego24',
+      ],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://servego24.com/#website',
+      url: 'https://servego24.com',
+      name: 'ServeGo24',
+      description: 'On-demand home services marketplace in India',
+      publisher: { '@id': 'https://servego24.com/#organization' },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: 'https://servego24.com/services?query={search_term_string}',
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@type': 'LocalBusiness',
+      '@id': 'https://servego24.com/#localbusiness',
+      name: 'ServeGo24',
+      description:
+        'On-demand home services marketplace connecting customers with verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad.',
+      url: 'https://servego24.com',
+      telephone: '+91-1800-410-2026',
+      email: 'support@servego.com',
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: 'Mindspace',
+        addressLocality: 'Hyderabad',
+        addressRegion: 'Telangana',
+        postalCode: '500081',
+        addressCountry: 'IN',
+      },
+      geo: { '@type': 'GeoCoordinates', latitude: 17.4399, longitude: 78.3489 },
+      openingHoursSpecification: {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+        opens: '06:00',
+        closes: '22:00',
+      },
+      areaServed: [
+        { '@type': 'City', name: 'Hyderabad' },
+        { '@type': 'City', name: 'Secunderabad' },
+      ],
+      hasOfferCatalog: {
+        '@type': 'OfferCatalog',
+        name: 'Home Services',
+        itemListElement: [
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Electrician Services' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Plumbing Services' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'AC Repair & Service' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Home Cleaning' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Carpentry Services' } },
+          { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'CCTV Installation' } },
+        ],
+      },
+    },
+  ],
+};
+
+export const Home = ({ onNavigate, onBecomePartner }) => {
   const {
     selectedArea, setArea,
     searchQuery, setSearchQuery, setCategory,
   } = useUI();
   const { providers, services, servicesLoading } = useData();
+
+  useSEO({
+    title: 'ServeGo24 \u2013 Home Services in Hyderabad | Book Electrician, Plumber, AC Repair',
+    description:
+      'Book verified electricians, plumbers, AC technicians, cleaners and more in Hyderabad. ServeGo24 connects you with trusted local professionals. Fast dispatch, transparent pricing.',
+    path: '/',
+    schema: HOME_SCHEMA,
+  });
 
   const [inputQuery, setInputQuery] = useState(searchQuery);
 
@@ -22,7 +116,6 @@ export const Home = ({ onNavigate }) => {
     e.preventDefault();
     setSearchQuery(inputQuery);
     setCategory(null);
-    // Encode query params into the URL so the Services page can read them on mount
     const params = new URLSearchParams();
     if (inputQuery.trim()) params.set('query', inputQuery.trim());
     if (selectedArea) params.set('location', selectedArea);
@@ -36,24 +129,28 @@ export const Home = ({ onNavigate }) => {
     onNavigate('services');
   };
 
+  const handleQuickSearch = (term) => {
+    setInputQuery(term);
+    setSearchQuery(term);
+    onNavigate('services');
+  };
+
   const handleSeeAll = () => {
     setCategory(null);
     onNavigate('services');
   };
 
-  // Live services come from the API (includes activeSpecialistCount). While the
-  // first load is in flight we render a skeleton grid so the page never flashes
-  // the "no services" empty state before data actually arrives.
   const hasServices = Array.isArray(services) && services.length > 0;
+
   return (
-    <div id="home-page" className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_12%_24%,_rgba(20,184,166,0.1),_transparent_24%),radial-gradient(circle_at_88%_58%,_rgba(245,158,11,0.08),_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f5_100%)]">
+    <div id="home-page" className="min-h-screen overflow-hidden bg-[#f8f9ff]">
       <Hero
         onSearch={handleSearchSubmit}
         selectedArea={selectedArea}
         setArea={setArea}
         inputQuery={inputQuery}
         setInputQuery={setInputQuery}
-        services={services}
+        onQuickSearch={handleQuickSearch}
       />
 
       {servicesLoading && !hasServices ? (
@@ -75,12 +172,15 @@ export const Home = ({ onNavigate }) => {
         />
       )}
 
+      <LiveTrackingShowcase />
+      <BeforeAfterProof />
+      <CoverageArea />
+      <QualityAudit />
       <HowItWorks />
-
-      <TrustBanner onBrowse={() => onNavigate('services')} />
-
-      <RealtimeFeatures />
-
+      <MarketplaceSections
+        onBrowse={() => onNavigate('services')}
+        onBecomePartner={onBecomePartner || (() => onNavigate('signup'))}
+      />
     </div>
   );
 };

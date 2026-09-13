@@ -15,7 +15,7 @@
     "migrate:photos": "node scripts/migrate-photos-to-cloudinary.js"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0",
+    "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
@@ -33,6 +33,11 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.0",
-    "prisma": "^5.20.0"
+    "prisma": "^5.22.0"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "prisma@5.22.0": true
   }
 }
