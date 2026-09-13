@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { redistributeAfterDecline } from '../services/quotationService.js';
+import prisma from '../prisma/client.js';
+import { redistributeAfterDecline, declineQuotation } from '../services/quotationService.js';
 
 // Pure unit tests (no DB): `redistributeAfterDecline` accepts a `client`, so a
 // mock lets us pin down the re-broadcast behaviour without a database. The
@@ -66,8 +67,10 @@ function makeClient({ acceptedRows = [], knownProviders = [], booking = {} }) {
         update: async ({ data }) => {
           calls.bookingUpdate = data;
           return { id: 'b1', ...data };
-        }
+        },
+        updateMany: async () => ({ count: 1 })
       },
+      bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
       bookingEvent: { create: async () => ({}) },
       providerPerformance: {
         update: async () => ({}),
@@ -180,4 +183,114 @@ test('keeps the ACCEPTED marker on previously declined assignments so later roun
   assert.deepEqual(acceptedClose.data, { isCurrent: false });
   assert.equal(rejectRest.where.status, undefined);
   assert.equal(rejectRest.data.status, 'REJECTED');
+});
+
+// ---- BLOCKER 5: decline-cancel writes must stay inside the transaction ------
+// The lead-cancel, offer-close and final booking read after a decline-without-
+// replacement used to go through the OUTER `client` (i.e. `prisma` itself) —
+// auto-committing OUTSIDE `withClientTransaction`'s atomic unit. A later
+// transaction rollback would then stranding a CANCELLED lead under a CONFIRMED
+// booking. The regression: every one of those writes goes through `tx`, and the
+// whole decline runs in a SINGLE transaction (`$transaction` invoked once).
+
+async function withPrismaStubs(stubs, fn) {
+  const originals = new Map();
+  for (const [key, value] of Object.entries(stubs)) {
+    originals.set(key, prisma[key]);
+    prisma[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, original] of originals) prisma[key] = original;
+  }
+}
+
+function makeDeclineTx() {
+  let booking = {
+    id: 'b1',
+    status: 'CONFIRMED',
+    customerId: 'c1',
+    providerId: 'p1',
+    serviceCategory: 'Plumbing',
+    serviceId: null,
+    serviceLatitude: null,
+    serviceLongitude: null,
+    statusHistory: [],
+    lead: { id: 'lead-1', bookingId: 'b1', status: 'ACCEPTED' }
+  };
+  const quotation = { id: 'q1', bookingId: 'b1', providerId: 'p1', status: 'SUBMITTED' };
+  const txCalls = { leadUpdates: 0, offerCloses: 0, bookingReads: 0 };
+  const tx = {
+    adminConfig: { findUnique: async () => null },
+    booking: {
+      findUnique: async () => {
+        txCalls.bookingReads += 1;
+        return booking;
+      },
+      updateMany: async ({ data }) => {
+        if (data.status === 'CANCELLED') booking = { ...booking, ...data };
+        return { count: 1 };
+      }
+    },
+    quotation: {
+      findFirst: async () => quotation,
+      updateMany: async () => ({ count: 1 })
+    },
+    bookingEvent: { create: async () => ({}) },
+    bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
+    provider: { findUnique: async () => ({ userId: 'pu1' }) },
+    wallet: {
+      findUnique: async () => ({ id: 'w1', userId: 'c1', balance: 0, totalCredited: 0, totalDebited: 0, totalEarned: 0 }),
+      update: async ({ data }) => ({ id: 'w1', ...data }),
+      create: async (args) => ({ id: 'w1', balance: 0, ...args.data })
+    },
+    walletTransaction: { create: async () => ({}) },
+    lead: {
+      update: async () => {
+        txCalls.leadUpdates += 1;
+        return { id: 'lead-1' };
+      }
+    },
+    leadAssignmentHistory: {
+      findMany: async () => [],
+      updateMany: async () => {
+        txCalls.offerCloses += 1;
+        return { count: 0 };
+      }
+    },
+    $executeRaw: async () => {}
+  };
+  return { tx, txCalls };
+}
+
+test('BLOCKER 5: decline-without-replacement cancels the lead + closes offers inside the SAME transaction (single atomic unit)', async () => {
+  const { tx, txCalls } = makeDeclineTx();
+  const escapes = { lead: 0, offers: 0, finalReads: 0, transactions: 0 };
+
+  await withPrismaStubs(
+    {
+      $transaction: async (fn) => {
+        escapes.transactions += 1;
+        return fn(tx);
+      },
+      // Outer-prisma stubs: if any decline write leaks through `client`, it lands
+      // here instead of the real DB, is recorded, and the assertions fail.
+      lead: { update: async () => { escapes.lead += 1; return { id: 'lead-1' }; } },
+      leadAssignmentHistory: {
+        findMany: async () => { escapes.offers += 1; return []; },
+        updateMany: async () => ({ count: 0 })
+      },
+      booking: { findUnique: async () => { escapes.finalReads += 1; return null; } }
+    },
+    () => declineQuotation({ bookingId: 'b1', actorId: 'c1', anotherProvider: false })
+  );
+
+  assert.equal(escapes.transactions, 1, 'the whole decline runs in ONE transaction — cancelOpenOffers must NOT open a second one');
+  assert.equal(txCalls.leadUpdates, 1, 'the lead is cancelled through tx');
+  assert.equal(txCalls.offerCloses, 1, 'open offers are closed through tx');
+  assert.equal(txCalls.bookingReads, 2, 'both the initial load and the returned booking are read through tx');
+  assert.equal(escapes.lead, 0, 'lead.update must never go through the outer prisma');
+  assert.equal(escapes.offers, 0, 'cancelOpenOffers must never go through the outer prisma');
+  assert.equal(escapes.finalReads, 0, 'the final booking read must never go through the outer prisma');
 });

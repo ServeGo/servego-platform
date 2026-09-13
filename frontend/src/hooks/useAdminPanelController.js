@@ -184,15 +184,14 @@ export function useAdminPanelController() {
     setIsSubmittingService(true);
     const resp = await createService(payload);
 
-    if (!resp?.id && !resp?.createdAt) {
+    if (resp?.error || (!resp?.data?.id && !resp?.id)) {
       setServiceAddError(resp?.message || resp?.error || 'Failed to create service.');
       setIsSubmittingService(false);
       return;
     }
 
-    // Keep the button locked on "Submitting…" until the modal auto-closes so
-    // there is never a silent gap between the request finishing and the close.
     setServiceAddSuccess('Service added successfully.');
+    setIsSubmittingService(false);
     setTimeout(() => {
       setServiceAddSuccess('');
       closeAddService();
@@ -226,14 +225,15 @@ export function useAdminPanelController() {
     setIsSubmittingService(true);
     const resp = await updateService(editServiceId, payload);
 
-    const updated = resp?.service || resp?.data?.service || resp;
-    if (resp?.error || !updated?.id) {
+    // apiClient unwraps { success, data } → data is { service: { id } } for updates
+    if (resp?.error || (!resp?.service?.id && !resp?.data?.id && !resp?.id)) {
       setServiceEditError(resp?.message || resp?.error || 'Failed to update service.');
       setIsSubmittingService(false);
       return;
     }
 
     setServiceEditSuccess('Service updated successfully.');
+    setIsSubmittingService(false);
     setTimeout(() => {
       setServiceEditSuccess('');
       closeEditService();

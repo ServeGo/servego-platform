@@ -5,6 +5,7 @@ import { startBookingWork, findEligibleProviders, cancelOpenOffers } from './lea
 import { recordLeadsOffered } from './providerPerformanceService.js';
 import { buildStatusHistory, normalizeBookingStatus } from '../utils/workflow.js';
 import { appendStatusHistory } from '../utils/statusHistory.js';
+import { clearLocationHistory } from './trackingService.js';
 
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
@@ -40,11 +41,11 @@ export function round2(value) {
 }
 
 /**
- * Commission tiers (platform share of the quotation total). Admin-configurable
+ * Commission (platform share of the quotation total). Admin-configurable
  * via AdminConfig key `commissionTiers` — an array of
  * `{ min, max, rate }` buckets; `max` is the inclusive upper bound of the
- * bucket and the last bucket may omit `max`. Default:
- *   0 – 5000 → 15%    5000 – 10000 → 17.5%    10000 – 20000 → 20%    20000+ → 22.5%
+ * bucket and the last bucket may omit `max`. Default: a flat 10% on the
+ * whole total, regardless of amount.
  */
 export async function getCommissionTiers(client = prisma) {
   const tiers = await getConfig('commissionTiers', null, client);
@@ -56,10 +57,7 @@ export async function getCommissionTiers(client = prisma) {
     }));
   }
   return [
-    { min: 0, max: 5000, rate: 0.15 },
-    { min: 5000, max: 10000, rate: 0.175 },
-    { min: 10000, max: 20000, rate: 0.2 },
-    { min: 20000, max: null, rate: 0.225 }
+    { min: 0, max: null, rate: 0.1 }
   ];
 }
 
@@ -79,8 +77,8 @@ export function computeCommission(totalAmount, tiers) {
 
 /** The fixed service fee charged to the customer when a quotation is declined. */
 export async function getServiceFeeDefault(client = prisma) {
-  const fee = Number(await getConfig('serviceFeeDefault', 199, client));
-  return Number.isFinite(fee) && fee >= 0 ? fee : 199;
+  const fee = Number(await getConfig('serviceFeeDefault', 249, client));
+  return Number.isFinite(fee) && fee >= 0 ? fee : 249;
 }
 
 /**
@@ -357,16 +355,24 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
       }
     });
 
+    // Decline-without-replacement kills the trip — purge pings + live fix inside
+    // the same transaction.
+    await clearLocationHistory({ bookingId, client: tx });
+
     if (booking.lead) {
-      await client.lead.update({
+      // These writes must stay INSIDE the `withClientTransaction` unit — going
+      // through the outer `client` auto-commits them independently, so a later
+      // rollback of this transaction would leave the lead/offers cancelled while
+      // the booking (and both wallet entries) revert. All writes go through `tx`.
+      await tx.lead.update({
         where: { id: booking.lead.id },
         data: { status: 'CANCELLED', lastRejectReason: 'CUSTOMER_DECLINED_QUOTATION' }
       });
-      await cancelOpenOffers({ leadId: booking.lead.id, reason: 'CUSTOMER_DECLINED_QUOTATION', client });
+      await cancelOpenOffers({ leadId: booking.lead.id, reason: 'CUSTOMER_DECLINED_QUOTATION', client: tx });
     }
 
     return {
-      booking: await client.booking.findUnique({ where: { id: bookingId } }),
+      booking: await tx.booking.findUnique({ where: { id: bookingId } }),
       quotation,
       lead: booking.lead,
       handled: false,
@@ -446,6 +452,9 @@ export async function redistributeAfterDecline({ booking, lead, providerIdToExcl
       where: { id: lead.id },
       data: { status: 'EXPIRED', lastRejectReason: 'NO_OTHER_PROVIDER_AFTER_QUOTATION_DECLINED' }
     });
+    // No one else will service the trip — drop its pings + stale live fix in
+    // the same transaction.
+    await clearLocationHistory({ bookingId: booking.id, client });
     return { nextProvider: null, settled: true, cancelled: true, booking: updatedBooking };
   }
 

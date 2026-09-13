@@ -81,6 +81,24 @@ export const FEATURE_FLAGS = {
     valueType: 'string',
     default: '',
     public: true
+  },
+  liveTrackingCustomers: {
+    key: 'liveTrackingCustomers',
+    label: 'Live Tracking (Customers)',
+    description: 'When ON, customers see the provider\u2019s live-tracking map in place of the plain service address on active bookings. When OFF, the service address is shown as usual.',
+    category: 'Tracking',
+    valueType: 'boolean',
+    default: true,
+    public: true
+  },
+  liveTrackingProviders: {
+    key: 'liveTrackingProviders',
+    label: 'Live Tracking (Providers)',
+    description: 'When ON, the provider\u2019s Active Duty card shows the live-tracking map in place of the service address. When OFF, the service address is shown as usual.',
+    category: 'Tracking',
+    valueType: 'boolean',
+    default: false,
+    public: true
   }
 };
 

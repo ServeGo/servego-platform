@@ -37,7 +37,7 @@ const isPin = (value) => isFiniteCoord(value?.latitude) && isFiniteCoord(value?.
  * Emits `onChange({ latitude, longitude, address })`. A location is only
  * "chosen" once confirmed — callers should gate submit on that.
  */
-export default function LocationPicker({ value = {}, onChange, error, height = 'h-64 sm:h-80' }) {
+export default function LocationPicker({ value = {}, onChange, error, height = 'h-64 sm:h-80', onConfirmState }) {
   const mapRef = useRef(null);
   const containerRef = useRef(null);
   const userDotRef = useRef(null);
@@ -61,9 +61,16 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
   const [geoNotice, setGeoNotice] = useState('');
   const [isDragging, setIsDragging] = useState(false);
 
+  // Lift the "chosen or not" state up so a parent modal can disable Save until
+  // the picked pin has been confirmed (prevents committing a stale location).
+  const notifyConfirmed = (v) => {
+    setConfirmed(v);
+    if (onConfirmState) onConfirmState(v);
+  };
+
   const emitChange = useCallback((lat, lng, addr) => {
     centerRef.current = { lat, lng };
-    setConfirmed(true);
+    notifyConfirmed(true);
     if (onChange) onChange({ latitude: lat, longitude: lng, address: addr });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -206,6 +213,12 @@ export default function LocationPicker({ value = {}, onChange, error, height = '
     map.on('dragstart', () => {
       preserveAddressRef.current = false;
       setIsDragging(true);
+      // The pin moved — the previously confirmed spot is no longer valid. Reset
+      // "confirmed" so the user re-confirms the new centre before it commits.
+      // (Saved-pin edits used to keep confirmed=true forever, so the drag
+      // silently updated the preview address while the parent saved the OLD
+      // coordinates — "the address was not storing".)
+      notifyConfirmed(false);
     });
     map.on('dragend', () => setIsDragging(false));
     map.on('moveend', () => {

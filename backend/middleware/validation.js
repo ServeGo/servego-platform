@@ -33,7 +33,7 @@ export const registerValidation = [
   body('email')
     .trim()
     .notEmpty().withMessage('Please enter your email address')
-    .isEmail().withMessage('Please enter a valid email address')
+    .matches(/^[^\s@]+@gmail\.com$/i).withMessage('Please enter a valid Gmail address (example@gmail.com)')
     .normalizeEmail()
     .isLength({ max: 255 }).withMessage('Email address is too long'),
   body('phone')
@@ -78,7 +78,7 @@ export const loginValidation = [
   body('email')
     .trim()
     .notEmpty().withMessage('Please enter your email address')
-    .isEmail().withMessage('Please enter a valid email address')
+    .matches(/^[^\s@]+@gmail\.com$/i).withMessage('Please enter a valid Gmail address (example@gmail.com)')
     .normalizeEmail(),
   body('password')
     .notEmpty().withMessage('Please enter your password')
@@ -486,7 +486,7 @@ export const forgotPasswordValidation = [
   body('email')
     .trim()
     .notEmpty().withMessage('Please enter your email address')
-    .isEmail().withMessage('Please enter a valid email address')
+    .matches(/^[^\s@]+@gmail\.com$/i).withMessage('Please enter a valid Gmail address (example@gmail.com)')
     .normalizeEmail()
 ];
 

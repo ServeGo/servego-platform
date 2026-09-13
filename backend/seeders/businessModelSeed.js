@@ -1,11 +1,11 @@
 import prisma from '../prisma/client.js';
 
 export const PROVIDER_LEVEL_DEFAULTS = [
-  { level: 'BRONZE', minJobs: 0, discountPercent: 0, description: 'Every verified provider starts at Bronze.' },
-  { level: 'SILVER', minJobs: 5, discountPercent: 5, description: 'Reach Silver after 5 completed jobs.' },
-  { level: 'GOLD', minJobs: 15, discountPercent: 10, description: 'Reach Gold after 15 completed jobs.' },
-  { level: 'PLATINUM', minJobs: 45, discountPercent: 15, description: 'Reach Platinum after 45 completed jobs.' },
-  { level: 'DIAMOND', minJobs: 60, discountPercent: 20, description: 'Reach Diamond after 60 completed jobs.' }
+  { level: 'BRONZE', minJobs: 0, incentivePercent: 0, description: 'Every verified provider starts at Bronze. Levels reset at the start of each month.' },
+  { level: 'SILVER', minJobs: 5, incentivePercent: 5, description: 'Reach Silver after 5 completed jobs this month — 5% of those jobs\' commission is credited to your wallet.' },
+  { level: 'GOLD', minJobs: 15, incentivePercent: 10, description: 'Reach Gold after 15 completed jobs this month — 10% of the jobs in this band\'s commission is credited to your wallet.' },
+  { level: 'PLATINUM', minJobs: 45, incentivePercent: 15, description: 'Reach Platinum after 45 completed jobs this month — 15% of the jobs in this band\'s commission is credited to your wallet.' },
+  { level: 'DIAMOND', minJobs: 60, incentivePercent: 20, description: 'Reach Diamond after 60 completed jobs this month — 20% of the jobs in this band\'s commission is credited to your wallet.' }
 ];
 
 export const ADMIN_CONFIG_DEFAULTS = [
@@ -17,7 +17,8 @@ export const ADMIN_CONFIG_DEFAULTS = [
   { key: 'locationTrackingEnabled', value: true, description: 'Master switch for live provider location sharing on active bookings.' },
   { key: 'etaBaseSpeedKph', value: 30, description: 'Average provider travel speed (km/h) used to estimate arrival time from straight-line distance.' },
   { key: 'locationUpdateMinIntervalSeconds', value: 3, description: 'Minimum interval (seconds) between persisted location pings per booking.' },
-  { key: 'locationHistoryClearanceHours', value: 24, description: 'Location ping history retention window (hours); older pings are pruned after a booking closes.' },
+  // Location pings are NOT retained after close: they are deleted the moment a
+  // booking completes or is cancelled (and swept periodically as a fail-safe).
 
   // Wallet
   { key: 'walletEnabled', value: true, description: 'Master switch for the credits wallet (provider earnings, referral bonuses, refunds).' },
@@ -28,8 +29,7 @@ export const ADMIN_CONFIG_DEFAULTS = [
   // Referrals
   { key: 'referralBonusAmount', value: 250, description: 'Referral bonus (₹) credited to a new user when a referral code is applied.' },
 
-  // Platform controls (admin Settings): maintenance + feature flags
-  { key: 'maintenanceMode', value: false, description: 'When on, the public API returns 503 (admin routes, login and feature-flag reads stay up).' },
+  // Platform controls (admin Settings): feature flags
   { key: 'newFeatureEnabled', value: false, description: 'Show the "what\u2019s new" announcement banner to the selected audience.' },
   { key: 'newFeatureAudience', value: 'customer', description: 'Who sees the announcement: customer or provider.' },
   { key: 'newFeatureText', value: '', description: 'The announcement banner message.' },

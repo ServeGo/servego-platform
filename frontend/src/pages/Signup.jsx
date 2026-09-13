@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from 'react';
+import React, { useState, useRef, Suspense, lazy } from 'react';
 import { useAuth } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import Logo from '../components/Logo';
@@ -22,9 +22,12 @@ import {
   EyeOff
 } from 'lucide-react';
 
-const inputClass =
-  'w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-teal-600 focus:bg-white rounded-xl pl-10 pr-3 py-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 transition-all outline-none focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:ring-offset-1';
+const inputBase =
+  'w-full bg-slate-50 border rounded-xl pl-10 pr-3 py-2.5 text-xs font-semibold text-slate-800 placeholder:text-slate-400 transition-all outline-none focus-visible:ring-2 focus-visible:ring-offset-1';
+const inputClass = `${inputBase} border-slate-200 hover:border-slate-300 focus:border-teal-600 focus:bg-white focus-visible:ring-teal-500/50`;
+const inputErrorClass = `${inputBase} border-rose-300 bg-rose-50 hover:border-rose-400 focus:border-rose-500 focus-visible:ring-rose-500/50`;
 const labelClass = 'block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1.5';
+const fieldErrorText = 'mt-1 text-[10px] font-bold text-rose-600';
 
 function FieldIcon({ icon: Icon }) {
   return (
@@ -60,7 +63,18 @@ export function Signup({ onNavigate }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const [fieldErrors, setFieldErrors] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
+  const formTopRef = useRef(null);
+
+  const clearFieldError = (field) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -98,16 +112,20 @@ export function Signup({ onNavigate }) {
   };
 
   const validateCommon = () => {
-    if (!fullName.trim() || fullName.trim().length < 2) return 'Please enter your full name.';
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      return 'Please enter a valid email address.';
+    const errors = {};
+    if (!fullName.trim() || fullName.trim().length < 2)
+      errors.fullName = 'Please enter your full name (at least 2 characters).';
+    if (!email.trim() || !/^[^\s@]+@gmail\.com$/i.test(email.trim()))
+      errors.email = 'Please enter a valid Gmail address (example@gmail.com).';
     if (!mobileNumber.trim() || !/^[+]?[\d\s-]{10,15}$/.test(mobileNumber.trim()))
-      return 'Please enter a valid mobile number (10 digits or more).';
+      errors.mobileNumber = 'Please enter a valid mobile number (10 digits or more).';
     if (!password || password.length < 8 || !/[a-z]/.test(password) || !/\d/.test(password))
-      return 'Password must be at least 8 characters and include a lowercase letter and a number.';
-    if (password !== confirmPassword) return 'Password and Confirm Password must match.';
-    if (!acceptedTerms) return 'You must agree to the Terms & Conditions to continue.';
-    return null;
+      errors.password = 'Password must be at least 8 characters with a lowercase letter and a number.';
+    if (password !== confirmPassword)
+      errors.confirmPassword = 'Password and Confirm Password must match.';
+    if (!acceptedTerms)
+      errors.acceptedTerms = 'You must agree to the Terms & Conditions.';
+    return Object.keys(errors).length > 0 ? errors : null;
   };
 
   const validateLocation = () => {
@@ -121,16 +139,21 @@ export function Signup({ onNavigate }) {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setFieldErrors({});
 
-    const commonError = validateCommon();
-    if (commonError) {
-      setErrorMsg(commonError);
+    const commonErrors = validateCommon();
+    if (commonErrors) {
+      setFieldErrors(commonErrors);
+      setErrorMsg('Please fix the errors below and try again.');
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     const locError = validateLocation();
     if (locError) {
       setLocationError(locError);
+      setFieldErrors({ location: locError });
       setErrorMsg('Please complete your service location.');
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     setIsLoading(true);
@@ -155,6 +178,7 @@ export function Signup({ onNavigate }) {
 
     if (result && !result.success) {
       setErrorMsg(result.error || 'Failed to complete registration.');
+      setFieldErrors({});
       return;
     }
 
@@ -186,7 +210,7 @@ export function Signup({ onNavigate }) {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-5 sm:p-7">
+        <div ref={formTopRef} className="bg-white rounded-2xl border border-slate-200 shadow-lg p-5 sm:p-7">
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-800 text-xs font-semibold flex items-start gap-2">
               <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -287,10 +311,11 @@ export function Signup({ onNavigate }) {
                   required
                   placeholder="e.g. Ravi Kumar"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className={inputClass}
+                  onChange={(e) => { setFullName(e.target.value); clearFieldError('fullName'); }}
+                  className={fieldErrors.fullName ? inputErrorClass : inputClass}
                 />
               </div>
+              {fieldErrors.fullName && <p className={fieldErrorText}>{fieldErrors.fullName}</p>}
             </div>
 
             <div>
@@ -302,10 +327,11 @@ export function Signup({ onNavigate }) {
                   required
                   placeholder={isProvider ? 'provider@gmail.com' : 'customer@gmail.com'}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={inputClass}
+                  onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
+                  className={fieldErrors.email ? inputErrorClass : inputClass}
                 />
               </div>
+              {fieldErrors.email && <p className={fieldErrorText}>{fieldErrors.email}</p>}
             </div>
 
             <div>
@@ -317,10 +343,11 @@ export function Signup({ onNavigate }) {
                   required
                   placeholder="e.g. 9848022311"
                   value={mobileNumber}
-                  onChange={(e) => setMobileNumber(e.target.value)}
-                  className={inputClass}
+                  onChange={(e) => { setMobileNumber(e.target.value); clearFieldError('mobileNumber'); }}
+                  className={fieldErrors.mobileNumber ? inputErrorClass : inputClass}
                 />
               </div>
+              {fieldErrors.mobileNumber && <p className={fieldErrorText}>{fieldErrors.mobileNumber}</p>}
             </div>
 
             {/* Mandatory location for both roles */}
@@ -370,8 +397,8 @@ export function Signup({ onNavigate }) {
                     required
                     placeholder="Enter password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`${inputClass} pr-10`}
+                    onChange={(e) => { setPassword(e.target.value); clearFieldError('password'); }}
+                    className={`${fieldErrors.password ? inputErrorClass : inputClass} pr-10`}
                   />
                   <button
                     type="button"
@@ -383,6 +410,7 @@ export function Signup({ onNavigate }) {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {fieldErrors.password && <p className={fieldErrorText}>{fieldErrors.password}</p>}
               </div>
 
               <div>
@@ -394,8 +422,8 @@ export function Signup({ onNavigate }) {
                     required
                     placeholder="Confirm password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`${inputClass} pr-10`}
+                    onChange={(e) => { setConfirmPassword(e.target.value); clearFieldError('confirmPassword'); }}
+                    className={`${fieldErrors.confirmPassword ? inputErrorClass : inputClass} pr-10`}
                   />
                   <button
                     type="button"
@@ -407,20 +435,24 @@ export function Signup({ onNavigate }) {
                     {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {fieldErrors.confirmPassword && <p className={fieldErrorText}>{fieldErrors.confirmPassword}</p>}
               </div>
             </div>
 
-            <label className="flex items-start gap-2 text-[10px] font-semibold text-slate-600 leading-relaxed cursor-pointer">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(e) => setAcceptedTerms(e.target.checked)}
-                className="mt-0.5 w-3.5 h-3.5 accent-teal-700 cursor-pointer"
-              />
-              <span>
-                I agree to the <span className="text-slate-900 font-extrabold">Terms &amp; Conditions</span>
-              </span>
-            </label>
+            <div>
+              <label className="flex items-start gap-2 text-[10px] font-semibold text-slate-600 leading-relaxed cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => { setAcceptedTerms(e.target.checked); clearFieldError('acceptedTerms'); }}
+                  className="mt-0.5 w-3.5 h-3.5 accent-teal-700 cursor-pointer"
+                />
+                <span>
+                  I agree to the <span className="text-slate-900 font-extrabold">Terms &amp; Conditions</span>
+                </span>
+              </label>
+              {fieldErrors.acceptedTerms && <p className={fieldErrorText}>{fieldErrors.acceptedTerms}</p>}
+            </div>
 
             <button
               type="submit"

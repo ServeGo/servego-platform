@@ -16,9 +16,9 @@ const getStoredAuthToken = () => {
   }
 };
 
-// Keep as the last-resort fallback target when the primary (deployed) socket
-// cannot establish a connection.
-const LOCAL_SOCKET_URL = 'http://localhost:4000';
+// Realtime target comes exclusively from the build environment (VITE_SOCKET_URL).
+// There is no fallback target — production browsers must never be pointed at a
+// locally fixed address.
 
 // Live-location throttle: browser GPS fixes can arrive ~1/sec, but pushing every
 // tick over the socket/REST is wasteful. A fix is only sent when enough time has
@@ -74,8 +74,15 @@ export const RealtimeProvider = ({ children }) => {
       return undefined;
     }
 
+    // No configured socket target means the production build was misconfigured.
+    // Fail visibly instead of silently connecting to the wrong origin.
+    if (!SOCKET_URL) {
+      console.error('[Realtime] VITE_SOCKET_URL is not set — realtime updates disabled.');
+      setConnectionStatus('offline');
+      return undefined;
+    }
+
     let socket;
-    let triedLocalSocket = false;
     let disposed = false;
 
     const connectSocket = (url) => {
@@ -239,14 +246,6 @@ export const RealtimeProvider = ({ children }) => {
       });
 
       socket.on('connect_error', (err) => {
-        if (!triedLocalSocket && !disposed && url === SOCKET_URL) {
-          // Keep Render as the first and only primary socket target. Localhost
-          // is attempted only after Render cannot establish a connection.
-          triedLocalSocket = true;
-          socket.disconnect();
-          connectSocket(LOCAL_SOCKET_URL);
-          return;
-        }
         setConnectionStatus('reconnecting');
         console.warn('Socket connect error:', err?.message || err);
       });

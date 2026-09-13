@@ -184,6 +184,31 @@ export default function AdminFeatureFlagsTab() {
             </div>
           </Card>
         </div>
+      <div className="space-y-3">
+          <h3 className="text-sm font-black uppercase tracking-wider text-slate-600">Tracking</h3>
+          {flags.filter((f) => f.category === 'Tracking' && f.valueType === 'boolean').map((f) => (
+            <Card key={f.key}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold text-slate-900">{f.label}</p>
+                  <p className="text-slate-500 text-xs mt-1">{f.description}</p>
+                </div>
+                <ToggleButton
+                  label={f.label}
+                  value={f.value === true}
+                  saving={savingKey === f.key}
+                  onToggle={() => save(f.key, f.value !== true)}
+                />
+              </div>
+              <span className={`mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider rounded-full px-2.5 py-1 border ${
+                f.value === true ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${f.value === true ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                {f.value === true ? 'Live tracking shown in place of service address' : 'Service address shown as usual'}
+              </span>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );

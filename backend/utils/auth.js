@@ -1,10 +1,28 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import process from 'node:process';
 
 dotenv.config();
 
-const SECRET = process.env.JWT_SECRET || 'servego-dev-secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${SECRET}-refresh`;
+const DEFAULT_DEV_SECRET = 'servego-dev-secret';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Single source of truth for the JWT signing secrets. In production a missing
+// or weak secret must stop the server instead of silently using the public
+// dev fallback (which would let anyone forge tokens). Local/test environments
+// keep the fallback so the dev workflow and test suite work unchanged.
+function resolveSecret(key, devFallback) {
+  const value = process.env[key]?.trim();
+  if (value && value.length >= 16) return value;
+  if (isProduction) {
+    throw new Error(`[Auth] ${key} is not set — refusing to boot in production. Set a strong ${key} in the deploy environment.`);
+  }
+  console.warn(`[Auth] ${key} not set — using the insecure development fallback. Set ${key} before deploying to production.`);
+  return devFallback;
+}
+
+export const SECRET = resolveSecret('JWT_SECRET', DEFAULT_DEV_SECRET);
+export const REFRESH_SECRET = resolveSecret('JWT_REFRESH_SECRET', `${DEFAULT_DEV_SECRET}-refresh`);
 const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRY || '15m';
 const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 

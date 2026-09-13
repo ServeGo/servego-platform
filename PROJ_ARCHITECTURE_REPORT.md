@@ -9,7 +9,7 @@
 1. [High-level architecture](#1-high-level-architecture)
 2. [Repository layout](#2-repository-layout)
 3. [Backend stack & request lifecycle](#3-backend-stack--request-lifecycle)
-4. [API surface (135 routes)](#4-api-surface-135-routes)
+4. [API surface (140 routes)](#4-api-surface-140-routes)
 5. [Security, validation & middleware](#5-security-validation--middleware)
 6. [Auth & token model](#6-auth--token-model)
 7. [Data layer (Prisma)](#7-data-layer-prisma)
@@ -55,26 +55,26 @@ servego-platform/
 ├── package.json               # root orchestration (dev: all, build: frontend)
 ├── package-lock.json
 ├── AGENTS.md                  # permanent engineering rules (authored separately)
-├── API_LIST_GET_POST_GROUPED.md  # generated API reference (135 routes)
+├── API_LIST_GET_POST_GROUPED.md  # generated API reference (140 routes)
 ├── PROJ_ARCHITECTURE_REPORT.md   # this document
 ├── backend/
 │   ├── server.js              # bootstrap: express, socket.io, queue, timers
-│   ├── routes/api.js          # all 135 REST routes
+│   ├── routes/api.js          # all 140 REST routes
 │   ├── controllers/           # 26 controllers (HTTP layer)
-│   ├── middleware/            # 5 middleware modules
-│   ├── services/              # 22 service modules (incl. queue/)
+│   ├── middleware/            # 4 middleware modules
+│   ├── services/              # 23 service modules (19 top-level + 4 queue/)
 │   ├── utils/                 # 12 shared utilities
 │   ├── prisma/
 │   │   ├── schema.prisma      # 37 models + 22 enums
-│   │   ├── migrations/        # 51 migrations
+│   │   ├── migrations/        # 54 migrations
 │   │   └── seed.js            # dev seed
 │   ├── seeders/               # servicesSeed + businessModelSeed (idempotent)
 │   ├── scripts/               # photo migration script
-│   └── tests/                 # node --test suites (17 files)
+│   └── tests/                 # node --test suites (19 files)
 └── frontend/
     ├── src/
     │   ├── main.jsx, App.jsx  # router + role-based layout
-    │   ├── context/           # Auth, Data, Realtime, UI, Toast, App
+    │   ├── context/           # Auth, Data, Realtime, UI, Toast, FeatureFlags, App
     │   ├── pages/             # 14 entry pages + admin/ (tab router + 14 lazy tabs)
     │   ├── components/        # shared + admin + provider components (54 files)
     │   └── utils/             # apiClient, serializers, watermarks, etc. (8 files)
@@ -95,7 +95,7 @@ helmet → hpp → cors (getCorsConfig) → general rate limiter
 → trailing-slash 301 normalization
 → GET /api/health (DB liveness; 503 when DB unreachable)
 → GET /api/versions (uncached version registry)
-→ /api/v1/* via maintenanceMode + apiRouter (135 routes)
+→ /api/v1/* via apiRouter (140 routes)
 → 404 JSON { success:false, code:'NOT_FOUND', ... }
 → global errorHandler (last)
 ```
@@ -105,7 +105,7 @@ business model if empty, starts the auto-cancel cron, schedules lead-expiry time
 recovers interruped queue jobs, then starts the queue workers. Graceful shutdown
 drains the queue and disconnects Prisma.
 
-## 4) API surface (135 routes)
+## 4) API surface (140 routes)
 
 100 % of routes live in `backend/routes/api.js` and are exposed under `/api/v1`. The
 grouped reference (methods, paths, access roles, validation) is generated from that
@@ -120,7 +120,7 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Notifications | `GET/POST /notifications`, `PATCH .../read`, `PATCH /read-all`, `DELETE /notifications` |
 | Alerts | `GET /alerts`, `DELETE /alerts/:id`, `DELETE /alerts` (temporary, deleted once reviewed) |
 | Tickets | `GET/POST /tickets`, `POST /support-tickets` (optional auth), admin resolve/status |
-| Reviews | `POST /reviews`, `GET /providers/:id/reviews`, admin list/delete |
+| Reviews | `POST /reviews`, `GET /providers/:id/reviews`, `GET /bookings/:id/review` (view a review for one booking), admin list/delete |
 | Referrals | `POST /referrals/apply`, `GET /referrals/me`, `POST /referrals/generate` |
 | Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /categories/:slug`, admin CRUD, `GET /admin/services` (ops list incl. hidden) |
 | Leads | `GET /leads`, `GET /leads/:id`, `PATCH /leads/:id/{view,accept,reject}` |
@@ -142,7 +142,6 @@ slots.
 - `middleware/security.js` — helmet config, HPP, general + per-domain rate limiters
   (`authRateLimiter`, `bookingRateLimiter`, `reviewRateLimiter`, `supportTicketRateLimiter`).
 - `middleware/logging.js` — request logger, global error handler, 60s request timeout (504).
-- `middleware/maintenance.js` — whole-surface 503 toggle, except admin/login/public feature flags.
 - `middleware/upload.js` — multer image upload (size/type checks).
 - `middleware/validation.js` — express-validator rule bundles per endpoint
   (`registerValidation`, `loginValidation`, `createBookingValidation`, etc.) plus the
@@ -157,6 +156,11 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
 
 - Passwords: bcrypt (cost 12). Access token: 15 min JWT (`JWT_SECRET`), refresh: 7 d
   (`JWT_REFRESH_SECRET`), refresh tokens are opaque JWT (no server-side session store).
+  JWTs carry a stable `sub` (user id) + `iss`; the refresh flow validates allowed
+  token `type` and an `absoluteExpiry` claim before issuing a new access token.
+- `normalizeEmail` whitelists gmail/company mailbox patterns (`GMAIL_VALID_RE`) so
+  vanity/business addresses are rejected up front; verification codes are 4-digit
+  emails.
 - `register` accepts `role` customer or provider:
   - **Customer:** requires address + pincode, creates `Customer` profile + wallet-less
     user, issues a 4-digit email `verificationCode`.
@@ -172,10 +176,15 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
 - Frontend keeps tokens in localStorage via `utils/apiClient.js` (`setTokens`,
   `clearTokens`, `initializeTokens`, automatic 401 refresh retry) and restores session
   through `/auth/me`.
+- User-facing identifiers (`BOOKING → SG24-0001`, `CUSTOMER → CID-0001`,
+  `PROVIDER → PID-0001`, `SERVICE → SG24-0001`) are minted by `utils/businessNumber.js`
+  from the `BusinessSequenceCounter` table with an atomic increment; on first use the
+  counter is seeded/upserted from the highest existing row so legacy data never
+  collides.
 
 ## 7) Data layer (Prisma)
 
-37 models, 22 enums, 51 migrations, all indexes defined as `@@index` in
+37 models, 22 enums, 54 migrations, all indexes defined as `@@index` in
 `schema.prisma` and mirrored by migration SQL (naming `Table_col1_col2_idx`).
 
 Key models:
@@ -195,8 +204,16 @@ Key models:
   `PromotionHistory`, `CancellationReason`.
 - `Wallet`, `WalletTransaction`, `WalletWithdrawalRequest` (payout loop).
 - `PermanentServiceRequest` (permanent/contract requests), `AvailabilitySlot`.
-- `Job` + `JobStatus` (durable queue), `PlatformDailyStat`, `BookingInvoice`.
+- `Job` + `JobStatus` (durable queue), `PlatformDailyStat`, `BookingInvoice`,
+  `BusinessSequenceCounter`.
 - `AdminConfig` (business config keys), `ProviderBadge`, `BadgeType`.
+
+Recent data-layer additions: `PromotionHistory` carries monthly-incentive fields
+(`monthKey`, `commissionBase`, `incentiveAmount`) with a unique
+`(providerId, monthKey, toLevel)` index so a level-up is credited once per cycle;
+`ProviderLevelRule.discountPercent` was renamed `incentivePercent` and now means the
+% of platform commission credited back on level-up; the `WalletTransactionCategory`
+enum gained `LEVEL_INCENTIVE` (`monthly_level_incentives` migration).
 
 Index strategy (rule 13): composite indexes match leading columns of queries the app
 actually runs — `Provider(accountStatus,isVerified)`, `ProviderService(serviceId,status)`,
@@ -229,7 +246,10 @@ PENDING → CONFIRMED → ONGOING → COMPLETED
 
 - Controllers never write `booking.status` directly; transitions run through
   `BookingController.transition(nextStatus)` which normalizes aliases and validates the
-  legal transition, or through the guarded service functions.
+  legal transition, or through the guarded service functions. Transitions are
+  role-guarded (only the provider may `ON_THE_WAY`/`ARRIVED`/start-work; only the
+  customer may confirm an accepted quotation; only the provider may accept/decline a
+  quotation), and `PENDING → CONFIRMED` requires the accepted provider.
 - Idempotency (rule 18): a transition only succeeds from the expected current state; a
   second identical call is a no-op/409, never a duplicate write. Derived rows
   (invoice, performance, notification) are queue-side with `dedupeKey` or unique-key
@@ -240,7 +260,13 @@ PENDING → CONFIRMED → ONGOING → COMPLETED
   through the queue with `INV-BKG-YYYYMMDD-######`. Live phase steps are idempotent
   (`markProviderOnTheWay`/`markProviderArrived` return `alreadyDone` and skip
   re-notification/regression on repeat calls) and the frontend collapses consecutive
-  same-status timeline entries (`dedupeConsecutive`).
+  same-status timeline entries (`dedupeConsecutive`). A cancelled booking renders its
+  cancellation reason + refuted status in the timeline instead of a dead card.
+- Booking-tracked location history is purged when a trip is over: decline-without-
+  replacement, last-provider decline, and completion all call
+  `clearLocationHistory` (from `services/trackingService.js`) inside the same
+  transaction that settles the booking, so stale pings/live fixes never survive with
+  the booking row. Every page of `BookingLocationUpdate` is deleted.
 - Accepted-quotation billing uses `debitWalletAllowNegative` (tab-style); completion
   emits analytics + invoice via the queue.
 
@@ -354,8 +380,15 @@ Admin-configurable marketplace (`AdminConfig`, `ProviderLevelRule`):
 
 - Level rules drive provider thresholds/completed-job counts; `providerLevelService`
   recomputes levels; `PromotionHistory` records level-based promotions; analytics
-  surfaces cancellation (byActor/byReason) and promotion stats.
+  surfaces cancellation (byActor/byReason) and promotion stats. Monthly level
+  incentives credit a % of the platform commission back to the provider wallet
+  (`LEVEL_INCENTIVE` transaction) once per `(provider, monthKey, toLevel)`, with a
+  cooldown guard so a just-recomputed level-up is not re-credited.
 - Lead pricing/fees and withdrawal limits are config keys, not code.
+- Platform commission is a **flat 10%** default (`commissionTiers` config key still
+  accepts `{ min, max, rate }` buckets; default is one `0 – ∞ → 10%` bucket). The
+  fixed service fee charged to customers on declined quotations is ₹249 default
+  (`serviceFeeDefault`). Both are AdminConfig overrides, not code.
 - The business-model seed (`seeders/businessModelSeed.js`) creates config + level-row
   defaults if absent. There is no subscription or premium-SECTOR plan anymore — every
   provider is `GENERAL` and all approved services are treated equally.
@@ -383,25 +416,29 @@ signup (self-serve) → PENDING service request → admin approve/deny
 ## 17) Frontend architecture
 
 React 19 + Vite 6 + Tailwind 4, `Capacitor`-aware (Android wrapper dep), lucide icons,
-socket.io-client, MapLibre GL (OSM tiles, keyless) for maps. Routing is a custom
-state-based switch in `App.jsx` (`currentPage`), no react-router dependency.
+socket.io-client. Map stack is per-context: **MapLibre GL** (OSM tiles, keyless) powers
+`LocationPicker`; **Leaflet 1.9 + OSRM** (loaded as CDN tags in `index.html`) powers
+`LiveTrackingMap` for zero-cost, keyless live tracking + driving routes. Routing is a
+custom state-based switch in `App.jsx` (`currentPage`), no react-router dependency.
 
 - `App.jsx` — router + role-based shell; `RESTRICTED_ROUTES` = dashboard-customer,
   dashboard-provider, admin; role-aware landing (`getDefaultDashboardForRole`).
 - **Code splitting (rule 15, extended from the admin-tab pattern):** every page is a
-  `React.lazy` chunk, loaded only when the user opens it. The heavy map components
-  `LocationPicker` and `LiveTrackingMap` are lazy too, so the MapLibre GL dependency
-  (~952 kB min / ~249 kB gzip, plus its ~70 kB CSS) is fetched only when a map is
-  actually rendered. Result: the entry chunk dropped from ~1.6 MB to ~352 kB (gzip
-  ~103 kB). `PageFallback` (page switch) and `MapLoadingFallback` (map slot) keep the
-  UI populated while a chunk loads instead of flashing blank.
+  `React.lazy` chunk, loaded only when the user opens it. `LiveTrackingMap` is lazy
+  (Leaflet is loaded as a CDN tag in `index.html`, so only the component code is
+  fetched on demand); `LocationPicker` remains lazy (`maplibre-gl` stays in the Vite
+  bundle, ~952 kB min / ~249 kB gzip, fetched only when a picker renders).
+  `PageFallback` (page switch) and `MapLoadingFallback` (map slot) keep the UI
+  populated while a chunk loads instead of flashing blank.
 - Admin panel: 14 tabs lazily loaded per active tab via
   `pages/admin/AdminPanelTabsRouter.jsx` (each 3–48 kB after minification).
 - Contexts (`context/AppContext.jsx` re-exports): `AuthContext` (session, tokens,
   `registerUser`/`loginUser` → `/auth/*`), `DataContext` (services, providers, bookings,
   leads, wallet, admin data; optimistic-but-reconciled mutations for safe ops only),
   `RealtimeContext` (socket lifecycle + watermarked resync per rule 23), `UIContext`,
-  `ToastContext`.
+  `ToastContext`, `FeatureFlagsContext` (public feature flags fetched once on mount from
+  `GET /feature-flags/public`; consumers read boolean flags like
+  `liveTrackingCustomers`/`liveTrackingProviders` to gate UI without extra fetches).
 - Pages: Home, Services (booking flow lives here — engagement choice, checkout,
   and success overlays open directly from "Book Now" on a service card),
   CustomerDashboard,
@@ -419,6 +456,16 @@ state-based switch in `App.jsx` (`currentPage`), no react-router dependency.
   consecutive same-status events via `dedupeConsecutive`) and the 3-slot address
   normalizer `normalizeSavedAddresses` (folds legacy duplicates onto HOME/OFFICE/OTHER);
   `normalizeAdminData.js`; `exportExcel.js`.
+- **Live tracking gating (feature flags):** `BookingCard` renders the customer-side
+  `LiveTrackingMap` only when `liveTrackingCustomers` is on AND the booking is in an
+  active phase (ON_THE_WAY/ARRIVED/started); `ProviderLeadsInbox` renders the same full
+  map in the Active Duty card when `liveTrackingProviders` is on. When off, the card
+  shows the service address as before. Address-editor saves are gated on the map pin
+  being explicitly confirmed (`LocationPicker.onConfirmState`) so a dragged-but-
+  unconfirmed pin never commits a stale location.
+- Dashboard/admin tabs are URL-backed (tab state in the URL hash) so refresh/navigation
+  keeps the active tab; the cancelled-booking card shows the cancellation reason + a
+  neutral "Cancelled" paywall rather than a dead row.
 - Loading UX (rule 15): `SkeletonLoader`, skeleton/empty states per screen, inline
   "Processing…" for long-running flows, lazy-chunk fallbacks above; optimistic UI only
   for trivial reversible toggles (favourites) — payments, cancellations and withdrawals
@@ -429,7 +476,11 @@ state-based switch in `App.jsx` (`currentPage`), no react-router dependency.
 - `utils/runtimeConfig.js` — port, CORS origins (dev allows localhost, env override),
   env-driven.
 - `services/featureFlagsService.js` — runtime toggles + announcement banner, exposed
-  publicly (`/feature-flags/public`) and editable by admin.
+  publicly (`/feature-flags/public`) and editable by admin. Live-tracking flags:
+  `liveTrackingCustomers` (default `true`) and `liveTrackingProviders` (default
+  `false`) — both public, `Tracking` category — gate whether the customer booking
+  card and the provider Active Duty card render the live map instead of the service
+  address. The frontend mirrors them via `FeatureFlagsContext`.
 - `AdminConfig` keys — business config (withdrawal limits, lead fees, radius default,
   timers). Read caches are invalidated on write.
 - `.env` variables used: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
@@ -448,13 +499,15 @@ Backend (`backend/package.json`): `npm start` (node), `npm run dev` (nodemon),
 Root `package.json`: `npm run dev` (concurrently backend+frontend), `npm run build`
 (frontend), `install:all`.
 
-Tests live in `backend/tests/*.test.js`: `alertService`, `auth`, `availability`,
+Tests live in `backend/tests/*.test.js` (19 files): `alertService`, `auth`,
 `bookingFlow` (mock-DB e2e, 24 cases driving the full lead → booking pipeline against a
 stubbed Prisma client and asserting the five booking business rules: broadcast to every
 eligible provider, `MAX_OPEN_LEADS = 2` cap by `groupBy`, one-lead-at-a-time + offer
-closing on accept, duplicate-service 409 `CUSTOMER_BUSY`, and the ranking order), `featureFlags`,
-`integration`, `maps`, `pagination`, `queue`, `quotationDecline`, `response`,
-`runtimeConfig`, `search`, `serializers`, `socketAuth`, `tracking`, `workflow`. Most are
+closing on accept, duplicate-service 409 `CUSTOMER_BUSY`, and the ranking order),
+`featureFlags`, `integration`, `locationCleanup` (purging tracked locations on trip
+settlement), `maps`, `pagination`, `providerLevelIncentive` (monthly incentive credit
+rules + cooldown), `queue`, `quotationDecline`, `response`, `runtimeConfig`, `search`,
+`serializers`, `socketAuth`, `socketMetrics`, `tracking`, `workflow`. Most are
 pure unit tests with mocked clients; `queue.test.js` is DB-backed and auto-skips when
 Postgres is offline. `node --test` runs each file in its own process.
 
@@ -493,15 +546,18 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 
 ## 21) Project metrics
 
-- 26 controllers, 22 service modules (incl. queue), 12 utils, 5 middleware modules.
-- 37 Prisma models, 22 enums, 51 migrations.
-- 135 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
-- 17 test files (16 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases).
+- 26 controllers, 23 service modules (19 top-level + 4 queue), 11 utils,
+  4 middleware modules.
+- 37 Prisma models, 22 enums, 54 migrations.
+- 140 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
+- 19 test files (18 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases)
+  and the newer `locationCleanup` / `providerLevelIncentive` suites.
 - Frontend: 29 page files (14 entry pages + admin tab router + 14 lazy tab chunks),
-  54 components, 6 contexts, 8 utils.
+  54 components, 7 contexts, 8 utils.
 - Frontend bundles: entry chunk ~352 kB (gzip ~103 kB); everything else is on demand —
-  `maplibre-gl` shared chunk ~952 kB (gzip ~249 kB, fetched only when a map renders),
-  `exportExcel` ~285 kB, admin tabs 3–48 kB, pages 3–77 kB each.
+  `maplibre-gl` shared chunk ~952 kB (gzip ~249 kB, fetched only when a LocationPicker
+  renders), Leaflet runs entirely off a CDN tag, `exportExcel` ~285 kB,
+  admin tabs 3–48 kB, pages 3–77 kB each.
 
 ## 22) Known gaps & next steps
 
@@ -523,3 +579,8 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
   Neon DB, and `tracking.test.js`'s purge step hits the `BookingEvent_bookingId_fkey`
   RESTRICT (5 pre-existing failures). Prefer pure unit tests with the mocked-client
   pattern of `bookingFlow.test.js`/`quotationDecline.test.js`.
+- Tracked-location cleanup depends on `clearLocationHistory` being called on each
+  settlement path (decline/redistribute/complete); adding a new exit transition must
+  not forget the purge, or stale pings linger behind a re-used booking.
+- Frontend map identity is split (MapLibre for the picker vs Leaflet CDN for
+  tracking) — a future move to a single engine should preserve the zero-API-key cost.

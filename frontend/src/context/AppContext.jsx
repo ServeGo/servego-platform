@@ -4,6 +4,7 @@ import { UIProvider, useUI } from './UIContext';
 import { DataProvider, useData } from './DataContext';
 import { ToastProvider, useToast } from './ToastContext';
 import { RealtimeProvider, useRealtime } from './RealtimeContext';
+import { FeatureFlagsProvider, useFeatureFlags } from './FeatureFlagsContext';
 
 /**
  * Composition root for all global state, split by responsibility:
@@ -13,10 +14,11 @@ import { RealtimeProvider, useRealtime } from './RealtimeContext';
  *   DataProvider   -> server/data state + data actions
  *   ToastProvider  -> transient toast notifications
  *   RealtimeProvider -> socket connection + live tracking state
+ *   FeatureFlagsProvider -> public runtime toggles (live tracking on/off)
  *
  * Pages consume only the slice they need via the granular hooks
- * (useAuth / useUI / useData / useRealtime). `useApp` is kept as a
- * backwards-compatible facade that merges every slice.
+ * (useAuth / useUI / useData / useRealtime / useFeatureFlags). `useApp` is kept
+ * as a backwards-compatible facade that merges every slice.
  */
 export const AppProvider = ({ children }) => (
   <AuthProvider>
@@ -24,7 +26,9 @@ export const AppProvider = ({ children }) => (
       <DataProvider>
         <ToastProvider>
           <RealtimeProvider>
-            {children}
+            <FeatureFlagsProvider>
+              {children}
+            </FeatureFlagsProvider>
           </RealtimeProvider>
         </ToastProvider>
       </DataProvider>
@@ -38,6 +42,7 @@ export const useApp = () => ({
   ...useData(),
   ...useToast(),
   ...useRealtime(),
+  ...useFeatureFlags(),
 });
 
-export { useAuth, useUI, useData, useToast, useRealtime };
+export { useAuth, useUI, useData, useToast, useRealtime, useFeatureFlags };

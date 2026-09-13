@@ -239,7 +239,7 @@ export default function Navbar({
             <button
               onClick={() => {
                 setProviderActiveTab('leads');
-                handleLinkClick('dashboard-provider');
+                handleLinkClick('dashboard-provider', 'leads');
               }}
               className={`hover:text-slate-900 cursor-pointer py-1 ${
                 currentPage === 'dashboard-provider' ? 'text-indigo-700 border-b-2 border-indigo-700' : ''
@@ -250,7 +250,7 @@ export default function Navbar({
             <button
               onClick={() => {
                 setProviderActiveTab('reviews');
-                handleLinkClick('dashboard-provider');
+                handleLinkClick('dashboard-provider', 'reviews');
               }}
               className={`hover:text-slate-900 cursor-pointer py-1 ${
                 currentPage === 'dashboard-provider' && providerActiveTab === 'reviews' ? 'text-indigo-700 border-b-2 border-indigo-700' : ''
@@ -354,6 +354,7 @@ export default function Navbar({
                       onClick={() => {
                         setUserDropdownOpen(false);
                         setProviderActiveTab('profile');
+                        handleLinkClick('dashboard-provider', 'profile');
                       }}
                       className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block"
                     >
@@ -363,6 +364,7 @@ export default function Navbar({
                       onClick={() => {
                         setUserDropdownOpen(false);
                         setProviderActiveTab('support');
+                        handleLinkClick('dashboard-provider', 'support');
                       }}
                       className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block"
                     >
@@ -406,7 +408,7 @@ export default function Navbar({
             <button
               onClick={() => {
                 setCustomerActiveTab('bookings');
-                handleLinkClick('dashboard-customer');
+                handleLinkClick('dashboard-customer', 'bookings');
               }}
               className={`hover:text-teal-700 cursor-pointer py-1 ${currentPage === 'dashboard-customer' ? 'text-teal-750 border-b-2 border-teal-700' : ''}`}
             >
@@ -499,8 +501,8 @@ export default function Navbar({
 
                   <div className="space-y-1 font-semibold text-slate-700">
                     <button onClick={() => { setUserDropdownOpen(false); handleLinkClick('services'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Services</button>
-                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('bookings'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Dashboard</button>
-                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('profile'); handleLinkClick('dashboard-customer'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Profile Account</button>
+                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('bookings'); handleLinkClick('dashboard-customer', 'bookings'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Dashboard</button>
+                    <button onClick={() => { setUserDropdownOpen(false); setCustomerActiveTab('profile'); handleLinkClick('dashboard-customer', 'profile'); }} className="w-full text-left py-1 px-1.5 hover:bg-slate-50 rounded block">Profile Account</button>
                     <button onClick={handleSignOutAction} className="w-full text-left py-1 px-1.5 hover:bg-rose-50 text-rose-600 rounded font-bold flex items-center gap-1 mt-1 transition-colors">
                       <LogOut className="w-3.5 h-3.5" />
                       <span>Logout</span>

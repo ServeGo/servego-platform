@@ -13,6 +13,7 @@ import { normalizeBookingStatus } from '../utils/workflow.js';
 import { consumeAlertsByData } from './alertService.js';
 import { nextBusinessNumber } from '../utils/businessNumber.js';
 import { appendStatusHistory } from '../utils/statusHistory.js';
+import { clearLocationHistory } from './trackingService.js';
 
 // A provider may hold at most this many open leads offers (NEW/VIEWED) at once.
 // Declining or accepting one frees a slot for the next eligible lead.
@@ -97,7 +98,13 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
           city: booking.city,
           instructions: booking.instructions,
           amount: booking.amount,
-          providerPhase: booking.providerPhase
+          providerPhase: booking.providerPhase,
+          serviceLatitude: booking.serviceLatitude ?? null,
+          serviceLongitude: booking.serviceLongitude ?? null,
+          endLocation: booking.endLocation ?? null,
+          providerLatitude: booking.providerLatitude ?? null,
+          providerLongitude: booking.providerLongitude ?? null,
+          providerLocationUpdatedAt: booking.providerLocationUpdatedAt ?? null
         }
       : null,
     provider: provider
@@ -761,8 +768,8 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
     // Per-booking platform charges take the form of a commission on the
     // accepted quotation total (tiered, admin-configurable). The customer pays
     // the provider DIRECTLY (cash/offline) — servego24 is not part of that
-    // exchange — so the platform's 15% cut is charged as a wallet DEBIT to the
-    // provider. If the wallet has no cover the balance runs NEGATIVE: that
+    // exchange — so the platform's commission (tiered, 10% base rate) is
+    // charged as a wallet DEBIT to the provider. If the wallet has no cover the balance runs NEGATIVE: that
     // outstanding amount must be cleared before the provider receives any new
     // lead (see `findEligibleProviders` — negative wallets are excluded).
     const amount = Number(booking.amount) || 0;
@@ -824,6 +831,11 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
         data: { status: 'COMPLETED', actionAt: new Date() }
       });
     }
+
+    // The trip is over — every recorded ping of this booking is worthless now.
+    // Delete the rows (and the stale live fix) inside this transaction so the
+    // completed booking can never leave location crumbs behind.
+    await clearLocationHistory({ bookingId, client: tx });
 
     return {
       booking: updated,
@@ -986,6 +998,10 @@ async function settleLeadInTx({ leadId, booking, reason = 'NO_PROVIDER', client,
         note: 'No available provider accepted the request.'
       }
     });
+
+    // Cancel makes the trip over too — drop the pings and stale live fix in the
+    // same transaction so an auto-cancelled booking keeps no location data.
+    await clearLocationHistory({ bookingId: booking.id, client });
   }
 
   return { nextProvider: null, lead, booking: updatedBooking ?? booking, exhausted: true, settled: true };
@@ -1015,7 +1031,14 @@ export async function redistributeLead({ leadId, reason = 'REJECTED', details = 
  */
 export async function rejectLead({ leadId, providerId, reason, client = prisma }) {
   return withClientTransaction(client, async (tx) => {
-    const lead = await tx.lead.findUnique({ where: { id: leadId } });
+    // Must load the booking relation: `settleLeadInTx` cancels the booking when
+    // the last open offer is withdrawn, and the re-point below reassigns the
+    // booking's owner — both need `lead.booking`. Without `include` the booking
+    // stays PENDING forever after the final provider declines.
+    const lead = await tx.lead.findUnique({
+      where: { id: leadId },
+      include: { booking: true }
+    });
     if (!lead) throw serviceError('LEAD_NOT_FOUND', 'Lead not found.');
     if (['ACCEPTED', 'COMPLETED'].includes(lead.status)) {
       throw serviceError('LEAD_SETTLED', 'This lead has already been accepted.');
@@ -1165,6 +1188,10 @@ export async function listProviderLeads(providerId, client = prisma) {
           providerPhase: true,
           serviceLatitude: true,
           serviceLongitude: true,
+          endLocation: true,
+          providerLatitude: true,
+          providerLongitude: true,
+          providerLocationUpdatedAt: true,
           createdAt: true,
           quotations: {
             orderBy: { createdAt: 'desc' },

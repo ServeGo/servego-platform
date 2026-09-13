@@ -19,6 +19,10 @@ export function ForgotPassword({ onNavigate }) {
       setErrorMsg('Please enter your email address.');
       return;
     }
+    if (!/^[^\s@]+@gmail\.com$/i.test(email.trim())) {
+      setErrorMsg('Please enter a valid Gmail address (example@gmail.com).');
+      return;
+    }
 
     setIsLoading(true);
     const result = await forgotPassword(email);

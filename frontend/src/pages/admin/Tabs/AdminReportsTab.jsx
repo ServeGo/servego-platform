@@ -244,12 +244,12 @@ export default function AdminReportsTab() {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">All Bookings ({bookingsTotal})</span>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               {bookingsLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
               <button
                 onClick={() => handleExport('bookings')}
                 disabled={exporting === 'bookings' || bookingsTotal === 0}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+                className="flex shrink-0 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 {exporting === 'bookings' ? 'Exporting...' : 'Export Excel'}
@@ -262,8 +262,8 @@ export default function AdminReportsTab() {
             <p className="text-slate-400 text-xs italic p-6 text-center">No bookings found.</p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full min-w-[720px] text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       {['Booking ID', 'Customer', 'Provider', 'Service', 'Date', 'Status'].map(h => (
@@ -294,7 +294,7 @@ export default function AdminReportsTab() {
               </div>
 
               {bookingsTotalPages > 1 && (
-                <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-t border-slate-100">
                   <span className="text-[10px] text-slate-400 font-semibold">
                     Page {bookingsPage} of {bookingsTotalPages}
                   </span>
@@ -325,12 +325,12 @@ export default function AdminReportsTab() {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">All Providers ({providersTotal})</span>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               {providersLoading && <span className="text-[10px] text-slate-400 font-semibold">Loading...</span>}
               <button
                 onClick={() => handleExport('providers')}
                 disabled={exporting === 'providers' || providersTotal === 0}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+                className="flex shrink-0 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 {exporting === 'providers' ? 'Exporting...' : 'Export Excel'}
@@ -343,8 +343,8 @@ export default function AdminReportsTab() {
             <p className="text-slate-400 text-xs italic p-6 text-center">No providers found.</p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full min-w-[720px] text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       {['Name', 'Category', 'Rating', 'Jobs Done', 'Verified', 'Joined'].map(h => (
@@ -372,7 +372,7 @@ export default function AdminReportsTab() {
               </div>
 
               {providersTotalPages > 1 && (
-                <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-t border-slate-100">
                   <span className="text-[10px] text-slate-400 font-semibold">
                     Page {providersPage} of {providersTotalPages}
                   </span>
@@ -403,12 +403,12 @@ export default function AdminReportsTab() {
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
             <span className="text-sm font-extrabold text-slate-900">Audit Log</span>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <span className="text-[10px] text-slate-400 font-semibold">{auditTotal} total entries</span>
               <button
                 onClick={() => handleExport('audit')}
                 disabled={exporting === 'audit' || auditTotal === 0}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
+                className="flex shrink-0 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-1.5 rounded-lg transition-all"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 {exporting === 'audit' ? 'Exporting...' : 'Export Excel'}
@@ -421,8 +421,8 @@ export default function AdminReportsTab() {
             <p className="text-slate-400 text-xs italic p-6 text-center">No audit log entries yet.</p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full min-w-[900px] text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       {['Actor', 'Action', 'Provider / Customer', 'Old Value', 'New Value', 'Date'].map(h => (
@@ -453,7 +453,7 @@ export default function AdminReportsTab() {
               </div>
 
               {auditTotalPages > 1 && (
-                <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-t border-slate-100">
                   <span className="text-[10px] text-slate-400 font-semibold">
                     Page {auditPage} of {auditTotalPages}
                   </span>

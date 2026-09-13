@@ -8,6 +8,11 @@ import { socketMetrics } from './socketMetrics.js';
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
 
+// Terminal statuses. A closed booking has no use for its raw pings or its stale
+// live fix — both are deleted the moment the booking closes (transition sites)
+// and any straggler rows are swept periodically by the background job.
+const CLOSED_STATUSES = ['COMPLETED', 'CANCELLED'];
+
 // In-memory live-tracking registry, keyed by booking id. The socket path is a
 // fast broadcast channel: latest coords live here so the room can be fed from
 // memory between persistence ticks, and PostgreSQL only touches a booking when
@@ -333,8 +338,7 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
     locationSharingActive,
     distanceKm: distanceKm != null ? Number(distanceKm.toFixed(2)) : null,
     etaMinutes,
-    routePolyline,
-    historyRetainedHours: Number(await getConfig('locationHistoryClearanceHours', 24)) || 24
+    routePolyline
   };
 }
 
@@ -359,16 +363,39 @@ export async function getBookingLocationHistory({ bookingId, userId, role, limit
 }
 
 /**
- * Prune location history after the configured retention window. Called when a
- * booking is completed/cancelled to bound storage.
+ * Clear ALL location data for a closed booking: every `BookingLocationUpdate`
+ * ping plus the stale live fix on the Booking row. Runs inline at every
+ * terminal transition (completion, cancellation via the booking/lead/quotation
+ * close paths) so no pings outlive the trip they describe. Idempotent — a
+ * second call matches zero rows and returns cleared: 0.
  */
 export async function clearLocationHistory({ bookingId, client = prisma }) {
-  const clearanceHours = Math.max(1, Number(await getConfig('locationHistoryClearanceHours', 24)) || 24);
-  const cutoff = new Date(Date.now() - clearanceHours * 60 * 60 * 1000);
-  const result = await client.bookingLocationUpdate.deleteMany({
-    where: { bookingId, recordedAt: { lt: cutoff } }
-  });
-  return { cleared: result.count };
+  const [pings] = await Promise.all([
+    client.bookingLocationUpdate.deleteMany({ where: { bookingId } }),
+    client.booking.updateMany({
+      where: { id: bookingId },
+      data: { providerLatitude: null, providerLongitude: null, providerLocationUpdatedAt: null }
+    })
+  ]);
+  return { cleared: pings.count };
+}
+
+/**
+ * Background fail-safe: delete every location ping (and clear the live fix)
+ * belonging to a booking that is already COMPLETED or CANCELLED. Catches any
+ * close path that was missed or interrupted before the inline purge ran.
+ */
+export async function sweepClosedLocationHistory({ client = prisma } = {}) {
+  const [pings, fixes] = await Promise.all([
+    client.bookingLocationUpdate.deleteMany({
+      where: { booking: { status: { in: CLOSED_STATUSES } } }
+    }),
+    client.booking.updateMany({
+      where: { status: { in: CLOSED_STATUSES }, providerLatitude: { not: null } },
+      data: { providerLatitude: null, providerLongitude: null, providerLocationUpdatedAt: null }
+    })
+  ]);
+  return { cleared: pings.count, liveFixesCleared: fixes.count };
 }
 
 function trackingError(code, message) {

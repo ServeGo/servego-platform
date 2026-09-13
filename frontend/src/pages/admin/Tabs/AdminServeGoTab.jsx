@@ -4,7 +4,6 @@ import {
   Crown,
   Inbox,
   Gauge,
-  BarChart3,
   Save,
   ChevronLeft,
   ChevronRight,
@@ -13,78 +12,56 @@ import {
   Search,
   RefreshCw,
   X,
-  Wallet,
-  Banknote,
-  ThumbsUp,
-  ThumbsDown,
   ShieldCheck,
   FileSpreadsheet
 } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
-import { cachedRequest, invalidateCache } from '../../../utils/requestCache';
 import { exportAllPages } from '../../../utils/exportExcel';
 
 const PAGE_SIZE = 15;
 
-const fmtDate = (d) => {
-  if (!d) return '—';
-  const date = new Date(d);
+const STATUS_STYLES = {
+  NEW: 'bg-sky-50 border-sky-200 text-sky-700',
+  VIEWED: 'bg-indigo-50 border-indigo-200 text-indigo-700',
+  ACCEPTED: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  REJECTED: 'bg-rose-50 border-rose-200 text-rose-700',
+  EXPIRED: 'bg-slate-100 border-slate-300 text-slate-600',
+  COMPLETED: 'bg-teal-50 border-teal-200 text-teal-700',
+  CANCELLED: 'bg-amber-50 border-amber-200 text-amber-700'
+};
+
+const fmtDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? '—'
-    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const fmtMoney = (v) => {
-  const n = Number(v || 0);
-  return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
+const fmtMoney = (value) => {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? `₹${amount.toLocaleString('en-IN')}` : '—';
 };
 
-const pct = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
-
-const STATUS_STYLES = {
-  NEW: 'bg-amber-100 border-amber-300 text-amber-800',
-  VIEWED: 'bg-sky-100 border-sky-300 text-sky-800',
-  ACCEPTED: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-  REJECTED: 'bg-rose-100 border-rose-300 text-rose-800',
-  EXPIRED: 'bg-slate-100 border-slate-300 text-slate-600',
-  TRANSFERRED: 'bg-indigo-100 border-indigo-300 text-indigo-800',
-  COMPLETED: 'bg-emerald-100 border-emerald-300 text-emerald-800'
+const pct = (value) => {
+  const ratio = Number(value);
+  return Number.isFinite(ratio) ? `${Math.round(ratio * 100)}%` : '—';
 };
-
-const CONFIG_SCHEMA = {
-  cancellationPenaltyScore: {
-    type: 'number',
-    label: 'Cancellation Penalty Score',
-    description: 'Penalty score added per provider-initiated cancellation.',
-    default: 30
-  }
-};
-
-function normalizeConfigValue(schema, raw) {
-  const type = schema.type;
-  if (type === 'boolean') return raw === true || raw === 'true';
-  if (type === 'number') return Number(raw || 0);
-  if (type === 'list') return Array.isArray(raw) ? raw : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  return raw;
-}
 
 export default function Adminservego24Tab() {
-  const [tab, setTab] = useState('config');
+  const [tab, setTab] = useState('levels');
 
   const tabs = [
-    { id: 'config', label: 'Config' },
     { id: 'levels', label: 'Level Rules' },
     { id: 'leads', label: 'Leads' },
-    { id: 'performance', label: 'Provider Performance' },
-    { id: 'wallet', label: 'Wallet' },
-    { id: 'analytics', label: 'Analytics' }
+    { id: 'performance', label: 'Provider Performance' }
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">servego24 Business Model</h2>
-        <p className="text-slate-500 text-xs">Lead marketplace configuration, level rules, and marketplace analytics.</p>
+        <p className="text-slate-500 text-xs">Lead marketplace configuration, level rules, and provider performance.</p>
       </div>
 
       <div className="flex gap-1 bg-white border border-slate-200 p-1 rounded-2xl w-full overflow-x-auto">
@@ -99,138 +76,9 @@ export default function Adminservego24Tab() {
         ))}
       </div>
 
-      {tab === 'config' && <ConfigSection />}
       {tab === 'levels' && <LevelRulesSection />}
-      {tab === 'leads' && <LeadsSection />}
+{tab === 'leads' && <LeadsSection />}
       {tab === 'performance' && <PerformanceSection />}
-      {tab === 'wallet' && <WalletSection />}
-      {tab === 'analytics' && <AnalyticsSection />}
-    </div>
-  );
-}
-
-/* ---------------------------------- Config ---------------------------------- */
-
-function ConfigSection() {
-  const [values, setValues] = useState({});
-  const [loaded, setLoaded] = useState(false);
-  const [savingKey, setSavingKey] = useState(null);
-  const [message, setMessage] = useState('');
-  const [messageTone, setMessageTone] = useState('ok');
-
-  const load = useCallback(async () => {
-    setLoaded(false);
-    // Same cachedRequest key as AdminPlatformControls — Config tab and Platform
-    // Controls share one /admin/configs response.
-    const res = await cachedRequest('admin-configs', () => apiClient.get('/admin/configs'));
-    const stored = res.ok && typeof res.data === 'object' ? res.data : {};
-    const merged = {};
-    Object.entries(CONFIG_SCHEMA).forEach(([key, schema]) => {
-      merged[key] = stored[key] !== undefined ? stored[key] : schema.default;
-    });
-    setValues(merged);
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const flash = (tone, text) => {
-    setMessageTone(tone);
-    setMessage(text);
-    window.setTimeout(() => setMessage(''), 4000);
-  };
-
-  const save = async (key) => {
-    setSavingKey(key);
-    const value = normalizeConfigValue(CONFIG_SCHEMA[key], values[key]);
-    const res = await apiClient.put(`/admin/configs/${key}`, { value });
-    setSavingKey(null);
-    if (res.ok) {
-      invalidateCache('admin-configs');
-      setValues((prev) => ({ ...prev, [key]: value }));
-      flash('ok', `Saved ${CONFIG_SCHEMA[key].label}.`);
-    } else {
-      flash('err', res.data?.message || res.data?.error || 'Failed to save config.');
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {message && (
-        <div className={`flex items-center gap-2 text-xs font-bold rounded-2xl px-4 py-3 border ${
-          messageTone === 'ok'
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-            : 'bg-rose-50 border-rose-200 text-rose-700'
-        }`}>
-          {messageTone === 'ok' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
-          {message}
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-teal-600" /> Marketplace Configuration
-          </span>
-          <span className="text-[10px] text-slate-400 font-semibold">Changes take effect within 30s (cache TTL)</span>
-        </div>
-        {!loaded ? (
-          <p className="text-slate-400 text-xs italic p-6 text-center">Loading configuration...</p>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {Object.entries(CONFIG_SCHEMA).map(([key, schema]) => (
-              <div key={key} className="p-4 sm:px-6">
-                <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
-                  <div className="flex-1">
-                    <p className="text-xs font-extrabold text-slate-900">{schema.label}</p>
-                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">{schema.description}</p>
-                    <code className="text-[9px] text-slate-400 font-mono">{key}</code>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {schema.type === 'boolean' ? (
-                      <button
-                        onClick={() => setValues((prev) => ({ ...prev, [key]: !prev[key] }))}
-                        className={`relative w-14 h-7 rounded-full transition-colors ${values[key] ? 'bg-teal-600' : 'bg-slate-200'}`}
-                      >
-                        <span className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${values[key] ? 'left-8' : 'left-1'}`} />
-                      </button>
-                    ) : schema.type === 'number' ? (
-                      <input
-                        type="number"
-                        value={values[key] ?? ''}
-                        onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                        className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
-                      />
-                    ) : schema.type === 'text' ? (
-                      <input
-                        value={typeof values[key] === 'object' && values[key] !== null ? JSON.stringify(values[key]) : (values[key] ?? '')}
-                        onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                        placeholder="JSON"
-                        className="w-full sm:w-64 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
-                      />
-                    ) : (
-                      <input
-                        value={Array.isArray(values[key]) ? values[key].join(', ') : (values[key] ?? '')}
-                        onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                        placeholder="Comma separated"
-                        className="w-full sm:w-56 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
-                      />
-                    )}
-                    <button
-                      onClick={() => save(key)}
-                      disabled={savingKey === key}
-                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      {savingKey === key ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -262,7 +110,7 @@ function LevelRulesSection() {
   const patch = async (id, field, value) => {
     setSavingId(id);
     const body = field === 'bulk'
-      ? { minJobs: Number(value.minJobs), discountPercent: Number(value.discountPercent), description: value.description || null }
+      ? { minJobs: Number(value.minJobs), incentivePercent: Number(value.incentivePercent), description: value.description || null }
       : { [field]: value };
     const res = await apiClient.patch(`/admin/level-rules/${id}`, body);
     setSavingId(null);
@@ -290,29 +138,36 @@ function LevelRulesSection() {
           <span className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
             <Crown className="w-4 h-4 text-amber-500" /> Provider Level Rules
           </span>
-          <span className="text-[10px] text-slate-400 font-semibold">Savings shown to providers on their plan purchases</span>
+          <span className="text-[10px] text-slate-400 font-semibold">Monthly incentive % — credited back to provider wallets on each level-up</span>
         </div>
         {loading ? (
           <p className="text-slate-400 text-xs italic p-6 text-center">Loading level rules...</p>
         ) : rules.length === 0 ? (
           <p className="text-slate-400 text-xs italic p-6 text-center">No level rules found.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  {['Level', 'Min Jobs', 'Discount %', 'Description', 'Active', 'Save'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
+          <>
+            <div className="md:hidden divide-y divide-slate-100">
+              {rules.map((rule) => (
+                <RuleCard key={rule.id} rule={rule} saving={savingId === rule.id} onSave={patch} />
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {['Level', 'Min Jobs', 'Incentive %', 'Description', 'Active', 'Save'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rules.map((rule) => (
+                    <RuleRow key={rule.id} rule={rule} saving={savingId === rule.id} onSave={patch} />
                   ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {rules.map((rule) => (
-                  <RuleRow key={rule.id} rule={rule} saving={savingId === rule.id} onSave={patch} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -321,7 +176,7 @@ function LevelRulesSection() {
 
 function RuleRow({ rule, saving, onSave }) {
   const [minJobs, setMinJobs] = useState(rule.minJobs);
-  const [discount, setDiscount] = useState(rule.discountPercent);
+  const [incentive, setIncentive] = useState(rule.incentivePercent);
   const [description, setDescription] = useState(rule.description || '');
   const [active, setActive] = useState(rule.active);
 
@@ -334,7 +189,7 @@ function RuleRow({ rule, saving, onSave }) {
         <input type="number" value={minJobs} onChange={(e) => setMinJobs(e.target.value)} className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
       </td>
       <td className="px-4 py-3">
-        <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
+        <input type="number" value={incentive} onChange={(e) => setIncentive(e.target.value)} className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
       </td>
       <td className="px-4 py-3">
         <input value={description} onChange={(e) => setDescription(e.target.value)} className="w-full min-w-[180px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500" />
@@ -349,7 +204,7 @@ function RuleRow({ rule, saving, onSave }) {
       </td>
       <td className="px-4 py-3">
         <button
-          onClick={() => onSave(rule.id, 'bulk', { minJobs: Number(minJobs), discountPercent: Number(discount), description: description || null })}
+          onClick={() => onSave(rule.id, 'bulk', { minJobs: Number(minJobs), incentivePercent: Number(incentive), description: description || null })}
           disabled={saving}
           className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 disabled:opacity-50"
         >
@@ -357,6 +212,56 @@ function RuleRow({ rule, saving, onSave }) {
         </button>
       </td>
     </tr>
+  );
+}
+
+function RuleCard({ rule, saving, onSave }) {
+  const [minJobs, setMinJobs] = useState(rule.minJobs);
+  const [incentive, setIncentive] = useState(rule.incentivePercent);
+  const [description, setDescription] = useState(rule.description || '');
+  const [active, setActive] = useState(rule.active);
+
+  const saveRule = () => onSave(rule.id, 'bulk', {
+    minJobs: Number(minJobs),
+    incentivePercent: Number(incentive),
+    description: description || null
+  });
+
+  const toggleActive = () => {
+    const nextActive = !active;
+    setActive(nextActive);
+    onSave(rule.id, 'active', nextActive);
+  };
+
+  return (
+    <article className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase border bg-slate-900 text-white border-slate-900">{rule.level}</span>
+          <p className="mt-1 text-[10px] font-semibold text-slate-400">Provider level requirements</p>
+        </div>
+        <button type="button" onClick={toggleActive} disabled={saving} className={`relative h-7 w-14 shrink-0 rounded-full transition-colors disabled:opacity-50 ${active ? 'bg-teal-600' : 'bg-slate-200'}`} aria-label={`${active ? 'Deactivate' : 'Activate'} ${rule.level} level`}>
+          <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${active ? 'left-8' : 'left-1'}`} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-[9px] font-black uppercase tracking-wide text-slate-400">Minimum jobs
+          <input type="number" value={minJobs} onChange={(e) => setMinJobs(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+        </label>
+        <label className="text-[9px] font-black uppercase tracking-wide text-slate-400">Incentive (%)
+          <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+        </label>
+      </div>
+
+      <label className="block text-[9px] font-black uppercase tracking-wide text-slate-400">Description
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe this level" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-teal-500" />
+      </label>
+
+      <button type="button" onClick={saveRule} disabled={saving} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-black text-white transition-colors hover:bg-slate-800 disabled:opacity-50">
+        <Save className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save level rule'}
+      </button>
+    </article>
   );
 }
 
@@ -460,7 +365,27 @@ function LeadsSection() {
           <p className="text-slate-400 text-xs italic p-6 text-center">No leads found.</p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="md:hidden divide-y divide-slate-100">
+              {leads.map((lead) => (
+                <article key={lead.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-slate-900 truncate">{lead.serviceCategory || 'Service lead'}</p>
+                      <p className="mt-0.5 text-[10px] font-mono text-slate-400">{lead.id.slice(0, 12)}</p>
+                    </div>
+                    <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${STATUS_STYLES[lead.status] || 'bg-slate-100 border-slate-300 text-slate-600'}`}>{lead.status}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-[10px]">
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Customer</span><span className="font-bold text-slate-800">{lead.customer?.name || '—'}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Provider</span><span className="font-bold text-slate-800">{lead.provider?.user?.name || 'Unassigned'}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Distance</span><span className="font-bold text-slate-800">{lead.distanceKm != null ? `${Number(lead.distanceKm).toFixed(1)} km` : '—'}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Transfers</span><span className="font-bold text-slate-800">{lead.transferCount ?? 0}</span></div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-[10px] font-semibold text-slate-400">{fmtDate(lead.createdAt)}</span><button onClick={() => openDetail(lead)} className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg">View details</button></div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
@@ -689,7 +614,21 @@ function PerformanceSection() {
           <p className="text-slate-400 text-xs italic p-6 text-center">No performance records found.</p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="md:hidden divide-y divide-slate-100">
+              {rows.map((row) => (
+                <article key={row.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-extrabold text-slate-900">{row.provider?.user?.name || '—'}</p><p className="text-[10px] font-bold text-slate-400">{row.provider?.sector || 'General sector'}</p></div><span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase border bg-slate-900 text-white border-slate-900">{row.provider?.providerLevel || 'L0'}</span></div>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-[10px]">
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Leads / jobs</span><span className="font-bold text-slate-800">{row.totalLeads ?? 0} / {row.completedJobs ?? 0}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Earnings</span><span className="font-bold text-emerald-700">{fmtMoney(row.totalEarnings)}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Acceptance</span><span className="font-bold text-emerald-700">{pct(row.acceptanceRate)}</span></div>
+                    <div><span className="block uppercase font-black tracking-wide text-slate-400 text-[9px]">Response / cancel</span><span className="font-bold text-slate-800">{pct(row.responseRate)} / <span className="text-rose-700">{pct(row.cancellationRate)}</span></span></div>
+                  </div>
+                  {cooldownActive(row) && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[10px] font-bold text-sky-700">Cooldown until {fmtDate(row.cooldownUntil)}</p>}
+                </article>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
@@ -1094,7 +1033,16 @@ function WalletSection() {
           <p className="text-slate-400 text-xs italic p-8 text-center">No wallet transactions found.</p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="md:hidden divide-y divide-slate-100">
+              {ledger.map((t) => (
+                <article key={t.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-bold text-slate-800 truncate">{t.user?.name || '—'}</p><p className="font-mono text-[9px] text-slate-400 truncate">{t.user?.email || 'No email'}</p></div><span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${t.type === 'CREDIT' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>{t.type}</span></div>
+                  <div className="mt-3 flex items-end justify-between rounded-xl border border-slate-100 bg-slate-50 p-3"><div><p className="text-[9px] font-black uppercase tracking-wide text-slate-400">{t.category || 'Transaction'}</p><p className="mt-1 text-[10px] font-semibold text-slate-500">Balance: {fmtMoney(t.balanceAfter)}</p></div><p className={`text-sm font-black ${t.type === 'CREDIT' ? 'text-emerald-700' : 'text-rose-600'}`}>{t.type === 'CREDIT' ? '+' : '−'}{fmtMoney(t.amount)}</p></div>
+                  <p className="mt-2 text-[10px] font-semibold text-slate-400">{fmtDate(t.createdAt)}</p>
+                </article>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
@@ -1139,87 +1087,3 @@ function WalletSection() {
   );
 }
 
-/* --------------------------------- Analytics --------------------------------- */
-
-function AnalyticsSection() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      const [cancel, promo] = await Promise.all([
-        apiClient.get('/admin/analytics/cancellations'),
-        apiClient.get('/admin/analytics/promotions')
-      ]);
-      setData({
-        cancel: cancel.ok ? cancel.data : null,
-        promo: promo.ok ? promo.data : null
-      });
-      setLoading(false);
-    })();
-  }, []);
-
-  if (loading) {
-    return <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-400 text-xs font-semibold">Loading analytics...</div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <AnalyticsPanel title="Cancellations" subtitle="By actor">
-          <div className="space-y-3">
-            {(data?.cancel?.byActor || []).map((row) => (
-              <div key={row.actor} className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700 capitalize">{row.actor}</span>
-                <span className="font-black text-slate-900">{row._count?._all ?? 0}</span>
-              </div>
-            ))}
-            <div className="pt-3 border-t border-slate-100">
-              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">Top reasons</p>
-              <div className="space-y-1.5">
-                {(data?.cancel?.byReason || []).slice(0, 6).map((r) => (
-                  <p key={r.reason} className="flex justify-between text-xs"><span className="font-semibold text-slate-600 truncate">{r.reason}</span><span className="font-bold text-slate-900 ml-3">{r._count?._all ?? 0}</span></p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </AnalyticsPanel>
-
-      <AnalyticsPanel title="Promotions" subtitle="Level-ups granted">
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {(data?.promo?.byLevel || []).map((row) => (
-              <span key={row.toLevel} className="px-3 py-1.5 rounded-xl border bg-slate-900 text-white text-[10px] font-black uppercase">
-                {row.toLevel} × {row._count?._all ?? 0}
-              </span>
-            ))}
-          </div>
-          <div className="pt-2">
-            <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2">Recent promotions</p>
-            <div className="space-y-2">
-              {(data?.promo?.recent || []).slice(0, 8).map((p) => (
-                <p key={p.id} className="text-xs font-semibold text-slate-600">
-                  {p.provider?.user?.name} → <span className="font-black text-slate-900">{p.fromLevel} → {p.toLevel}</span> <span className="text-slate-400">· {fmtDate(p.promotedAt)}</span>
-                </p>
-              ))}
-            </div>
-          </div>
-        </div>
-      </AnalyticsPanel>
-    </div>
-  );
-}
-
-function AnalyticsPanel({ title, subtitle, children }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="w-4 h-4 text-teal-600" />
-        <div>
-          <h4 className="text-sm font-extrabold text-slate-900">{title}</h4>
-          <p className="text-[10px] text-slate-400 font-semibold">{subtitle}</p>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}

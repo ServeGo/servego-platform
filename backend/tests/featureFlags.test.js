@@ -4,6 +4,8 @@ import { ANNOUNCEMENT_TTL_MS, FEATURE_FLAGS, validateFeatureFlagValue } from '..
 
 test('feature flag registry contains exactly the intended flags', () => {
   assert.deepEqual(Object.keys(FEATURE_FLAGS).sort(), [
+    'liveTrackingCustomers',
+    'liveTrackingProviders',
     'newFeatureAudience',
     'newFeatureEnabled',
     'newFeatureText',

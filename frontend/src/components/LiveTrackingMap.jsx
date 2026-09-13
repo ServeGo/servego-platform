@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Map as MapLibreMap, Marker, NavigationControl, LngLatBounds } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { MapPin, Clock, Radio, Truck, UserCheck } from 'lucide-react';
+import { MapPin, Clock, Radio, Truck, UserCheck, Navigation } from 'lucide-react';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (deg) => (Number(deg) * Math.PI) / 180;
@@ -17,37 +15,39 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 const fmtKm = (v) => (v == null ? '—' : `${Number(v).toFixed(1)} km`);
 
-// OpenStreetMap raster tiles (free, keyless). Swap in Google/MapTiler tiles by
-// changing this style object — the marker/route logic below is tile-agnostic.
-const OSM_STYLE = {
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '&copy; OpenStreetMap contributors'
-    }
-  },
-  layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
-};
+// Free (zero-cost) services: OSM raster tiles + public OSRM driving router.
+const OSM_TILES_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSRM_SERVICE_URL = 'https://router.project-osrm.org/route/v1';
+
+// The customer destination pin opens a Google Maps turn-by-turn popup; origin
+// is left unspecified so Maps starts from the viewer's current GPS position.
+const googleMapsDirections = (lat, lng) =>
+  `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 /**
  * Live-tracking map backed by the provider's real GPS fix (`location:update`
  * socket payload or the booking's last persisted position) and the booking
- * destination. Renders a real tile map with:
- *  - the provider marker (live position)
- *  - the destination marker
- *  - the route line (road polyline from the backend when available, otherwise
- *    a straight great-circle line)
- *  - the dispatch phase banner: null → ON_THE_WAY → ARRIVED
+ * destination. Free stack — Leaflet + OpenStreetMap tiles + OSRM routing:
+ *  - provider pin (live position, pulse)
+ *  - destination pin — click opens Google Maps turn-by-turn navigation
+ *  - live driving route polyline re-computed as the provider moves
+ *  - dispatch phase banner: null → ON_THE_WAY → ARRIVED
  */
 export const LiveTrackingMap = ({ booking, liveLocation }) => {
   const [now, setNow] = useState(Date.now());
   const [mapReady, setMapReady] = useState(false);
-  const mapContainerRef = useRef(null);
+  const containerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef({ provider: null, destination: null });
+  const providerRef = useRef(null);
+  const destRef = useRef(null);
+  const routingRef = useRef(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -67,128 +67,146 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
         timestamp: booking.providerLocationUpdatedAt || null,
         etaMinutes: booking.etaMinutes ?? null,
         distanceKm: booking.distanceKm ?? null,
-        routePolyline: booking.routePolyline ?? null,
         destination: booking.endLocation || null
       };
     }
     return null;
   }, [liveLocation, booking]);
 
-  const destination = live?.destination || booking.endLocation || null;
+  const destination =
+    live?.destination ||
+    booking.endLocation ||
+    (Number.isFinite(Number(booking.serviceLatitude)) && Number.isFinite(Number(booking.serviceLongitude))
+      ? { latitude: Number(booking.serviceLatitude), longitude: Number(booking.serviceLongitude) }
+      : null) ||
+    null;
   const hasDestination =
     destination && Number.isFinite(destination.latitude) && Number.isFinite(destination.longitude);
   const hasLocation = live !== null;
 
   const phase = String(live?.providerPhase ?? booking.providerPhase ?? '').toUpperCase();
 
-  const routeGeoJson = useMemo(() => {
-    if (!hasLocation || !hasDestination) return null;
-    if (Array.isArray(live.routePolyline) && live.routePolyline.length >= 2) {
-      const pts = live.routePolyline.filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
-      if (pts.length >= 2) return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: pts } };
-    }
-    return {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [Number(live.longitude), Number(live.latitude)],
-          [Number(destination.longitude), Number(destination.latitude)]
-        ]
-      }
-    };
-  }, [live, destination, hasLocation, hasDestination]);
+  // Build the destination marker popup (Google Maps turn-by-turn navigation).
+  const destPopupHtml = useMemo(() => {
+    if (!hasDestination) return '';
+    const address = [booking.locationAddress, booking.city].filter(Boolean).join(', ') || 'Customer location';
+    return (
+      `<div style="min-width:190px;text-align:left;">` +
+      `<div style="font-weight:800;font-size:12px;color:#0f172a;">Customer Address</div>` +
+      `<div style="font-size:11px;color:#475569;margin:4px 0 8px;line-height:1.45;">${escapeHtml(address)}</div>` +
+      `<a href="${googleMapsDirections(destination.latitude, destination.longitude)}" ` +
+      `target="_blank" rel="noopener noreferrer" ` +
+      `style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;padding:7px 11px;border-radius:8px;font-size:11px;font-weight:800;text-decoration:none;"` +
+      `>📍 Open Google Maps Directions</a>` +
+      `</div>`
+    );
+  }, [booking.locationAddress, booking.city, destination, hasDestination]);
 
   // Create the map when its container exists (the container only renders once
-  // the provider has a GPS fix). Markers start on a valid default position so
-  // maplibre never has to position an undefined lngLat; the sync effect below
-  // immediately moves them to the real coordinates.
+  // the provider has a GPS fix). Leaflet + OSM tiles + free OSRM routing.
   useEffect(() => {
-    const container = mapContainerRef.current;
-    if (!container || mapRef.current) return;
-    const map = new MapLibreMap({
-      container,
-      style: OSM_STYLE,
-      attributionControl: false,
-      center: [72.8777, 19.076],
-      zoom: 11
+    const container = containerRef.current;
+    const L = window.L;
+    if (!container || !L || mapRef.current) return undefined;
+
+    const map = L.map(container, {
+      scrollWheelZoom: false,
+      attributionControl: true
     });
-    map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
 
-    const providerEl = document.createElement('div');
-    providerEl.className = 'live-map-provider-marker';
-    providerEl.innerHTML = '<div class="live-map-marker-pulse"></div><div class="live-map-marker-truck">🚚</div>';
+    L.tileLayer(OSM_TILES_URL, {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-    const destEl = document.createElement('div');
-    destEl.className = 'live-map-dest-marker';
-    destEl.innerHTML = '<div class="live-map-dest-dot"></div>';
+    L.control.zoom({ position: 'topright' }).addTo(map);
 
-    const defaultLngLat = [72.8777, 19.076];
-    markersRef.current.provider = new Marker({ element: providerEl, anchor: 'center' })
-      .setLngLat(defaultLngLat)
-      .addTo(map);
-    markersRef.current.destination = new Marker({ element: destEl, anchor: 'center' })
-      .setLngLat(defaultLngLat)
-      .addTo(map);
+    // Provider pin (pulsing truck, same marker styles as before).
+    const providerIcon = L.divIcon({
+      className: 'live-map-provider-div',
+      html: '<div class="live-map-provider-marker"><div class="live-map-marker-pulse"></div><div class="live-map-marker-truck">🚚</div></div>',
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+    providerRef.current = L.marker([0, 0], { icon: providerIcon, zIndexOffset: 1000 }).addTo(map);
 
-    map.on('load', () => setMapReady(true));
+    // Destination pin (indigo dot).
+    const destIcon = L.divIcon({
+      className: 'live-map-dest-div',
+      html: '<div class="live-map-dest-marker"><div class="live-map-dest-dot"></div></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+    destRef.current = L.marker([0, 0], { icon: destIcon, zIndexOffset: 900 }).addTo(map);
+
+    // Free driving route via public OSRM. show:false renders only the road
+    // polyline — the textual itinerary overlay stays hidden.
+    routingRef.current = L.Routing.control({
+      waypoints: [L.latLng(0, 0), L.latLng(0, 0)],
+      router: L.Routing.osrmv1({ serviceUrl: OSRM_SERVICE_URL }),
+      show: false,
+      addWaypoints: false,
+      draggableWaypoints: false,
+      fitSelectedRoutes: false,
+      lineOptions: { styles: [{ color: '#2563eb', weight: 5, opacity: 0.9 }] }
+    }).addTo(map);
+
+    map.setView([17.4483, 78.3915], 14);
 
     mapRef.current = map;
+    setMapReady(true);
+    const t = setTimeout(() => map.invalidateSize(), 0);
+
     return () => {
+      clearTimeout(t);
       map.remove();
       mapRef.current = null;
-      markersRef.current = { provider: null, destination: null };
+      providerRef.current = null;
+      destRef.current = null;
+      routingRef.current = null;
       setMapReady(false);
     };
-  }, [hasLocation, hasDestination]);
+  }, []);
 
+  // Sync positions, route and view whenever the fix/destination moves.
   useEffect(() => {
+    const L = window.L;
     const map = mapRef.current;
-    if (!map) return;
+    if (!L || !map) return;
 
-    // Provider marker.
-    if (hasLocation) {
-      markersRef.current.provider?.setLngLat([Number(live.longitude), Number(live.latitude)]);
+    if (hasLocation && providerRef.current) {
+      providerRef.current.setLatLng([Number(live.latitude), Number(live.longitude)]);
+    }
+    if (hasDestination && destRef.current) {
+      destRef.current.setLatLng([Number(destination.latitude), Number(destination.longitude)]);
+      destRef.current.bindPopup(destPopupHtml, { maxWidth: 260 });
     }
 
-    // Destination marker.
-    if (hasDestination) {
-      markersRef.current.destination?.setLngLat([Number(destination.longitude), Number(destination.latitude)]);
+    if (hasLocation && hasDestination && routingRef.current) {
+      routingRef.current.setWaypoints([
+        L.latLng(Number(live.latitude), Number(live.longitude)),
+        L.latLng(Number(destination.latitude), Number(destination.longitude))
+      ]);
     }
 
-    // Route line.
-    if (routeGeoJson && mapReady) {
-      const source = map.getSource('route');
-      if (source) {
-        source.setData(routeGeoJson);
-      } else {
-        map.addSource('route', { type: 'geojson', data: routeGeoJson });
-        map.addLayer({
-          id: 'route',
-          type: 'line',
-          source: 'route',
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#6366f1', 'line-width': 4, 'line-opacity': 0.9 }
-        });
+    if (mapReady) {
+      if (hasLocation && hasDestination) {
+        const bounds = L.latLngBounds([
+          [Number(live.latitude), Number(live.longitude)],
+          [Number(destination.latitude), Number(destination.longitude)]
+        ]);
+        if (bounds.getNorthWest().equals(bounds.getSouthEast())) {
+          map.setView([Number(live.latitude), Number(live.longitude)], 15);
+        } else {
+          map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15, animate: true });
+        }
+      } else if (hasLocation) {
+        map.setView([Number(live.latitude), Number(live.longitude)], 14, { animate: true });
+      } else if (hasDestination) {
+        map.setView([Number(destination.latitude), Number(destination.longitude)], 14, { animate: true });
       }
     }
-
-    // Fit the view to the provider + destination whenever the fix moves.
-    if (hasLocation && hasDestination) {
-      const bounds = new LngLatBounds();
-      bounds.extend([Number(live.longitude), Number(live.latitude)]);
-      bounds.extend([Number(destination.longitude), Number(destination.latitude)]);
-      if (bounds.getWest() === bounds.getEast() && bounds.getSouth() === bounds.getNorth()) {
-        map.setCenter([Number(live.longitude), Number(live.latitude)]);
-      } else {
-        map.fitBounds(bounds, { padding: 56, maxZoom: 15, duration: 900 });
-      }
-    } else if (hasLocation) {
-      map.setCenter([Number(live.longitude), Number(live.latitude)]);
-      map.setZoom(14);
-    }
-  }, [live, destination, hasLocation, hasDestination, routeGeoJson, mapReady]);
+  }, [live, destination, hasLocation, hasDestination, destPopupHtml, mapReady]);
 
   const distanceKm =
     live?.distanceKm ??
@@ -203,6 +221,9 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
   const isStale = lastUpdateAt > 0 && now - lastUpdateAt > 90000; // no fix for 90s
   const lastUpdateLabel = lastUpdateAt ? new Date(lastUpdateAt).toLocaleTimeString() : null;
 
+  // Live-tracking map shared by customers and providers — identical look: header,
+  // dispatch phase banner, map with provider + destination pins and the driving
+  // route, plus the distance/ETA telemetry panel.
   return (
     <div className="bg-slate-900 rounded-2xl border border-slate-800 text-white overflow-hidden">
       {/* Header */}
@@ -211,7 +232,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isStale ? 'bg-amber-500' : hasLocation ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`} />
           <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
             <Radio className="w-3 h-3 text-emerald-400" />
-            Live Provider Tracking
+            Free Live Routes
           </span>
         </div>
         <span className="text-[10px] font-mono text-slate-400 font-bold">
@@ -239,21 +260,39 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           <div>
             <p className="text-sm font-bold text-slate-200">Waiting for provider location</p>
             <p className="text-[11px] text-slate-400 font-semibold mt-1">
-              {booking.providerName} will appear here once they share their GPS position on the way.
+              {booking.providerName || 'The provider'} will appear here once they share their GPS position on the way.
             </p>
           </div>
         </div>
       ) : (
         <>
-          {/* Real tile map */}
+          {/* Free tile map (Leaflet + OpenStreetMap + OSRM route) */}
           <div className="relative h-56 border-b border-slate-800 overflow-hidden">
-            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+            <div ref={containerRef} className="sg-live-leaflet absolute inset-0 w-full h-full" />
 
-            <div className="absolute right-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1">
-              <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-600" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
+            <div className="absolute right-3 top-2 z-[1000] bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1 pointer-events-none">
+              {booking.providerAvatar ? (
+                <img src={booking.providerAvatar} className="w-4 h-4 rounded-full object-cover border border-slate-600" alt={booking.providerName || 'Provider avatar'} referrerPolicy="no-referrer" />
+              ) : (
+                <span className="w-4 h-4 rounded-full bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center">
+                  <Truck className="w-2.5 h-2.5 text-indigo-300" />
+                </span>
+              )}
               <Truck className="w-3 h-3 text-amber-400" />
               <span>{booking.providerName || 'Provider'}</span>
             </div>
+
+            {hasDestination && (
+              <a
+                href={googleMapsDirections(destination.latitude, destination.longitude)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute left-3 bottom-2 z-[1000] inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold rounded-full pl-2.5 pr-3.5 py-1.5 shadow-lg transition-colors"
+              >
+                <Navigation className="w-3 h-3" />
+                Navigate
+              </a>
+            )}
           </div>
 
           {/* Telemetry */}

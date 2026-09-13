@@ -424,9 +424,10 @@ model Quotation {
   @@index([providerId, createdAt])
 }
 
-// Bounded history of provider location pings for a booking. Kept for
-// telemetry/audit and ETA verification; pruned after the configured retention
-// window (locationHistoryClearanceHours) once the booking is closed.
+// Bounded history of provider location pings for a booking, recorded while the
+// trip is CONFIRMED/ONGOING for live ETA + telemetry. The moment a booking
+// closes (COMPLETED/CANCELLED) every ping is deleted and the Booking live fix
+// is nulled — inline at the transition, with a background sweep as fail-safe.
 model BookingLocationUpdate {
   id         String   @id @default(cuid())
   bookingId  String
@@ -574,11 +575,14 @@ model AuditLog {
 // ============================================================
 
 // Permanent promotion rules per provider level. Admin-configurable.
+// `incentivePercent` is the monthly level incentive: when a provider levels up
+// during a month, that % of the platform commission cut on their completed jobs
+// that month is credited back to their wallet (see providerLevelService).
 model ProviderLevelRule {
   id              String        @id @default(cuid())
   level           ProviderLevel @unique
   minJobs         Int
-  discountPercent Float         @default(0)
+  incentivePercent Float        @default(0)
   description     String?
   active          Boolean       @default(true)
   createdAt       DateTime      @default(now())
@@ -666,13 +670,19 @@ model LeadTransferHistory {
   @@index([leadId])
 }
 
-// Promotion celebration records — one per level-up.
+// Promotion + monthly incentive records — one per level-up. `monthKey` is the
+// YYYY-MM cycle; levels reset each month and the incentive (a % of that month's
+// platform commission on the provider's completed jobs) is credited to the
+// provider wallet, so each (provider, month, level) can appear at most once.
 model PromotionHistory {
   id                       String       @id @default(cuid())
   providerId               String
   fromLevel                ProviderLevel
   toLevel                  ProviderLevel
   completedJobsAtPromotion Int
+  monthKey                 String?      @db.VarChar(7)
+  commissionBase           Float?
+  incentiveAmount          Float?
   promotedAt               DateTime     @default(now())
   acknowledged             Boolean      @default(false)
   acknowledgedAt           DateTime?
@@ -681,6 +691,7 @@ model PromotionHistory {
 
   @@index([providerId])
   @@index([promotedAt])
+  @@unique([providerId, monthKey, toLevel])
 }
 
 // Full ledger of provider level changes.
@@ -976,6 +987,7 @@ enum WalletTransactionCategory {
   SERVICE_FEE
   WITHDRAWAL
   ADJUSTMENT
+  LEVEL_INCENTIVE
 }
 
 enum WithdrawalRequestStatus {

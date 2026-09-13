@@ -37,9 +37,9 @@ export default function ProviderBottomNav({
     setMoreOpen(false);
     setProviderActiveTab?.(tab);
     if (!onDashboard) {
-      onNavigate('dashboard-provider');
+      onNavigate('dashboard-provider', tab);
     } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo(0, 0);
     }
   };
 

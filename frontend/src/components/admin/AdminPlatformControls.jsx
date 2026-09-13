@@ -4,23 +4,16 @@ import { cachedRequest, invalidateCache } from '../../utils/requestCache';
 
 /**
  * Platform controls (admin Settings):
- *   - maintenance mode and live tracking (on/off)
+ *   - live tracking (on/off)
  * Backed by the plain /admin/configs endpoints (AdminConfig table, ~30s cache).
  * Referral bonus and the announcement banner live in the Feature Flags tab.
  */
 
 const DEFAULTS = {
-  maintenanceMode: false,
   locationTrackingEnabled: true
 };
 
 const BOOLEAN_CARDS = [
-  {
-    key: 'maintenanceMode',
-    label: 'Maintenance Mode',
-    description: 'Takes the public site offline (503) — admin routes, login and feature-flag reads stay reachable so it can be switched back on. Turn ON to take the site down.',
-    danger: true
-  },
   {
     key: 'locationTrackingEnabled',
     label: 'Live Location Tracking',

@@ -14,10 +14,43 @@ const PREFIXES = {
   SERVICE: 'SG24'
 };
 
+// Maps counter key → Prisma model field that stores the generated number,
+// so we can derive the correct starting value from existing rows.
+const MODEL_FIELD = {
+  CUSTOMER: 'customerNumber',
+  PROVIDER: 'providerNumber'
+};
+
 // Formats a plain integer into a family-specific business number.
 export function formatBusinessNumber(value, key = 'BOOKING') {
   const prefix = PREFIXES[key] || 'SG24';
   return `${prefix}-${String(value).padStart(4, '0')}`;
+}
+
+/**
+ * Derive the next counter value from existing rows when the
+ * BusinessSequenceCounter is missing or stale. Scans the User table for the
+ * highest sequential number already assigned under the given prefix and returns
+ * that count (so the next call to nextBusinessNumber produces count + 1).
+ */
+async function deriveCounterFromExistingRows(key) {
+  const prefix = PREFIXES[key];
+  const field = MODEL_FIELD[key];
+  if (!prefix || !field) return 0;
+
+  // e.g. SELECT "customerNumber" FROM "User" WHERE "customerNumber" LIKE 'CID-%'
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT "${field}" AS num FROM "User" WHERE "${field}" LIKE $1`,
+    `${prefix}-%`
+  );
+
+  let maxSeq = 0;
+  for (const row of rows) {
+    const suffix = String(row.num).replace(`${prefix}-`, '');
+    const n = parseInt(suffix, 10);
+    if (!Number.isNaN(n) && n > maxSeq) maxSeq = n;
+  }
+  return maxSeq;
 }
 
 /**
@@ -29,10 +62,32 @@ export function formatBusinessNumber(value, key = 'BOOKING') {
  * with the entity row it is printed on.
  */
 export async function nextBusinessNumber(key, client = prisma) {
+  // Try the fast path: existing counter row.
+  const existing = await client.businessSequenceCounter.findUnique({
+    where: { key },
+    select: { value: true }
+  });
+
+  if (existing) {
+    const counter = await client.businessSequenceCounter.update({
+      where: { key },
+      data: { value: { increment: 1 }, updatedAt: new Date() },
+      select: { value: true }
+    });
+    return formatBusinessNumber(counter.value, key);
+  }
+
+  // Counter doesn't exist — seed it from the highest number already in the
+  // database so we never collide with backfilled or legacy rows.
+  const maxSeq = await deriveCounterFromExistingRows(key);
+  const seedValue = maxSeq + 1;
+
+  // Use upsert with a unique guard: if two concurrent signups race to create
+  // the counter, the second one wins the upsert and gets seedValue + 1.
   const counter = await client.businessSequenceCounter.upsert({
     where: { key },
     update: { value: { increment: 1 } },
-    create: { key, value: 1, updatedAt: new Date() },
+    create: { key, value: seedValue, updatedAt: new Date() },
     select: { value: true }
   });
   return formatBusinessNumber(counter.value, key);

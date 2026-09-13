@@ -404,6 +404,27 @@ export const BookingController = {
         return sendApiError(res, 400, 'INVALID_STATUS', 'Invalid booking status provided.');
       }
 
+      // Terminal/work-state transitions are role-gated (rule 17). The generic
+      // status endpoint must never let a customer drive a booking to ONGOING or
+      // COMPLETED (that triggers the commission debit, payout math, performance
+      // and promotions) — those belong to the provider who owns the job. A
+      // customer may only cancel; CONFIRMED is a manual admin override because
+      // the normal accept path is the dedicated /accept route. PENDING is never
+      // settable through this endpoint (fall-through to ONGOING was a latent
+      // bug — a typo like 'COMPLETE' normalized to PENDING and silently started
+      // work).
+      const STATUS_ROLE_MATRIX = {
+        PENDING: [],
+        CONFIRMED: ['admin'],
+        ONGOING: ['provider'],
+        COMPLETED: ['provider'],
+        CANCELLED: ['customer', 'provider', 'admin']
+      };
+      const allowedRoles = STATUS_ROLE_MATRIX[updatedStatus] || [];
+      if (!allowedRoles.includes(role)) {
+        return sendApiError(res, 403, 'FORBIDDEN', `Only ${allowedRoles.join(' or ')} can move a booking to ${updatedStatus}.`);
+      }
+
 
       const booking = await prisma.booking.findUnique({ where: { id } });
       if (!booking) return sendApiError(res, 404, 'NOT_FOUND', 'Booking not found.');
@@ -940,6 +961,13 @@ async function cancelBookingPlain(booking, requesterId, role, note) {
       note: note || null
     }
   });
+
+  // Cancellation ends the trip — delete its pings and stale live fix so a
+  // cancelled booking leaves no location crumbs behind.
+  void clearLocationHistory({ bookingId: booking.id }).catch((err) => {
+    console.error('[BookingController] Location history cleanup failed:', err.message);
+  });
+
   fireAndForget({ type: 'analytics', payload: { bookingsCancelled: 1 } });
   return prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
 }

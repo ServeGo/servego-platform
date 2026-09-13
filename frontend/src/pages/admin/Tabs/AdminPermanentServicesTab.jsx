@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Loader2, Briefcase, CheckCircle2, XCircle, CircuitBoard } from 'lucide-react';
+import { Loader2, Briefcase, CheckCircle2, XCircle, CircuitBoard, CalendarDays, IndianRupee, MapPin, UserRound } from 'lucide-react';
 import { api } from '../../../utils/apiClient';
 
 const STATUS_STYLES = {
@@ -9,8 +9,8 @@ const STATUS_STYLES = {
   CANCELLED: 'bg-slate-100 text-slate-600 border-slate-200'
 };
 
-const FILTERS = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
-const TYPE_FILTERS = ['ALL', 'PERMANENT', 'CUSTOM'];
+const FILTERS = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
+const TYPE_FILTERS = ['PERMANENT', 'CUSTOM'];
 
 const formatDate = (d) => {
   if (!d) return '—';
@@ -34,8 +34,8 @@ const durationText = (r) => {
 export default function AdminPermanentServicesTab({ providersList }) {
   const [requests, setRequests] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, pages: 1 });
-  const [filter, setFilter] = useState('ALL');
-  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [filter, setFilter] = useState('PENDING');
+  const [typeFilter, setTypeFilter] = useState('PERMANENT');
   const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState(null);
   const [processingAction, setProcessingAction] = useState(null);
@@ -44,11 +44,11 @@ export default function AdminPermanentServicesTab({ providersList }) {
 
   const providers = Array.isArray(providersList) ? providersList : [];
 
-  const fetchRequests = useCallback(async (page = 1, status = 'ALL', reqType = 'ALL') => {
+  const fetchRequests = useCallback(async (page = 1, status = 'PENDING', reqType = 'PERMANENT') => {
     setLoading(true);
     const query = new URLSearchParams({ page: String(page), limit: '15' });
-    if (status && status !== 'ALL') query.set('status', status);
-    if (reqType && reqType !== 'ALL') query.set('requestType', reqType);
+    query.set('status', status);
+    query.set('requestType', reqType);
     const res = await api.get(`/permanent-service-requests?${query.toString()}`);
     if (res.ok && res.data) {
       setRequests(Array.isArray(res.data.requests) ? res.data.requests : []);
@@ -136,14 +136,14 @@ export default function AdminPermanentServicesTab({ providersList }) {
             <button
               key={f}
               type="button"
-              onClick={() => setFilter(f)}
+              onClick={() => { setFilter(f); setPagination((p) => ({ ...p, page: 1 })); }}
               className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border transition-all ${
                 filter === f
                   ? 'bg-teal-600 border-teal-700 text-white shadow-sm'
                   : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
               }`}
             >
-              {f === 'ALL' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+              {f.charAt(0) + f.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
@@ -153,14 +153,14 @@ export default function AdminPermanentServicesTab({ providersList }) {
             <button
               key={t}
               type="button"
-              onClick={() => setTypeFilter(t)}
+              onClick={() => { setTypeFilter(t); setPagination((p) => ({ ...p, page: 1 })); }}
               className={`px-3 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide border transition-all ${
                 typeFilter === t
                   ? 'bg-indigo-600 border-indigo-700 text-white shadow-sm'
                   : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
               }`}
             >
-              {t === 'ALL' ? 'All Types' : t.charAt(0) + t.slice(1).toLowerCase()}
+              {t.charAt(0) + t.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
@@ -177,7 +177,79 @@ export default function AdminPermanentServicesTab({ providersList }) {
             <p className="text-slate-400 italic text-xs font-semibold">No service requests found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="md:hidden space-y-3 p-3">
+            {requests.map((r) => {
+              const isBusy = processingId === r.id;
+              const isApproving = isBusy && processingAction === 'approve';
+              const isRejecting = isBusy && processingAction === 'reject';
+              const isCustom = r.requestType === 'CUSTOM';
+              const serviceName = isCustom ? r.customServiceName || r.serviceCategory : r.serviceCategory;
+              return (
+                <article key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        {isCustom && <CircuitBoard className="h-3.5 w-3.5 text-indigo-500" />}
+                        {isCustom ? 'Custom request' : r.engagementType === 'CONTRACT' ? 'Contract hire' : 'Permanent hire'}
+                      </div>
+                      <h3 className="mt-1 truncate text-sm font-extrabold text-slate-900">{serviceName || 'Service request'}</h3>
+                    </div>
+                    <span className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-1 text-[9px] font-extrabold uppercase ${STATUS_STYLES[r.status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                      {r.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-[11px]">
+                    <div className="min-w-0">
+                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-400"><UserRound className="h-3 w-3" /> Customer</span>
+                      <p className="mt-0.5 truncate font-extrabold text-slate-800">{r.customer?.name || 'Customer'}</p>
+                      <p className="truncate text-[10px] text-slate-500">{r.customer?.phone || r.customer?.email || 'No contact details'}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-400"><MapPin className="h-3 w-3" /> Location</span>
+                      <p className="mt-0.5 truncate font-bold text-slate-800">{r.locationAddress || 'Address not provided'}</p>
+                    </div>
+                    {!isCustom && <>
+                      <div>
+                        <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-400"><CalendarDays className="h-3 w-3" /> Starts</span>
+                        <p className="mt-0.5 font-bold text-slate-800">{formatDate(r.startDate)}</p>
+                      </div>
+                      <div>
+                        <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-400"><IndianRupee className="h-3 w-3" /> Budget</span>
+                        <p className="mt-0.5 font-bold text-slate-800">{formatMoney(r.monthlyBudget)}/mo</p>
+                        <p className="text-[9px] text-slate-500">{durationText(r)}</p>
+                      </div>
+                    </>}
+                  </div>
+
+                  {isCustom && r.customDescription && <p className="mt-3 line-clamp-3 text-[11px] font-medium leading-relaxed text-slate-600">{r.customDescription}</p>}
+                  {r.status === 'APPROVED' && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700">Assigned to {r.assignedProvider?.user?.name || 'specialist'}</p>}
+                  {r.status === 'REJECTED' && r.adminNote && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-[10px] font-bold text-rose-700">Reason: {r.adminNote}</p>}
+                  {r.status === 'CANCELLED' && <p className="mt-3 text-[10px] font-semibold text-slate-400">Cancelled by customer</p>}
+
+                  {r.status === 'PENDING' && (
+                    <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                      <label className="text-[9px] font-black uppercase tracking-wide text-slate-400" htmlFor={`provider-${r.id}`}>Assign specialist</label>
+                      <select id={`provider-${r.id}`} value={assignments[r.id] || ''} onChange={(e) => setAssignments((a) => ({ ...a, [r.id]: e.target.value }))} className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-teal-500">
+                        <option value="">Select specialist...</option>
+                        {providers.map((p) => <option key={p.id} value={p.id}>{p.name || p.user?.name || p.id}</option>)}
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => handleApprove(r)} disabled={!assignments[r.id] || isBusy} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2.5 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:bg-emerald-300">
+                          {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}{isApproving ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button type="button" onClick={() => handleReject(r)} disabled={isBusy} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-[10px] font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-50">
+                          {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}{isRejecting ? 'Rejecting...' : 'Reject'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs font-semibold">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/50">
@@ -300,6 +372,7 @@ export default function AdminPermanentServicesTab({ providersList }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

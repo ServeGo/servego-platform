@@ -1,19 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Check,
-  Copy,
-  Crown,
-  Gift,
-  Layers,
-  Receipt,
-  RefreshCw,
-  ShieldCheck,
-  ShoppingBag,
-  Sparkles,
-  Wallet,
-} from 'lucide-react';
+import { Layers, Receipt, RefreshCw, ShoppingBag, Wallet } from 'lucide-react';
 import { api } from '../utils/apiClient';
 import { cachedRequest } from '../utils/requestCache';
 import SkeletonLoader from './SkeletonLoader';
@@ -31,41 +17,22 @@ const fmtDate = (d) => {
 
 const SPEND_CATEGORIES = new Set(['BOOKING_PAYMENT', 'SERVICE_FEE']);
 
+// Customer wallet is a spend showcase only — every entry shown is money the
+// customer paid (directly to the specialist or as a cancellation service fee).
 const CATEGORY_META = {
   BOOKING_PAYMENT: { label: 'Service payment', icon: Receipt, tone: 'bg-indigo-50 text-indigo-600' },
-  SERVICE_FEE: { label: 'Service fee', icon: Receipt, tone: 'bg-rose-50 text-rose-500' },
-  REFERRAL_BONUS: { label: 'Referral bonus', icon: Gift, tone: 'bg-indigo-50 text-indigo-600' },
-  PROMOTIONAL_CREDIT: { label: 'Promotional credit', icon: Sparkles, tone: 'bg-amber-50 text-amber-600' },
-  BOOKING_REFUND: { label: 'Booking refund', icon: ShieldCheck, tone: 'bg-sky-50 text-sky-600' },
-  DISPUTE_REFUND: { label: 'Dispute refund', icon: ShieldCheck, tone: 'bg-teal-50 text-teal-600' },
-  ADJUSTMENT: { label: 'Adjustment', icon: Sparkles, tone: 'bg-slate-100 text-slate-600' },
-  BOOKING_EARNING: { label: 'Credit', icon: ArrowDownLeft, tone: 'bg-emerald-50 text-emerald-600' },
-  WITHDRAWAL: { label: 'Debit', icon: ArrowUpRight, tone: 'bg-rose-50 text-rose-500' }
+  SERVICE_FEE: { label: 'Service fee', icon: Receipt, tone: 'bg-rose-50 text-rose-500' }
 };
+const GENERIC_META = { label: 'Spending', icon: Receipt, tone: 'bg-slate-100 text-slate-600' };
 
 /**
- * Customer money view — a SPEND SHOWCASE, not a gated account.
- *
- * Top card = total spent on services (completed job amounts paid directly to
- * providers + cancellation service fees), per-service breakdown, then the full
- * ledger. Referrals, gift codes and loyalty progression stay as separate cards.
+ * Customer money view — a SPEND SHOWCASE only. No account, no balance gate, no
+ * loyalty tiers, no incentives: just the total spent on services (completed job
+ * amounts paid directly to providers + cancellation service fees), a
+ * per-service breakdown, and the spending ledger. Credits and anything else are
+ * intentionally not shown to the customer.
  */
-export default function WalletView({
-  user,
-  loyaltyTier,
-  completedCount,
-  bookingsNeeded,
-  progressPercent,
-  nextTierName,
-  referralCode,
-  referralInput,
-  setReferralInput,
-  onApplyCode,
-  onCopyCode,
-  copied,
-  refError,
-  refSuccess
-}) {
+export default function WalletView({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -159,101 +126,25 @@ export default function WalletView({
         )}
       </SectionCard>
 
-      {/* REFERRALS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
-        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs flex flex-col justify-between">
-          <div>
-            <h3 className="text-lg font-extrabold text-slate-900 tracking-tight leading-none">Your Ambassador Credentials</h3>
-            <p className="text-slate-500 text-xs mt-3 leading-relaxed font-semibold">
-              Gift ₹150 off to friends. Once they complete a booking, you get ₹150 credited to your wallet.
-            </p>
-          </div>
-
-          <div className="my-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-            <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest block mb-2">My Referral Code</span>
-            <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-center">
-              <div className="flex-1 bg-indigo-50 border border-dashed border-indigo-200 rounded-xl px-4 py-3 font-mono font-extrabold text-lg text-indigo-700 tracking-wider text-center sm:text-left truncate">
-                {referralCode}
-              </div>
-              <button
-                onClick={onCopyCode}
-                className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-xs font-bold text-white px-5 rounded-xl py-3 transition-all flex items-center justify-center gap-1.5 outline-none"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <WalletStat label="Wallet Balance" value={`₹${Number(user?.referralDiscountBalance || 0).toLocaleString('en-IN')}`} />
-            <WalletStat label="Successful Referrals" value={`${user?.referralsCount || 0}`} />
-          </div>
-        </div>
-
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs flex flex-col justify-between">
-          <div>
-            <h3 className="text-lg font-extrabold text-slate-900 tracking-tight leading-none">Claim Gift Code</h3>
-            <p className="text-slate-500 text-xs mt-3 leading-relaxed font-semibold">
-              Redeem a friend's code to get ₹150 credit.
-            </p>
-          </div>
-
-          <form onSubmit={onApplyCode} className="mt-6 space-y-3">
-            <input
-              type="text"
-              placeholder="Enter friend's code..."
-              value={referralInput}
-              onChange={(e) => setReferralInput(e.target.value)}
-              disabled={!!user?.referredBy}
-              className="w-full bg-slate-50 border border-slate-200 focus:border-teal-500 focus:bg-white text-xs font-bold font-mono px-4 py-3 rounded-xl outline-none disabled:opacity-60"
-            />
-            {refError && (
-              <div className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-100 p-2.5 rounded-lg">
-                {refError}
-              </div>
-            )}
-            {refSuccess && (
-              <div className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg">
-                {refSuccess}
-              </div>
-            )}
-
-            {user?.referredBy ? (
-              <div className="text-[10px] text-slate-500 font-bold text-center bg-slate-100 rounded-xl p-3">
-                Applied: <span className="text-teal-600 font-mono">{user.referredBy}</span>
-              </div>
-            ) : (
-              <button
-                type="submit"
-                className="w-full bg-teal-600 hover:bg-teal-500 active:scale-[0.98] text-white text-xs font-bold p-3 rounded-xl shadow-sm transition-all"
-              >
-                Claim Credit
-              </button>
-            )}
-          </form>
-        </div>
-      </div>
-
-      {/* MONEY MOVEMENT: full ledger */}
+      {/* SPENDING LEDGER: every entry shown is a payment the customer made */}
       <SectionCard
-        title="Transaction History"
+        title="Spending History"
         right={
           <button onClick={load} className="text-[10px] font-black text-slate-500 hover:text-slate-800 flex items-center gap-1">
             <RefreshCw className="w-3 h-3" /> Refresh
           </button>
         }
       >
-        {transactions.length === 0 ? (
+        {spendRows.length === 0 ? (
           <EmptyState
             icon={Receipt}
-            title="No transactions yet"
-            body="Complete a job or get a referral bonus to see entries here."
+            title="Nothing spent yet"
+            body="Complete a job or cancel a quotation to see your spending here."
           />
         ) : (
           <div className="divide-y divide-slate-100">
-            {transactions.map((t) => {
-              const meta = CATEGORY_META[t.category] || CATEGORY_META[t.type === 'DEBIT' ? 'WITHDRAWAL' : 'BOOKING_EARNING'];
+            {spendRows.map((t) => {
+              const meta = CATEGORY_META[t.category] || GENERIC_META;
               const Icon = meta.icon;
               const title = t.service || meta.label;
               const detail = [fmtDate(t.createdAt), t.description && `· ${t.description}`].filter(Boolean).join(' ');
@@ -266,8 +157,8 @@ export default function WalletView({
                     <p className="text-xs font-extrabold text-slate-800 truncate">{title}</p>
                     <p className="text-[10px] text-slate-400 font-semibold truncate">{detail}</p>
                   </div>
-                  <div className={`text-sm font-black whitespace-nowrap ${t.type === 'CREDIT' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {t.type === 'CREDIT' ? '+' : '−'}{fmtMoney(t.amount)}
+                  <div className="text-sm font-black whitespace-nowrap text-rose-500">
+                    −{fmtMoney(t.amount)}
                   </div>
                 </div>
               );
@@ -275,48 +166,6 @@ export default function WalletView({
           </div>
         )}
       </SectionCard>
-
-      {/* LOYALTY */}
-      {loyaltyTier && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-slate-950 to-indigo-950 text-white rounded-3xl border border-white/5 shadow-xs">
-          <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-amber-500/15 blur-3xl" />
-          <div className="relative z-10 p-6 sm:p-8">
-            <div className="flex items-start justify-between gap-4">
-              <span className="text-[10px] text-teal-300 font-extrabold uppercase tracking-widest">
-                Partnership Status
-              </span>
-              <span className="shrink-0 rounded-full bg-amber-500 text-slate-950 text-[10px] font-extrabold uppercase px-3 py-1 tracking-wider">
-                Resident Loyalty
-              </span>
-            </div>
-            <div className="flex items-center gap-3 mt-3">
-              <Crown className="w-6 h-6 text-amber-400" />
-              <h3 className="text-3xl font-extrabold tracking-tight">{loyaltyTier.tier}</h3>
-            </div>
-            <p className="text-slate-300 text-xs mt-3 max-w-xl font-medium leading-relaxed">
-              {loyaltyTier.desc}. Complete more jobs to level up automatically.
-            </p>
-
-            {nextTierName && (
-              <div className="mt-6 pt-4 border-t border-white/10 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-extrabold text-slate-300 mb-2">
-                  <span>Next Tier: {nextTierName}</span>
-                  <span className="text-white">{completedCount} / {completedCount + bookingsNeeded} Jobs</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/5">
-                  <div
-                    className="bg-gradient-to-r from-teal-500 to-indigo-400 h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, progressPercent)}%` }}
-                  />
-                </div>
-                <p className="text-[11px] text-slate-400 mt-2 font-medium">
-                  Complete <span className="text-amber-400 font-bold">{bookingsNeeded} more jobs</span> to unlock higher savings.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

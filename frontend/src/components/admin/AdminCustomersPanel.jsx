@@ -16,7 +16,7 @@ import {
 import { api } from '../../utils/apiClient';
 import { exportAllPages } from '../../utils/exportExcel';
 
-const PAGE_SIZES = [12, 24, 48];
+const PAGE_SIZES = [9];
 
 const CUSTOMER_EXPORT_COLUMNS = [
   { header: 'Customer ID', key: 'id' },
@@ -55,12 +55,14 @@ export default function AdminCustomersPanel() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(12);
+  const [pageSize, setPageSize] = useState(9);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const startIndex = (page - 1) * pageSize;
+  const SERVICES_PER_PAGE = pageSize;
 
   const fetchData = useCallback(async (pageNo, limit, query) => {
     setLoading(true);
@@ -157,20 +159,22 @@ export default function AdminCustomersPanel() {
             className="pl-9 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-400 font-semibold">{total} customers</span>
-          <button
-            onClick={handleExport}
-            disabled={exporting || total === 0}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-2 rounded-lg transition-all"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            {exporting ? 'Exporting...' : 'Export Excel'}
-          </button>
-          <button onClick={refresh} className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting || total === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[10px] font-black text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting ? 'Exporting...' : 'Export Excel'}
+              </button>
+              <button
+                onClick={refresh}
+                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="Refresh">
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
       </div>
 
       {loading ? (
@@ -221,6 +225,14 @@ export default function AdminCustomersPanel() {
                     <span>{c.phone || '—'}</span>
                   </div>
                   <div>
+                    <span className="text-slate-400 uppercase text-[9px] block">Address</span>
+                    <span className="text-slate-800 font-black block truncate">{c.customerProfile?.address || c.address || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 uppercase text-[9px] block">Pincode</span>
+                    <span className="text-slate-800 font-black block">{c.customerProfile?.pincode || c.pincode || '—'}</span>
+                  </div>
+                  <div>
                     <span className="text-slate-400 uppercase text-[9px] block">Joined</span>
                     <span className="text-slate-800 font-black block">{fmt(c.createdAt)}</span>
                   </div>
@@ -228,19 +240,12 @@ export default function AdminCustomersPanel() {
                     <span className="text-slate-400 uppercase text-[9px] block">Referrals</span>
                     <span className="text-slate-800 font-black block">{c.referralsCount ?? 0}</span>
                   </div>
-                  <div className="col-span-2 flex items-center gap-1.5 min-w-0">
-                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                    <span className="truncate">{c.customerProfile?.address || c.address || '—'}{c.customerProfile?.pincode || c.pincode ? ` · ${c.customerProfile?.pincode || c.pincode}` : ''}</span>
-                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
                     <Gift className="w-3 h-3" /> {c.referralCode ? `Code ${c.referralCode}` : 'No referral code'}
                   </span>
-                  <button onClick={() => setDetail(c)} className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg hover:bg-teal-100 flex items-center gap-1">
-                    <CircleUserRound className="w-3 h-3" /> View All
-                  </button>
                 </div>
               </div>
             ))}
@@ -248,32 +253,25 @@ export default function AdminCustomersPanel() {
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-semibold">Rows per page</span>
-              <select
-                value={pageSize}
-                onChange={(e) => changePageSize(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none"
-              >
-                {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <span className="text-[10px] text-slate-400 font-semibold">Showing {startIndex + 1}–{Math.min(startIndex + SERVICES_PER_PAGE, total)} of {total}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="inline-flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                </button>
+                <button
+                  disabled={page >= totalPages || totalPages === 0}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="inline-flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             <span className="text-[10px] text-slate-400 font-semibold">Page {page} of {Math.max(1, totalPages)}</span>
-            <div className="flex gap-1">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={page >= totalPages || totalPages === 0}
-                onClick={() => setPage((p) => p + 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </>
       )}
@@ -332,16 +330,7 @@ function CustomerDetailDrawer({ customer: c, onClose }) {
           </div>
         </div>
 
-        <div>
-          <p className="text-[10px] uppercase tracking-widest font-black text-slate-400 mb-2 flex items-center gap-1"><Gift className="w-3 h-3" /> Referrals</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Info label="Referral Code" value={c.referralCode} />
-            <Info label="Referred By" value={c.referredBy} />
-            <Info label="Referrals Count" value={c.referralsCount ?? 0} />
-            <Info label="Discount Balance" value={c.referralDiscountBalance != null ? `₹${Number(c.referralDiscountBalance).toLocaleString('en-IN')}` : null} />
-            <Info label="Bonus Earned" value={c.referralBonusEarned != null ? `₹${Number(c.referralBonusEarned).toLocaleString('en-IN')}` : null} />
-          </div>
-        </div>
+        
       </div>
     </div>
   );

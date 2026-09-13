@@ -3,22 +3,14 @@ import {
   getPublicFeatureFlags,
   setFeatureFlag
 } from '../services/featureFlagsService.js';
-import { getConfig } from '../services/adminConfigService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 
 export const FeatureFlagController = {
-  /** Public flags for unauthenticated clients (announcement banner) + maintenance mode. */
+  /** Public flags for unauthenticated clients (announcement banner). */
   getPublic: async (req, res) => {
     try {
-      const [flags, maintenanceMode] = await Promise.all([
-        getPublicFeatureFlags(),
-        getConfig('maintenanceMode', false)
-      ]);
-      const truthy = (v) => v === true || v === 'true' || v === 1 || v === '1';
-      return sendApiSuccess(res, 200, {
-        maintenanceMode: truthy(maintenanceMode),
-        flags
-      });
+      const flags = await getPublicFeatureFlags();
+      return sendApiSuccess(res, 200, { flags });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to read feature flags', err.message);
     }

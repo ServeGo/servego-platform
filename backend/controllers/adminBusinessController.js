@@ -194,12 +194,12 @@ export const AdminBusinessController = {
       const existing = await prisma.providerLevelRule.findUnique({ where: { id } });
       if (!existing) return sendApiError(res, 404, 'NOT_FOUND', 'Level rule not found.');
 
-      const { minJobs, discountPercent, description, active } = req.body;
+      const { minJobs, incentivePercent, description, active } = req.body;
       const rule = await prisma.providerLevelRule.update({
         where: { id },
         data: {
           ...(minJobs != null ? { minJobs: Number(minJobs) } : {}),
-          ...(discountPercent != null ? { discountPercent: Number(discountPercent) } : {}),
+          ...(incentivePercent != null ? { incentivePercent: Number(incentivePercent) } : {}),
           ...(description !== undefined ? { description: description || null } : {}),
           ...(active != null ? { active: Boolean(active) } : {})
         }
@@ -211,8 +211,8 @@ export const AdminBusinessController = {
         action: 'UPDATE_LEVEL_RULE',
         targetType: 'ProviderLevelRule',
         targetId: id,
-        oldValue: { minJobs: existing.minJobs, discountPercent: existing.discountPercent, active: existing.active },
-        newValue: { minJobs: rule.minJobs, discountPercent: rule.discountPercent, active: rule.active },
+        oldValue: { minJobs: existing.minJobs, incentivePercent: existing.incentivePercent, active: existing.active },
+        newValue: { minJobs: rule.minJobs, incentivePercent: rule.incentivePercent, active: rule.active },
         ip: req.ip
       });
       return sendApiSuccess(res, 200, rule);

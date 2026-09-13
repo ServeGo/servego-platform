@@ -18,7 +18,7 @@ import {
 import { api } from '../../utils/apiClient';
 import { exportAllPages } from '../../utils/exportExcel';
 
-const PAGE_SIZES = [12, 24, 48];
+const PAGE_SIZES = [9];
 
 const ACCOUNT_STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Activate', cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
@@ -108,7 +108,7 @@ export default function AdminProvidersPanel() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(12);
+  const [pageSize, setPageSize] = useState(9);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
@@ -116,6 +116,8 @@ export default function AdminProvidersPanel() {
   const [actionError, setActionError] = useState('');
   const [detail, setDetail] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const startIndex = (page - 1) * pageSize;
+  const SERVICES_PER_PAGE = pageSize;
 
   const fetchData = useCallback(async (pageNo, limit, query) => {
     setLoading(true);
@@ -255,20 +257,22 @@ export default function AdminProvidersPanel() {
             className="pl-9 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-teal-500"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-400 font-semibold">{total} providers</span>
-          <button
-            onClick={handleExport}
-            disabled={exporting || total === 0}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black px-3 py-2 rounded-lg transition-all"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            {exporting ? 'Exporting...' : 'Export Excel'}
-          </button>
-          <button onClick={refresh} className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="Refresh">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting || total === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-[10px] font-black text-teal-700 transition-colors hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {exporting ? 'Exporting...' : 'Export Excel'}
+              </button>
+              <button
+                onClick={refresh}
+                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" title="Refresh">
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
       </div>
 
       {actionError && (
@@ -398,32 +402,25 @@ export default function AdminProvidersPanel() {
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-semibold">Rows per page</span>
-              <select
-                value={pageSize}
-                onChange={(e) => changePageSize(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none"
-              >
-                {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <span className="text-[10px] text-slate-400 font-semibold">Showing {startIndex + 1}–{Math.min(startIndex + SERVICES_PER_PAGE, total)} of {total}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="inline-flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                </button>
+                <button
+                  disabled={page >= totalPages || totalPages === 0}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="inline-flex items-center gap-1 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             <span className="text-[10px] text-slate-400 font-semibold">Page {page} of {Math.max(1, totalPages)}</span>
-            <div className="flex gap-1">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={page >= totalPages || totalPages === 0}
-                onClick={() => setPage((p) => p + 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </>
       )}

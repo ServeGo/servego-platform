@@ -1,8 +1,8 @@
 import React, { useState, Suspense, lazy } from 'react';
-import { Calendar, MapPin, FileText, MessageSquare, UserCheck, Hourglass, IndianRupee, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Calendar, MapPin, FileText, MessageSquare, UserCheck, Hourglass, IndianRupee, AlertTriangle, CheckCircle2, Clock, X } from 'lucide-react';
 import MapLoadingFallback from './MapLoadingFallback';
 import ChatPanel from './ChatPanel';
-import { useRealtime, useToast } from '../context/AppContext';
+import { useRealtime, useToast, useFeatureFlags } from '../context/AppContext';
 import { SERVICE_FEE_DEFAULT } from './QuotationModal';
 
 // maplibre is heavy; load it only when a live map is actually rendered for a
@@ -58,11 +58,16 @@ export default function BookingCard({
 }) {
   const { getBookingLocation } = useRealtime();
   const { showToast } = useToast();
+  const { liveTrackingCustomers } = useFeatureFlags();
   const liveLocation = getBookingLocation(booking.id);
   const dispatchPhase = liveLocation?.providerPhase || booking.providerPhase || null;
   const timeline = (Array.isArray(booking.statusHistory) ? booking.statusHistory : [])
     .filter((h) => String(h.status || '').toLowerCase() !== 'on_the_way');
   const [cancelling, setCancelling] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const isCompleted = ['completed', 'reviewed'].includes(booking.status);
+  const isCancelled = booking.status === 'cancelled';
+  const isTerminal = isCompleted || isCancelled;
   const quotation = booking.quotation || null;
   const quotationSubmitted = quotation && String(quotation.status).toUpperCase() === 'SUBMITTED';
 
@@ -121,20 +126,40 @@ export default function BookingCard({
         </div>
 
         <div className="md:col-span-3 text-left md:text-right flex flex-row md:flex-col justify-between md:justify-center items-center md:items-end gap-2">
-          {booking.status === 'completed' && (
-            <button 
-              onClick={() => onDownloadReceipt(booking)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 transition-colors shadow-3xs"
+          {isCompleted && (
+            <>
+              <button 
+                onClick={() => onDownloadReceipt(booking)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 transition-colors shadow-3xs"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Receipt</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTimeline(true)}
+                className="ml-auto md:ml-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 transition-colors shadow-3xs"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Timeline</span>
+              </button>
+            </>
+          )}
+          {isCancelled && (
+            <button
+              type="button"
+              onClick={() => setShowTimeline(true)}
+              className="ml-auto md:ml-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 transition-colors shadow-3xs"
             >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Receipt</span>
+              <Clock className="w-3.5 h-3.5" />
+              <span>Timeline</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Live Tracking Map */}
-      {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
+      {liveTrackingCustomers && ['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
         <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
           <Suspense fallback={<MapLoadingFallback />}>
             <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
@@ -150,30 +175,38 @@ export default function BookingCard({
         </div>
       )}
 
-      {/* Timeline */}
-      <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 mb-3">
-        <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-2 block">Tracking Timeline</span>
-        {timeline.length === 0 ? (
-          <p className="text-xs text-slate-400 italic py-3 text-center">No tracking events available for this booking yet.</p>
-        ) : (
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch">
-            {timeline.map((hist, idx) => (
-              <div key={idx} className="flex-1 relative flex sm:flex-col gap-2 items-start text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center text-[10px] shrink-0 border border-indigo-200">
-                    {idx + 1}
+      {/* Timeline — modal popup for terminal bookings (completed + cancelled),
+          inline for active bookings. Cancelled matches completed so past
+          bookings feel identical in both position and style. */}
+      {isTerminal && showTimeline && (
+        <TimelineModal timeline={timeline} onClose={() => setShowTimeline(false)} />
+      )}
+
+      {!isTerminal && (
+        <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 mb-3">
+          <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-2 block">Tracking Timeline</span>
+          {timeline.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-3 text-center">No tracking events available for this booking yet.</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch">
+              {timeline.map((hist, idx) => (
+                <div key={idx} className="flex-1 relative flex sm:flex-col gap-2 items-start text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center text-[10px] shrink-0 border border-indigo-200">
+                      {idx + 1}
+                    </div>
+                    <span className="font-bold text-slate-800 uppercase tracking-tight text-[10px]">{hist.status}</span>
                   </div>
-                  <span className="font-bold text-slate-800 uppercase tracking-tight text-[10px]">{hist.status}</span>
+                  <div className="pl-7 sm:pl-0 sm:mt-1 font-semibold">
+                    <p className="text-slate-600 text-[10px] leading-tight mt-0.5">{hist.note}</p>
+                    <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{formatTimelineTime(hist.timestamp)}</span>
+                  </div>
                 </div>
-                <div className="pl-7 sm:pl-0 sm:mt-1 font-semibold">
-                  <p className="text-slate-600 text-[10px] leading-tight mt-0.5">{hist.note}</p>
-                  <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{formatTimelineTime(hist.timestamp)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Live quotation review — the customer decides to confirm (work starts)
           or decline (pays the flat service fee). Never shown for other states. */}
@@ -246,6 +279,60 @@ export default function BookingCard({
           onSend={onSendMessage}
         />
       )}
+    </div>
+  );
+}
+
+function TimelineModal({ timeline, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl max-h-[80dvh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+          <span className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Tracking Timeline</span>
+          <button
+            onClick={onClose}
+            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg"
+            aria-label="Close timeline"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable timeline body */}
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4">
+          {timeline.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">No tracking events available for this booking yet.</p>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch">
+              {timeline.map((hist, idx) => (
+                <div key={idx} className="flex-1 relative flex sm:flex-col gap-2 items-start text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center text-[10px] shrink-0 border border-indigo-200">
+                      {idx + 1}
+                    </div>
+                    <span className="font-bold text-slate-800 uppercase tracking-tight text-[10px]">{hist.status}</span>
+                  </div>
+                  <div className="pl-7 sm:pl-0 sm:mt-1 font-semibold">
+                    <p className="text-slate-600 text-[10px] leading-tight mt-0.5">{hist.note}</p>
+                    <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{formatTimelineTime(hist.timestamp)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Close */}
+        <div className="shrink-0 px-4 pb-4 pt-2">
+          <button
+            onClick={onClose}
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-2.5 rounded-xl text-xs transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
