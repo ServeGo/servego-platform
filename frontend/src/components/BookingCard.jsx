@@ -348,9 +348,8 @@ function formatTimelineTime(value) {
 
 /**
  * The customer's decision panel for a submitted quotation. Confirming starts
- * the work (booking CONFIRMED → ONGOING); declining cancels the booking and
- * debits the flat ₹serviceFee from the wallet (unchanged when the customer asks
- * for another provider — the booking returns to the pool). Both actions POST
+ * the work (booking CONFIRMED → ONGOING); declining cancels the booking while
+ * payment remains external between customer and provider. Both actions POST
  * to dedicated quotation endpoints; the parent re-pulls the canonical booking
  * on success (rules 16 + 17: never optimistic for anything that moves money
  * or switches state).
@@ -392,7 +391,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
           <div>
             <h4 className="text-sm font-black text-slate-900">Quotation from {booking.providerName}</h4>
             <p className="text-[11px] text-slate-500 font-semibold">
-              The specialist has priced the job. Confirm to start work, or decline — a fee of ₹{fee} applies.
+              The specialist has priced the job. Confirm to start work, or decline the quotation.
             </p>
           </div>
         </div>
@@ -442,7 +441,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
             className="flex-1 sm:flex-none px-2 sm:px-5 py-2.5 border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-all disabled:opacity-50"
           >
             <span className="sm:hidden">Decline</span>
-            <span className="hidden sm:inline">Decline · Pay ₹{Number(fee).toLocaleString('en-IN')}</span>
+            <span className="hidden sm:inline">Decline Quotation</span>
           </button>
           <button
             type="button"
@@ -458,8 +457,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
       {decision === 'cancel' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
           <p className="text-xs text-slate-600 font-semibold">
-            Declining cancels this booking. A flat ₹{Number(fee).toLocaleString('en-IN')} service fee is billed to your
-            account for the specialist's time — it is paid to the specialist either way.
+            Declining cancels this quotation. Any payment is handled directly between you and the specialist; ServeGo does not charge your wallet.
           </p>
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input
@@ -469,7 +467,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
               className="mt-0.5 w-4 h-4 accent-teal-600"
             />
             <span className="text-xs font-semibold text-slate-700 leading-snug">
-              Ask servego24 to find another specialist instead <span className="text-slate-400 font-medium">(₹{Number(fee).toLocaleString('en-IN')} fee still applies — please tell us why)</span>
+              Ask servego24 to find another specialist instead <span className="text-slate-400 font-medium">(please tell us why)</span>
             </span>
           </label>
           {anotherProvider && (
@@ -500,7 +498,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
               onClick={() => runAction(() => onCancel(booking.id, anotherProvider, reason.trim()), anotherProvider ? 'Finding another specialist' : 'Booking cancelled')}
               className="flex-1 sm:flex-none px-2 sm:px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] sm:text-xs font-black whitespace-nowrap transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {busy ? 'Processing…' : (
+                  {busy ? 'Processing…' : (
                 <span>
                   <span className="sm:hidden">{anotherProvider ? 'Decline & Next' : 'Decline & Cancel'}</span>
                   <span className="hidden sm:inline">{anotherProvider ? 'Decline & Next Specialist' : 'Decline & Cancel'} · ₹{Number(fee).toLocaleString('en-IN')}</span>

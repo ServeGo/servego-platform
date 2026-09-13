@@ -9,6 +9,7 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     // data
     providers,
     providersList,
+    // manual booking requests use the same provider directory for assignment
     bookings,
     tickets,
     services,

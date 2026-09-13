@@ -136,7 +136,7 @@ export const createPermanentServiceRequestValidation = [
   body('requestType')
     .optional({ values: 'falsy' })
     .trim()
-    .isIn(['PERMANENT', 'CUSTOM']).withMessage('Request type must be PERMANENT or CUSTOM'),
+    .isIn(['PERMANENT', 'CUSTOM', 'NO_PROVIDER']).withMessage('Request type must be PERMANENT, CUSTOM, or NO_PROVIDER'),
   // Custom service request — a service not in the catalog. Only a name and a
   // description are required; location is optional (map picked falls back here).
   body('customServiceName')
@@ -151,20 +151,25 @@ export const createPermanentServiceRequestValidation = [
     .notEmpty().withMessage('Service description is required for a custom service request')
     .isLength({ max: 2000 }).withMessage('Service description too long')
     .escape(),
+  body('additionalInfo')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'NO_PROVIDER')
+    .trim()
+    .isLength({ max: 2000 }).withMessage('Service details too long')
+    .escape(),
   // Permanent / contract fields — required only for the PERMANENT flow.
   body('serviceCategory')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .trim()
     .notEmpty().withMessage('Service category is required')
     .isLength({ max: 200 }).withMessage('Service category too long')
     .escape(),
   body('engagementType')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .trim()
     .notEmpty().withMessage('Engagement type is required')
     .isIn(['PERMANENT', 'CONTRACT']).withMessage('Engagement type must be PERMANENT or CONTRACT'),
   body('startDate')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .notEmpty().withMessage('Start date is required')
     .custom((value) => {
       const d = new Date(value);
@@ -188,7 +193,7 @@ export const createPermanentServiceRequestValidation = [
       return true;
     }),
   body('monthlyBudget')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .notEmpty().withMessage('Monthly budget is required')
     .custom((value) => {
       const n = Number(value);
@@ -201,13 +206,13 @@ export const createPermanentServiceRequestValidation = [
     .isLength({ max: 2000 }).withMessage('Additional information too long')
     .escape(),
   body('locationAddress')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .trim()
     .notEmpty().withMessage('Service location is required')
     .isLength({ max: 500 }).withMessage('Address too long')
     .escape(),
   body('serviceLatitude')
-    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() !== 'CUSTOM')
+    .if((value, { req }) => String(req.body.requestType || '').toUpperCase() === 'PERMANENT')
     .notEmpty().withMessage('Please select your location on the map')
     .isFloat({ min: -90, max: 90 }).withMessage('Latitude must be between -90 and 90'),
   body('serviceLongitude')

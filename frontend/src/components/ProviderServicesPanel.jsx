@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Plus, Save, Loader2, Wrench } from 'lucide-react';
+import { Plus, Save, Loader2, Wrench, ShieldAlert, X } from 'lucide-react';
 import { api } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
 
@@ -40,6 +40,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const [description, setDescription] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [showVerificationNotice, setShowVerificationNotice] = useState(false);
 
 
 
@@ -100,6 +101,10 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   };
 
   const openRegister = () => {
+    if (provider?.isVerified !== true) {
+      setShowVerificationNotice(true);
+      return;
+    }
     setServicesError('');
     setServiceInterestedOption('');
     setExperienceYears('');
@@ -161,6 +166,11 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
       });
       const data = res.data;
       if (!res.ok) {
+        if (data?.code === 'NOT_VERIFIED') {
+          setIsRegisterOpen(false);
+          setShowVerificationNotice(true);
+          return;
+        }
         const fieldError = Array.isArray(data?.details) && data.details.length > 0 ? data.details[0].message : null;
         setServicesError(fieldError || data?.message || 'Failed to register service.');
         setSubmitting(false);
@@ -370,6 +380,35 @@ Requested: {new Date(sv.createdAt).toLocaleString()}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showVerificationNotice && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/55 backdrop-blur-xs flex items-center justify-center p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="verification-notice-title"
+            className="w-full max-w-sm bg-white rounded-3xl border border-amber-200 shadow-2xl p-6 text-center"
+          >
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+              <ShieldAlert className="w-6 h-6 text-amber-600" />
+            </div>
+            <h3 id="verification-notice-title" className="mt-4 text-lg font-black text-slate-900">
+              Profile verification pending
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600 font-semibold">
+              Your provider profile is not verified yet. Please wait until an admin verifies your profile before registering for a service.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowVerificationNotice(false)}
+              className="mt-5 inline-flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-black px-5 py-2.5 rounded-xl text-xs transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Close
+            </button>
           </div>
         </div>
       )}

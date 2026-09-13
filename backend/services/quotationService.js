@@ -1,6 +1,6 @@
 import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
-import { debitWallet, debitWalletAllowNegative, creditWallet } from './walletService.js';
+import { debitWallet, debitWalletAllowNegative } from './walletService.js';
 import { startBookingWork, findEligibleProviders, cancelOpenOffers } from './leadService.js';
 import { recordLeadsOffered } from './providerPerformanceService.js';
 import { buildStatusHistory, normalizeBookingStatus } from '../utils/workflow.js';
@@ -230,13 +230,12 @@ export async function confirmQuotation({ bookingId, actorId, client = prisma }) 
 }
 
 /**
- * Customer declines the live quotation. The fixed service fee is BILLED to the
- * customer (no wallet-balance gate — the bill can run negative) and credited
- * to the submitting provider as their compensation, then either the booking is
- * re-broadcast to other providers (excluding the current one; requires the
- * customer's reason) or cancelled outright. The quotation CAS double-bills
- * proof: only the deciding call marks it REJECTED, so a retry never applies the
- * fee twice.
+ * Customer declines the live quotation. Payment is settled externally between
+ * customer and provider, so the customer wallet is never touched. The provider
+ * receives the service-fee compensation externally, while the configured
+ * platform commission (10% by default) is recorded against the provider wallet;
+ * then the booking is re-broadcast or cancelled.
+ * The quotation CAS guarantees the settlement runs only once.
  */
 export async function declineQuotation({ bookingId, actorId, anotherProvider = false, note = null, client = prisma }) {
   return withClientTransaction(client, async (tx) => {
@@ -284,33 +283,26 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
 
     const fee = await getServiceFeeDefault(tx);
 
-    // The decline fee is the submitting provider's compensation. The customer
-    // is BILLED the fee (ledger debit that may run negative — no wallet-balance
-    // gate) and the provider is credited the same amount. Idempotency is
-    // guaranteed by the CAS on the quotation above: only the deciding call runs.
-    await debitWalletAllowNegative({
-      userId: booking.customerId,
-      amount: fee,
-      category: 'SERVICE_FEE',
-      referenceType: 'BOOKING',
-      referenceId: booking.id,
-      description: `Service fee billed for declining the provider quotation (₹${fee})`,
-      client: tx
-    });
+    // The customer pays externally, so do not create a customer wallet debit.
+    // Payment is external. Only the platform commission is recorded against
+    // the provider wallet, and it may run negative like completion accounting.
+    const commission = computeCommission(fee, await getCommissionTiers(tx));
     const feeProvider = await tx.provider.findUnique({
       where: { id: quotation.providerId },
       select: { userId: true }
     });
     if (feeProvider?.userId) {
-      await creditWallet({
-        userId: feeProvider.userId,
-        amount: fee,
-        category: 'SERVICE_FEE',
-        referenceType: 'BOOKING',
-        referenceId: booking.id,
-        description: `Service fee compensation for the declined quotation (₹${fee})`,
-        client: tx
-      });
+      if (commission > 0) {
+        await debitWalletAllowNegative({
+          userId: feeProvider.userId,
+          amount: commission,
+          category: 'COMMISSION',
+          referenceType: 'BOOKING',
+          referenceId: booking.id,
+          description: `Platform commission (${commission} on ₹${fee}) for the declined quotation`,
+          client: tx
+        });
+      }
     }
 
     if (anotherProvider) {
@@ -328,7 +320,8 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
         booking: result.booking || booking,
         lead: booking.lead,
         handled: false,
-        feeDebited: true
+        feeDebited: false,
+        commission
       };
     }
 
@@ -342,7 +335,7 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
       }
     });
     if (transitioned.count === 0) {
-      return { booking: await tx.booking.findUnique({ where: { id: bookingId } }), quotation, handled: false, feeDebited: true };
+      return { booking: await tx.booking.findUnique({ where: { id: bookingId } }), quotation, handled: false, feeDebited: false, commission, providerCompensation };
     }
 
     await tx.bookingEvent.create({
@@ -376,7 +369,8 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
       quotation,
       lead: booking.lead,
       handled: false,
-      feeDebited: true,
+      feeDebited: false,
+      commission,
       cancelled: true
     };
   });

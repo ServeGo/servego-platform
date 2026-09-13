@@ -58,6 +58,7 @@ const getAdminTabFromRoute = (routeValue) => {
   if (tab === 'providers') return 'providers';
   if (tab === 'service-requests' || tab === 'providerServiceRequests') return 'providerServiceRequests';
   if (tab === 'permanent-service-requests' || tab === 'permanentServiceRequests') return 'permanentServiceRequests';
+  if (tab === 'manual-booking-requests' || tab === 'manualBookingRequests') return 'manualBookingRequests';
   if (tab === 'services') return 'services';
   if (tab === 'bookings') return 'bookings';
   if (tab === 'reviews') return 'reviews';
@@ -224,7 +225,7 @@ export function MainLayout() {
 
       if (segments[0] === 'admin') {
         setCurrentPage('admin');
-        setAdminActiveTabExternal(getAdminTabFromRoute(sements[1] || 'dashboard'));
+        setAdminActiveTabExternal(getAdminTabFromRoute(segments[1] || 'dashboard'));
         return;
       }
 
@@ -530,6 +531,21 @@ export function MainLayout() {
                 <span>Permanent &amp; Custom</span>
               </button>
 
+              <button
+                onClick={() => {
+                  setAdminActiveTabExternal('manualBookingRequests');
+                  updateBrowserRoute('admin', null, 'manualBookingRequests');
+                }}
+                className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
+                  adminActiveTabExternal === 'manualBookingRequests'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'hover:bg-white/5 text-slate-305'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 shrink-0" />
+                <span>Manual Bookings</span>
+              </button>
+
 
               <button
                 onClick={() => {
@@ -746,6 +762,7 @@ export function MainLayout() {
                     { key: 'customers', label: 'Customers', sub: 'Customer accounts', icon: Users, tone: 'bg-indigo-50 text-indigo-600' },
                     { key: 'providers', label: 'Providers', sub: 'Partner accounts', icon: Briefcase, tone: 'bg-teal-50 text-teal-600' },
                     { key: 'permanentServiceRequests', label: 'Permanent Hires', sub: 'Service requests', icon: ClipboardList, tone: 'bg-amber-50 text-amber-600' },
+                    { key: 'manualBookingRequests', label: 'Manual Bookings', sub: 'No-provider requests', icon: ClipboardList, tone: 'bg-emerald-50 text-emerald-600' },
                     { key: 'tickets', label: 'Tickets', sub: 'Customer support', icon: MessageSquare, tone: 'bg-rose-50 text-rose-600' },
                     { key: 'servego', label: 'servego24', sub: 'Platform overview', icon: Sparkles, tone: 'bg-violet-50 text-violet-600' },
                     { key: 'analytics', label: 'Analytics', sub: 'Performance data', icon: BarChart3, tone: 'bg-sky-50 text-sky-600' },

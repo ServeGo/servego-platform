@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ArrowRight,
   Bell,
@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Snowflake,
   Sparkles,
+  Star,
   Wallet,
   Wrench,
 } from 'lucide-react';
@@ -22,18 +23,20 @@ import { useAuth, useData, useUI } from '../context/AppContext';
  * A big "Explore Services" entry point goes to the Services catalogue; quick
  * tiles drop straight into the dashboard tabs.
  */
-const POPULAR_SERVICES = [
-  { id: 'electrician', name: 'Electrician', icon: Wrench, tone: 'bg-amber-50 text-amber-600 border-amber-100' },
-  { id: 'plumber', name: 'Plumber', icon: Droplets, tone: 'bg-sky-50 text-sky-600 border-sky-100' },
-  { id: 'ac-repair', name: 'AC Repair', icon: Snowflake, tone: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
-  { id: 'home-cleaning', name: 'Home Cleaning', icon: Sparkles, tone: 'bg-teal-50 text-teal-600 border-teal-100' },
-  { id: 'painting', name: 'Painting', icon: PaintRoller, tone: 'bg-rose-50 text-rose-600 border-rose-100' },
-  { id: 'deep-cleaning', name: 'Deep Cleaning', icon: ShieldCheck, tone: 'bg-violet-50 text-violet-600 border-violet-100' },
-];
+const SERVICE_PRESENTATION = {
+  electrician: { icon: Wrench, tone: 'bg-amber-50 text-amber-600 border-amber-100' },
+  plumber: { icon: Droplets, tone: 'bg-sky-50 text-sky-600 border-sky-100' },
+  'ac-repair': { icon: Snowflake, tone: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
+  'home-cleaning': { icon: Sparkles, tone: 'bg-teal-50 text-teal-600 border-teal-100' },
+  painting: { icon: PaintRoller, tone: 'bg-rose-50 text-rose-600 border-rose-100' },
+  'deep-cleaning': { icon: ShieldCheck, tone: 'bg-violet-50 text-violet-600 border-violet-100' },
+};
+
+const DEFAULT_PRESENTATION = { icon: Wrench, tone: 'bg-slate-50 text-slate-600 border-slate-200' };
 
 export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   const { currentUser } = useAuth();
-  const { alerts, bookings } = useData();
+  const { alerts, bookings, services } = useData();
   const { selectedArea } = useUI();
 
   const firstName = (currentUser?.name || 'Customer').split(' ')[0];
@@ -42,6 +45,17 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
   const activeBookingsCount = (bookings || []).filter(
     (b) => b.customerId === currentUser?.id && ['pending', 'confirmed', 'ongoing'].includes(b.status)
   ).length;
+  const popularServices = useMemo(() => (
+    (Array.isArray(services) ? services : [])
+      .sort((a, b) => {
+        const ratingDifference = Number(b.avgRating) - Number(a.avgRating);
+        if (ratingDifference !== 0) return ratingDifference;
+        const specialistDifference = Number(b.activeSpecialistCount || 0) - Number(a.activeSpecialistCount || 0);
+        if (specialistDifference !== 0) return specialistDifference;
+        return String(a.name).localeCompare(String(b.name));
+      })
+      .slice(0, 5)
+  ), [services]);
 
   const goBook = (serviceId) => {
     // Intent handoff to the Services page: it auto-opens the temporary/permanent
@@ -145,7 +159,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
       {/* Popular services */}
       <section aria-label="Popular services" className="px-4 mt-8">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Popular right now</h2>
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Top rated services</h2>
           <button
             type="button"
             onClick={() => onNavigate('services')}
@@ -156,8 +170,9 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
-          {POPULAR_SERVICES.map((s) => {
-            const Icon = s.icon;
+          {popularServices.map((s) => {
+            const presentation = SERVICE_PRESENTATION[s.id] || DEFAULT_PRESENTATION;
+            const Icon = presentation.icon;
             return (
               <button
                 key={s.id}
@@ -165,12 +180,16 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 onClick={() => goBook(s.id)}
                 className="group bg-white border border-slate-200 rounded-2xl px-4 py-4 flex items-center gap-3 text-left transition-all hover:border-teal-300 hover:shadow-[0_14px_30px_-18px_rgba(15,23,42,0.4)] active:scale-[0.98]"
               >
-                <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${s.tone}`}>
+                <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${presentation.tone}`}>
                   <Icon className="w-5 h-5" />
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
-                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-teal-600">
+                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-amber-600">
+                    <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                    {Number(s.avgRating).toFixed(1)} rating
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-amber-600">
                     Book now · <span className="text-slate-500">₹249/-</span> <ArrowRight className="w-2.5 h-2.5" />
                   </span>
                 </span>

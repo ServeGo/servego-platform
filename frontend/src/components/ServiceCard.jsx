@@ -24,37 +24,36 @@ export default function ServiceCard({
     <article className="relative group flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-xl hover:-translate-y-0.5 hover:border-teal-300 transition-all text-left">
       <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-teal-500 via-indigo-500 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-      {/* Top row: rating left, specialist count right */}
-      <div className="flex items-center justify-between px-5 pt-4 sm:px-6 sm:pt-5">
-        {avgRating > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 px-2 py-1 text-[11px] font-black">
+      {/* Image takes the upper half of the card; metadata remains readable on it. */}
+      <div className="relative h-40 sm:h-44 overflow-hidden bg-gradient-to-br from-teal-500/15 to-indigo-500/15">
+        {category.image ? (
+          <img
+            src={category.image}
+            alt={category.name}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-teal-500/15 to-indigo-500/15 text-teal-700 flex items-center justify-center">
+            <CategoryIcon name={category.name} className="w-12 h-12 sm:w-14 sm:h-14" />
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-slate-950/10 pointer-events-none" />
+        {avgRating > 0 && (
+          <span className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-full bg-white/95 text-amber-700 border border-white/70 px-2.5 py-1.5 text-[11px] font-black shadow-sm backdrop-blur-sm">
             <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
             {avgRating.toFixed(1)}
           </span>
-        ) : (
-          <span />
         )}
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 px-2 py-1 text-[11px] font-bold">
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-slate-950/80 text-white border border-white/20 px-2.5 py-1.5 text-[11px] font-bold shadow-sm backdrop-blur-sm">
           <Users className="w-3 h-3" />
           {activeCount} active
         </span>
       </div>
 
-      {/* Middle: image left + name & description right */}
-      <div className="flex items-start gap-4 px-5 py-4 sm:px-6 sm:py-5">
-        {category.image ? (
-          <img
-            src={category.image}
-            alt={category.name}
-            className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-1 ring-slate-200 shrink-0"
-          />
-        ) : (
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-teal-500/15 to-indigo-500/15 text-teal-700 flex items-center justify-center ring-1 ring-teal-500/10 shrink-0">
-            <CategoryIcon name={category.name} className="w-7 h-7 sm:w-8 sm:h-8" />
-          </div>
-        )}
-
-        <div className="flex-1 min-w-0">
+      {/* Service information and booking action */}
+      <div className="flex flex-1 flex-col px-5 pt-4 pb-5 sm:px-6 sm:pt-5 sm:pb-6">
+        <div>
           <h3 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight capitalize">
             {category.name}
           </h3>
@@ -62,14 +61,10 @@ export default function ServiceCard({
             {category.description}
           </p>
         </div>
-      </div>
-
-      {/* Bottom: centered full-width Book Now */}
-      <div className="px-5 pb-5 sm:px-6 sm:pb-6">
         <button
           type="button"
           onClick={() => onSelect(category.id || category.name)}
-          className="w-full bg-slate-900 hover:bg-teal-600 text-white text-xs sm:text-sm rounded-2xl py-3 flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
+          className="mt-5 w-full bg-slate-900 hover:bg-teal-600 text-white text-xs sm:text-sm rounded-2xl py-3 flex items-center justify-center gap-2 transition-all group-hover:shadow-lg"
         >
           <span className="font-black">Book Now</span>
           <span className="text-[10px] sm:text-[11px] font-bold text-teal-100">₹249/-</span>
