@@ -56,7 +56,7 @@ export default function Navbar({
   };
 
   const setAdminHashAndTab = (tabKey) => {
-    setAdminActiveTab(tabKey);
+    if (setAdminActiveTab) setAdminActiveTab(tabKey);
     const path = tabKey === 'dashboard' ? '/admin/dashboard' : `/admin/${tabKey}`;
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);

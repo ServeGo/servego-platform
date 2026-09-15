@@ -664,7 +664,7 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const updateBookingStatus = async (bookingId, status, note, verificationCode) => {
+  const updateBookingStatus = async (bookingId, status, note) => {
     const targetStatus = String(status || '').toLowerCase();
     const existing = bookings.find(b => b.id === bookingId);
 
@@ -682,7 +682,7 @@ export const DataProvider = ({ children }) => {
       const res = await api(`${API_BASE_URL}/bookings/${bookingId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note, verificationCode })
+        body: JSON.stringify({ status, note })
       });
       const data = await res.json();
       if (data.id) {

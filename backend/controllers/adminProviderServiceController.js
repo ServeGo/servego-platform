@@ -25,8 +25,9 @@ export const AdminProviderServiceController = {
           take,
           include: {
             provider: {
-              include: {
-                user: { select: { id: true, name: true, email: true, phone: true, avatar: true } }
+              select: {
+                id: true,
+                user: { select: { id: true, name: true, email: true, phone: true, avatar: true, providerNumber: true } }
               }
             }
           }
@@ -35,7 +36,8 @@ export const AdminProviderServiceController = {
       ]);
       return sendApiSuccess(res, 200, { requests, pagination: offsetMeta(total, page, limit) });
     } catch (err) {
-      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch provider service requests', err.message);
+      console.error('getPendingRequests error:', err);
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch provider service requests', err.message || String(err));
     }
   },
 

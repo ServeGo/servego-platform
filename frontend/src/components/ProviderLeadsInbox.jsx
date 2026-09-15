@@ -746,7 +746,7 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
             </span>
           )}
           {activeDuty && <ShowDirectionLink booking={booking} />}
-          <span className="text-[10px] font-mono font-bold bg-slate-50 text-slate-500 px-2 py-0.5 rounded">#{(booking.bookingNumber || lead.id).slice(0, 10)}</span>
+          <span className="text-[10px] font-mono font-bold bg-slate-50 text-slate-500 px-2 py-0.5 rounded">#{booking.bookingNumber || '—'}</span>
         </div>
       </div>
 

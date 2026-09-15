@@ -18,9 +18,12 @@ export const UserController = {
       const normalizedEmail = String(email).trim().toLowerCase();
       const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
-      // Always return success to prevent email enumeration
+      // Return 404 so the user knows the email isn't registered. The route is
+      // behind authRateLimiter (10 req/15min/IP), which bounds enumeration risk.
+      // No reset email is sent on this path — nodemailer is only called once a
+      // matching account is found below.
       if (!user) {
-        return sendApiSuccess(res, 200, { message: 'If an account with that email exists, a reset link has been sent.' });
+        return sendApiError(res, 404, 'EMAIL_NOT_FOUND', 'No account found with that email address. Check the spelling and enter the email you used to sign up.');
       }
 
       // Generate a random token and store its SHA-256 hash
@@ -146,8 +149,8 @@ export const UserController = {
             createdAt: true,
             updatedAt: true,
             // Admin tables render profile scalars only. Don't pull the large
-            // JSON array columns (specialties, serviceAreas, timeSlots,
-            // availableDays) for every user on the page.
+            // JSON array columns (specialties, serviceAreas)
+            // for every user on the page.
             customerProfile: {
               select: { id: true, address: true, pincode: true, createdAt: true }
             },
@@ -249,7 +252,6 @@ export const UserController = {
       const avatar = (imageUrl && String(imageUrl).trim())
         ? String(imageUrl).trim()
         : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
-      const verificationCode = role === 'customer' ? String(Math.floor(1000 + Math.random() * 9000)) : null;
 
       // Business display identifiers — CID-0001 (customer), PID-0001 (provider).
       // Retry loop: if a rare race causes a unique-constraint collision on the
@@ -277,7 +279,6 @@ export const UserController = {
               latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
               longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
               referralCode,
-              verificationCode,
               customerNumber,
               providerNumber,
               referralsCount: 0,
@@ -308,8 +309,7 @@ export const UserController = {
           data: {
             userId: newUser.id,
             address: address.trim(),
-            pincode: pincode ? String(pincode).trim() : null,
-            preferences: []
+            pincode: pincode ? String(pincode).trim() : null
           }
         });
 
@@ -345,9 +345,7 @@ export const UserController = {
             isVerified: false,
             accountStatus: 'ACTIVE',
             specialties: [],
-            serviceAreas: [],
-            availableDays: [],
-            timeSlots: []
+            serviceAreas: []
           }
         });
 
@@ -395,7 +393,6 @@ export const UserController = {
         profileComplete: newUser.profileComplete,
         address: newUser.address,
         pincode: newUser.pincode,
-        verificationCode: newUser.verificationCode,
         providerId: role === 'provider' ? providerProfile?.id : null,
         customerNumber: newUser.customerNumber,
         providerNumber: newUser.providerNumber,
@@ -535,7 +532,6 @@ export const UserController = {
           avatar: true, status: true, profileComplete: true, address: true, pincode: true,
           referralCode: true, referredBy: true, referralsCount: true,
           referralDiscountBalance: true, referralBonusEarned: true,
-          verificationCode: true,
           providerId: true, createdAt: true, updatedAt: true,
           customerProfile: true,
           customerAddresses: {
@@ -546,8 +542,7 @@ export const UserController = {
               id: true, category: true, rating: true, reviewCount: true,
               verificationLevel: true, accountStatus: true, experienceYears: true,
               jobsCompleted: true, bio: true, specialties: true, serviceAreas: true,
-              photo: true, isVerified: true, isFeatured: true,
-              availableDays: true, timeSlots: true
+              photo: true, isVerified: true, isFeatured: true
             }
           }
         }
@@ -602,8 +597,7 @@ export const UserController = {
             data: {
               userId: user.id,
               address: address.trim(),
-              pincode: pincode.trim(),
-              preferences: []
+              pincode: pincode.trim()
             }
           });
         }

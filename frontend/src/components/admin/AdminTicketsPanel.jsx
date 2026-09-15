@@ -24,7 +24,7 @@ export default function AdminTicketsPanel({ tickets, activeTicketId, ticketRespo
               <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
                 <div className="flex justify-between items-start gap-4">
                   <div>
-                    <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-650 px-2 py-0.5 rounded block w-fit mb-1">{t.id}</span>
+                    <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-650 px-2 py-0.5 rounded block w-fit mb-1">{t.bookingNumber || '—'}</span>
                     <h4 className="font-extrabold text-slate-950 text-sm">{t.subject}</h4>
                     <span className="text-xs text-slate-400 mt-1 block">
                       From Representative: <span className="font-bold text-slate-700">{t.name}</span> ({t.email})

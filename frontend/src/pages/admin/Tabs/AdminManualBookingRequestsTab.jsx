@@ -135,7 +135,7 @@ export default function AdminManualBookingRequestsTab({ providersList = [] }) {
                   <div className="flex flex-col sm:flex-row gap-2 border-t border-slate-100 pt-3">
                     <select value={assignments[request.id] || ''} onChange={(e) => setAssignments((current) => ({ ...current, [request.id]: e.target.value }))} className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-700">
                       <option value="">Select provider...</option>
-                      {requestProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name || provider.id}</option>)}
+                      {requestProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name || provider.providerNumber || 'Unknown'}</option>)}
                     </select>
                     <button type="button" onClick={() => updateRequest(request, 'APPROVED')} disabled={busy || !assignments[request.id] || requestProviders.length === 0} className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-3 py-2 text-[10px] font-extrabold disabled:opacity-50">{busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} Assign</button>
                     <button type="button" onClick={() => updateRequest(request, 'REJECTED')} disabled={busy} className="inline-flex items-center justify-center gap-1.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-3 py-2 text-[10px] font-extrabold disabled:opacity-50"><XCircle className="w-3 h-3" /> Reject</button>

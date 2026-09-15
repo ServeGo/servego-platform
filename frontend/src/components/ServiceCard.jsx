@@ -39,12 +39,6 @@ export default function ServiceCard({
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-slate-950/10 pointer-events-none" />
-        {avgRating > 0 && (
-          <span className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-full bg-white/95 text-amber-700 border border-white/70 px-2.5 py-1.5 text-[11px] font-black shadow-sm backdrop-blur-sm">
-            <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-            {avgRating.toFixed(1)}
-          </span>
-        )}
         <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-slate-950/80 text-white border border-white/20 px-2.5 py-1.5 text-[11px] font-bold shadow-sm backdrop-blur-sm">
           <Users className="w-3 h-3" />
           {activeCount} active

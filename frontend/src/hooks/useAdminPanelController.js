@@ -190,12 +190,8 @@ export function useAdminPanelController() {
       return;
     }
 
-    setServiceAddSuccess('Service added successfully.');
-    setIsSubmittingService(false);
-    setTimeout(() => {
-      setServiceAddSuccess('');
-      closeAddService();
-    }, 650);
+    closeAddService();
+    fetchAdminServices();
   };
 
   const submitEditService = async (e) => {
@@ -232,12 +228,8 @@ export function useAdminPanelController() {
       return;
     }
 
-    setServiceEditSuccess('Service updated successfully.');
-    setIsSubmittingService(false);
-    setTimeout(() => {
-      setServiceEditSuccess('');
-      closeEditService();
-    }, 650);
+    closeEditService();
+    fetchAdminServices();
   };
 
   return {

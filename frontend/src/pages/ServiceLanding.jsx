@@ -20,7 +20,7 @@ function buildBreadcrumbs(items) {
 
 function buildServiceSchema(service, path, cityName = 'Hyderabad') {
   return {
-    '@type': 'Service',
+    '@type': service.serviceSchema || 'Service',
     '@id': `${BASE_URL}${path}#service`,
     name: service.name,
     description: service.description,
@@ -122,7 +122,13 @@ export function ServiceLanding({ slug, intentSlug, citySlug = 'hyderabad', route
     ...(faqs && faqs.length ? [buildFAQSchema(faqs)] : []),
   ];
 
-  useSEO({ title, description, path, schema });
+  useSEO({
+    title,
+    description,
+    path,
+    schema,
+    ogImageAlt: `${title} – Book local home services on ServeGo24`,
+  });
 
   const relatedServices = isCityPage
     ? SERVICE_SLUGS.slice(0, 6).map((s) => [s, SEO_SERVICE_PAGES[s]])

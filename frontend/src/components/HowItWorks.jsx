@@ -1,26 +1,36 @@
 import React from 'react';
-import { Search, MapPin, RadioTower, CheckCircle2 } from 'lucide-react';
+import { Search, RadioTower, Navigation, FileText, CheckCircle2, Star } from 'lucide-react';
 
 const STEPS = [
   {
     icon: Search,
-    title: 'Search & Pick a Service',
-    desc: 'Browse the home-services catalog or search directly — electrician, plumber, AC repair, home cleaning and more.',
-  },
-  {
-    icon: MapPin,
-    title: 'Share Your Job Details',
-    desc: 'Mark your location on the map and add instructions. No prepayment — you settle charges with the specialist after the job.',
+    title: 'Book Your Service',
+    desc: 'Pick the service you need, pin your location and add your contact number. No prepayment — you settle charges directly with the specialist.',
   },
   {
     icon: RadioTower,
     title: 'We Broadcast Your Request',
-    desc: 'Your job is offered to every eligible specialist in your area at once. The first specialist to accept gets the booking.',
+    desc: 'Your job is offered to every eligible specialist in your area at once. The first specialist to accept confirms your booking.',
+  },
+  {
+    icon: Navigation,
+    title: 'Specialist on the Way',
+    desc: 'The confirmed specialist heads to your address with live GPS tracking, so you can follow their location and ETA in real time.',
+  },
+  {
+    icon: FileText,
+    title: 'Quotation & Start Work',
+    desc: 'The specialist shares an itemised quotation — the fixed ₹249/- service fee plus the job charges. Confirm it to start work instantly.',
   },
   {
     icon: CheckCircle2,
-    title: 'Review & Complete',
-    desc: 'Review the specialist\'s quotation, confirm it to start the job, then rate the work once it is done.',
+    title: 'Work Gets Done',
+    desc: 'The job runs at your location and the specialist marks the booking complete when the work is finished.',
+  },
+  {
+    icon: Star,
+    title: 'Pay & Review',
+    desc: 'Settle the charges directly with the specialist, rate the work you received, and keep your service receipt.',
   },
 ];
 
@@ -30,14 +40,13 @@ export default function HowItWorks() {
       <div>
         <div className="mx-auto mb-10 max-w-2xl text-center">
           <span className="text-teal-700 font-bold uppercase tracking-[0.25em] text-[11px]">Simple Booking Flow</span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">From request to completion in four steps</h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">From request to completion in six steps</h2>
           <p className="text-slate-500 text-xs sm:text-sm mt-1.5 font-semibold">
-            Pick a service, share the details, and servego24 broadcasts your job to every eligible specialist in your area.
+            Pick a service, share your details, and servego24 broadcasts your job to every eligible specialist in your area.
           </p>
         </div>
 
-        <div className="relative grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="hidden lg:block absolute top-[52px] left-[14%] right-[14%] h-px bg-gradient-to-r from-teal-200 via-slate-300 to-teal-200" />
+        <div className="relative grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {STEPS.map((step, idx) => (
             <Step key={step.title} number={idx + 1} {...step} />
           ))}
@@ -49,17 +58,23 @@ export default function HowItWorks() {
 
 function Step({ number, icon: Icon, title, desc }) {
   return (
-    <div className="relative z-10 flex flex-col items-center text-center bg-slate-50/80 p-6 rounded-2xl border border-slate-200 shadow-sm hover:-translate-y-1 transition-transform">
+    <div className="relative group flex flex-col items-center text-center bg-white p-7 rounded-2xl border border-slate-200 shadow-md shadow-slate-900/[0.04] hover:shadow-xl hover:-translate-y-1.5 hover:border-teal-200 transition-all duration-300 overflow-hidden">
+      {/* Soft teal glow on hover */}
+      <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full bg-teal-100/50 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
       <div className="relative">
-        <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center border border-teal-500/10">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white shadow-lg shadow-teal-500/25 group-hover:scale-105 transition-transform duration-300">
           <Icon className="w-6 h-6" />
         </div>
-        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-teal-700 text-white text-[10px] font-extrabold flex items-center justify-center">
+        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-900 text-white text-[10px] font-black flex items-center justify-center ring-4 ring-white">
           {number}
         </span>
       </div>
-      <h4 className="text-sm font-bold text-slate-900 mt-4">{title}</h4>
-      <p className="text-slate-500 text-xs mt-2 leading-relaxed font-semibold">{desc}</p>
+
+      <h4 className="text-sm font-extrabold text-slate-900 mt-5 tracking-tight">{title}</h4>
+      <p className="text-slate-500 text-xs mt-2 leading-relaxed font-medium">{desc}</p>
+
+      <div className="mt-4 h-1 w-8 rounded-full bg-gradient-to-r from-teal-500 to-emerald-400 transition-all duration-300 group-hover:w-12" />
     </div>
   );
 }

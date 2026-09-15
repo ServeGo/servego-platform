@@ -7,6 +7,8 @@ import {
   recordLeadOffered,
   recordJobCompleted
 } from '../providerPerformanceService.js';
+import { logger } from '../../utils/telemetry/logger.js';
+import { metrics } from '../../utils/telemetry/metrics.js';
 
 /**
  * Worker handlers for the durable job queue. Each key is a job `type` and the
@@ -62,7 +64,16 @@ export const jobHandlers = {
     if (!to || !subject) {
       throw Object.assign(new Error('email job requires "to" and "subject"'), { permanent: true });
     }
-    return sendEmail({ to, subject, text, html });
+    try {
+      const result = await sendEmail({ to, subject, text, html });
+      metrics.recordCounter('emails.sent');
+      logger.info('email.sent', { to, subject });
+      return result;
+    } catch (err) {
+      metrics.recordCounter('emails.failed');
+      logger.error('email.failed', { to, subject, error: err.message });
+      throw err;
+    }
   },
 
   /**

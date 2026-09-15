@@ -410,13 +410,6 @@ export const updateProviderProfileValidation = [
 ];
 
 export const updateAvailabilityValidation = [
-  body('availableDays')
-    .optional()
-    .isArray().withMessage('Available days must be an array')
-    .custom((days) => days.every((day) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].includes(String(day).trim()))).withMessage('Available days must use Mon through Sun'),
-  body('timeSlots')
-    .optional()
-    .isArray().withMessage('Time slots must be an array'),
   body('availabilitySlots')
     .optional()
     .isArray().withMessage('Availability slots must be an array')

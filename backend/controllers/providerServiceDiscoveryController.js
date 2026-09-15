@@ -38,7 +38,7 @@ export const ProviderServiceDiscoveryController = {
       // clear no threshold 404 instead of silently redirecting to a lookalike.
       const resolved = await resolveServiceForQuery(serviceName);
       if (!resolved) {
-        return sendApiError(res, 404, 'NOT_FOUND', 'Service category not found.');
+        return sendApiSuccess(res, 200, []);
       }
 
       const orderBy = sort === 'experience'

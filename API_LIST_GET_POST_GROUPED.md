@@ -1,6 +1,6 @@
 # HTTP API Reference (Grouped)
 
-Source: `backend/routes/api.js` — **135 routes**, all under `/api/v1`.
+Source: `backend/routes/api.js` — **142 routes**, all under `/api/v1`.
 
 Access legend: `auth` = any logged-in user, `customer` / `provider` / `admin` = role, `provider|admin` = either, `optional` = works logged-in or anonymously, `public` = no token required.
 
@@ -117,6 +117,7 @@ Rate-limited: `POST /support-tickets` (support-ticket limiter).
 | GET | /reviews | admin |
 | POST | /reviews<br> v(createReviewValidation) | auth |
 | GET | /providers/:id/reviews | public |
+| GET | /bookings/:id/review | auth |
 | DELETE | /reviews/:id | admin |
 
 Rate-limited: `POST /reviews` (review limiter).
@@ -138,6 +139,7 @@ Rate-limited: `POST /reviews` (review limiter).
 | GET | /categories/:slug | public |
 | GET | /categories/:id/active-count | public |
 | GET | /services/search | public |
+| GET | /services/top-rated | public |
 | GET | /services | public |
 
 ## Services (Admin CRUD)
@@ -273,7 +275,23 @@ One request = one lead = one provider. Lead is `NEW → VIEWED → ACCEPTED/REJE
 | Method | Endpoint | Access |
 |------|----------|--------|
 | GET | /admin/queue/stats | admin |
+| POST | /admin/queue/stats/reset | admin |
 | POST | /admin/queue/requeue | admin |
+
+## Admin: Socket.IO Stats
+
+| Method | Endpoint | Access |
+|------|----------|--------|
+| GET | /admin/socket/stats | admin |
+| POST | /admin/socket/stats/reset | admin |
+
+## Admin: Observability Metrics
+
+| Method | Endpoint | Access |
+|------|----------|--------|
+| GET | /admin/metrics | admin |
+
+In-memory snapshot (no DB access): per-route counts, error rate, avg/p95/p99 latency, error-code distribution, queue/email counters. Also flushed to the structured log stream every 60 s.
 
 ## Feature Flags
 

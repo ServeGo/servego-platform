@@ -34,11 +34,15 @@ function buildHead(html, route) {
   output = replaceMeta(output, 'name=["\\\']description["\\\']', `<meta name="description" content="${escapeHtml(route.description)}" />`);
   output = replaceMeta(output, 'name=["\\\']robots["\\\']', '<meta name="robots" content="index, follow" />');
   output = output.replace(/<link[^>]+rel=["']canonical["'][^>]*>/i, `<link rel="canonical" href="${canonical}" />`);
+  output = output.replace(/<link[^>]+rel=["']alternate["'][^>]*hreflang=["']en-IN["'][^>]*>/i, `<link rel="alternate" hreflang="en-IN" href="${canonical}" />`);
   output = replaceMeta(output, 'property=["\\\']og:title["\\\']', `<meta property="og:title" content="${escapeHtml(route.title)}" />`);
   output = replaceMeta(output, 'property=["\\\']og:description["\\\']', `<meta property="og:description" content="${escapeHtml(route.description)}" />`);
   output = replaceMeta(output, 'property=["\\\']og:url["\\\']', `<meta property="og:url" content="${canonical}" />`);
   output = replaceMeta(output, 'name=["\\\']twitter:title["\\\']', `<meta name="twitter:title" content="${escapeHtml(route.title)}" />`);
   output = replaceMeta(output, 'name=["\\\']twitter:description["\\\']', `<meta name="twitter:description" content="${escapeHtml(route.description)}" />`);
+  const imageAlt = `${route.title} – Book local home services on ServeGo24`;
+  output = replaceMeta(output, 'property=["\\\']og:image:alt["\\\']', `<meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />`);
+  output = replaceMeta(output, 'name=["\\\']twitter:image:alt["\\\']', `<meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}" />`);
   return output;
 }
 
@@ -88,7 +92,7 @@ function buildSchema(route) {
   if (['service', 'city-service', 'intent'].includes(route.kind)) {
     const service = route.kind === 'intent' ? route.service : route;
     graph.push({
-      '@type': 'Service',
+      '@type': service.serviceSchema || 'Service',
       '@id': `${absoluteUrl(route.path)}#service`,
       name: service.name,
       description: service.description,

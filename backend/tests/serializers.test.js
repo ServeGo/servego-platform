@@ -36,7 +36,6 @@ function providerFixture(overrides = {}) {
         reviewerName: 'Priya',
         serviceCategory: 'Electrician',
         bookingId: 'bk_1',
-        date: new Date('2024-02-01T00:00:00.000Z'),
         reviewerId: 'user_x',
         providerId: 'prov_1',
         createdAt: new Date('2024-02-01T00:00:00.000Z'),
@@ -103,7 +102,7 @@ test('providerListItem exposes contact only for the profile owner', () => {
   assert.equal(item.user.joinedDate instanceof Date, true);
   assert.equal(item.reviews.length, 1);
   assert.deepEqual(Object.keys(item.reviews[0]).sort(), [
-    'bookingId', 'comment', 'date', 'id', 'rating', 'reviewerName', 'serviceCategory'
+    'bookingId', 'bookingNumber', 'comment', 'createdAt', 'id', 'rating', 'reviewerName', 'serviceCategory'
   ]);
 });
 

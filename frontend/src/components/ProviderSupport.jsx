@@ -66,7 +66,7 @@ export default function ProviderSupport({
                 <div key={t.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-3xs space-y-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-1.5 py-0.5 rounded">#{t.id}</span>
+                      <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-1.5 py-0.5 rounded">#{t.bookingNumber || '—'}</span>
                       <h5 className="font-black text-slate-900 text-xs mt-1 uppercase">{t.subject}</h5>
                     </div>
                     <span

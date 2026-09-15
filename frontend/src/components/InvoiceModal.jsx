@@ -33,7 +33,7 @@ export default function InvoiceModal({ booking, onClose }) {
         <div className="shrink-0 px-4 pt-3 pb-2.5 border-b border-slate-100 flex items-center justify-between gap-3 print-hidden">
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-900 tracking-tight">Payment Receipt</h3>
-            <span className="text-[10px] text-slate-400 font-mono font-semibold block mt-0.5 break-all">#{booking.id}</span>
+            <span className="text-[10px] text-slate-400 font-mono font-semibold block mt-0.5 break-all">#{booking.bookingNumber || '—'}</span>
           </div>
           <button
             onClick={onClose}
@@ -61,7 +61,7 @@ export default function InvoiceModal({ booking, onClose }) {
             <div className="grid grid-cols-2 gap-4 py-3 text-xs">
               <div className="min-w-0">
                 <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Receipt No.</span>
-                <span className="text-slate-800 font-bold break-all">{booking.id}</span>
+                <span className="text-slate-800 font-bold break-all">{booking.bookingNumber || '—'}</span>
               </div>
               <div className="min-w-0 text-right">
                 <span className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Date Issued</span>

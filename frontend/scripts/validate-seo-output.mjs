@@ -51,7 +51,9 @@ for (const route of routes) {
   const canonical = canonicalHref(html);
   const ogTitle = propertyContent(html, 'og:title');
   const ogUrl = propertyContent(html, 'og:url');
+  const ogImageAlt = propertyContent(html, 'og:image:alt');
   const twitterTitle = namedContent(html, 'twitter:title');
+  const hreflang = html.match(/<link[^>]+rel=["']alternate["'][^>]*hreflang=["']en-IN["'][^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] || '';
   const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1].replace(/<[^>]+>/g, '').trim() || '';
   const jsonLd = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
   const expectedCanonical = `https://servego24.com${route === '/' ? '' : route}`;
@@ -61,9 +63,11 @@ for (const route of routes) {
     assert(title && !title.includes('ServeGo24 - Home Services in Hyderabad | Book Electrician, Plumber, AC Repair') || route === '/', `${route}: homepage title leaked into deep route`);
     assert(description, `${route}: missing description`);
     assert(canonical === expectedCanonical, `${route}: canonical ${canonical} does not equal ${expectedCanonical}`);
+    assert(hreflang === expectedCanonical, `${route}: hreflang ${hreflang} does not equal ${expectedCanonical}`);
     assert(robots.toLowerCase().includes('index') && robots.toLowerCase().includes('follow'), `${route}: robots is ${robots}`);
     assert(ogTitle === title && ogUrl === expectedCanonical, `${route}: Open Graph metadata does not match the route`);
     assert(twitterTitle === title, `${route}: Twitter title does not match the route`);
+    assert(ogImageAlt && !ogImageAlt.includes('Home Services in Hyderabad') || route === '/', `${route}: og:image:alt is not page-specific`);
     assert(h1, `${route}: missing initial H1`);
     assert(jsonLd.length > 0, `${route}: missing initial JSON-LD`);
     for (const block of jsonLd) JSON.parse(block[1]);

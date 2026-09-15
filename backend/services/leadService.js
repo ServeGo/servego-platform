@@ -1258,8 +1258,10 @@ export async function listProviderLeads(providerId, client = prisma) {
       booking: {
         select: {
           id: true,
+          bookingNumber: true,
           status: true,
           serviceCategory: true,
+          service: { select: { id: true, name: true, serviceNumber: true } },
           locationAddress: true,
           city: true,
           instructions: true,
@@ -1326,7 +1328,7 @@ export async function listCustomerLeads(customerId, client = prisma) {
     where: { customerId },
     include: {
       provider: { include: { user: { select: { id: true, name: true, avatar: true, phone: true } } } },
-      booking: { select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true } }
+      booking: { select: { id: true, bookingNumber: true, status: true, serviceCategory: true, service: { select: { id: true, name: true, serviceNumber: true } }, amount: true, createdAt: true } }
     },
     orderBy: { createdAt: 'desc' }
   });
@@ -1345,7 +1347,7 @@ export async function listAllLeads({ status, page = 1, limit = 50, client = pris
         customer: { select: { id: true, name: true, phone: true } },
         provider: { select: { id: true, providerLevel: true, user: { select: { name: true } } } },
 booking: {
-          select: { id: true, status: true, serviceCategory: true, amount: true, createdAt: true, quotations: { orderBy: { createdAt: 'desc' }, take: 1 } }
+          select: { id: true, bookingNumber: true, status: true, serviceCategory: true, service: { select: { id: true, name: true, serviceNumber: true } }, amount: true, createdAt: true, quotations: { orderBy: { createdAt: 'desc' }, take: 1 } }
         }
       },
       orderBy: { createdAt: 'desc' }

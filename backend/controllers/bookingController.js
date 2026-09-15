@@ -64,7 +64,7 @@ const BOOKING_LIST_INCLUDE = {
       // List rows only render id/photo + the user's name/avatar for the
       // provider card (`bookingListItem`); the contact-heavy full shape stays
       // on getById. A `select` also stops Prisma pulling the whole Provider
-      // row — including the specialties/serviceAreas/timeSlots JSON columns —
+      // row — including the specialties/serviceAreas JSON columns —
       // onto every booking row of the page.
       id: true,
       photo: true,

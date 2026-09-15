@@ -125,7 +125,7 @@ export const SEO_SERVICE_PAGES = {
       'During Hyderabad summer, a cooling complaint may be caused by airflow, filters, outdoor-unit conditions, refrigerant or an electrical component. Mention the AC type, brand, last service and whether the unit is leaking or tripping power.',
     included: ['Cooling and airflow diagnosis', 'Split and window AC servicing', 'Indoor-unit leakage checks', 'Noise, power and remote-related checks'],
     priceFactors: 'The cost depends on the diagnosis, AC type, cleaning level, labour and any parts or refrigerant required. A technician should inspect the unit before recommending a repair or refill.',
-    serviceSchema: 'HomeAndConstructionBusiness',
+    serviceSchema: 'HVACBusiness',
   },
 
   'home-cleaning': {
@@ -160,7 +160,7 @@ export const SEO_SERVICE_PAGES = {
       },
     ],
     related: ['electrician', 'plumber', 'carpenter'],
-    serviceSchema: 'HousePainter',
+    serviceSchema: 'HomeAndConstructionBusiness',
   },
 
   carpenter: {

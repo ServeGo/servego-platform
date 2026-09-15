@@ -70,6 +70,19 @@ export function Login({ onNavigate }) {
             sessionStorage.removeItem('servego_booking_intent');
           }
         }
+        // Check for a stored request-a-service intent (Request a Service button)
+        const requestIntentRaw = sessionStorage.getItem('servego_request_intent');
+        if (requestIntentRaw && destRole === 'customer') {
+          try {
+            const intent = JSON.parse(requestIntentRaw);
+            if (intent.requestService) {
+              onNavigate('services');
+              return;
+            }
+          } catch {
+            sessionStorage.removeItem('servego_request_intent');
+          }
+        }
         // If there's a redirect intent (e.g. from booking flow), honor it
         if (redirectParam && destRole === 'customer') {
           // redirectParam is like "service-details/Electrician" — parse and navigate

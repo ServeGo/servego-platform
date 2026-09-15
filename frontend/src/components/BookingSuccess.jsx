@@ -13,7 +13,7 @@ export default function BookingSuccess({ details, onDashboard, onBrowse }) {
         </span>
         <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-4 font-sans tracking-tight leading-none">Waiting for a Specialist</h3>
         <p className="text-slate-500 text-xs mt-2 font-bold uppercase tracking-tight">
-          Booking No: <span className="text-indigo-600">{details.bookingNumber || details.id}</span>
+          Booking No: <span className="text-indigo-600">{details.bookingNumber || '—'}</span>
         </p>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 my-6 text-left text-xs font-bold">

@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Snowflake,
   Sparkles,
-  Star,
   Wallet,
   Wrench,
 } from 'lucide-react';
@@ -185,11 +184,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
-                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-amber-600">
-                    <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
-                    {Number(s.avgRating).toFixed(1)} rating
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-amber-600">
+                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-teal-600">
                     Book now · <span className="text-slate-500">₹249/-</span> <ArrowRight className="w-2.5 h-2.5" />
                   </span>
                 </span>
