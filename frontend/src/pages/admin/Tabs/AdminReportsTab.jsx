@@ -6,7 +6,7 @@ import { exportAllPages } from '../../../utils/exportExcel';
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
 const BOOKING_EXPORT_COLUMNS = [
-  { header: 'Booking ID', key: 'id' },
+  { header: 'Booking Number', key: 'bookingNumber' },
   { header: 'Customer', key: 'customerName' },
   { header: 'Provider', key: 'providerName' },
   { header: 'Service Category', key: 'serviceCategory' },
@@ -99,7 +99,7 @@ export default function AdminReportsTab() {
     const res = await apiClient.get(`/admin/bookings?page=${page}&limit=${limit}`);
     if (!res.ok) return { rows: [], total: 0 };
     const rows = (res.data?.bookings || []).map((b) => ({
-      id: b.id,
+      bookingNumber: b.bookingNumber || '',
       customerName: b.customerName || b.customer?.name || '',
       providerName: b.providerName || b.provider?.user?.name || '',
       serviceCategory: b.serviceCategory || '',
@@ -266,7 +266,7 @@ export default function AdminReportsTab() {
                 <table className="w-full min-w-[720px] text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      {['Booking ID', 'Customer', 'Provider', 'Service', 'Date', 'Status'].map(h => (
+                      {['Booking Number', 'Customer', 'Provider', 'Service', 'Date', 'Status'].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-extrabold text-slate-500 uppercase tracking-wider text-[10px]">{h}</th>
                       ))}
                     </tr>
@@ -274,7 +274,7 @@ export default function AdminReportsTab() {
                   <tbody className="divide-y divide-slate-100">
                     {bookings.map(b => (
                       <tr key={b.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-mono text-slate-700">{b.id}</td>
+                        <td className="px-4 py-3 font-mono text-slate-700">{b.bookingNumber || '—'}</td>
                         <td className="px-4 py-3 font-semibold text-slate-800">{b.customerName || b.customer?.name || '—'}</td>
                         <td className="px-4 py-3 font-semibold text-slate-800">{b.providerName || b.provider?.user?.name || '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{b.serviceCategory || '—'}</td>

@@ -115,7 +115,7 @@ export default function AdminOtherServicesRequestsPanel() {
             <table className="w-full text-left text-xs font-semibold">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/50">
-                  <th className="py-3 px-6">Request ID</th>
+                  <th className="py-3 px-6">Provider No</th>
                   <th className="py-3 px-6">Provider</th>
                   <th className="py-3 px-6">Service Name</th>
                   <th className="py-3 px-6 text-center">Status</th>
@@ -132,7 +132,7 @@ export default function AdminOtherServicesRequestsPanel() {
                   const isDenying = isRowBusy && processingAction === 'deny';
                   return (
                   <tr key={r.id} className={`transition-colors ${isRowBusy ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}>
-                    <td className="py-4 px-6 font-mono font-bold text-slate-900">{r.id}</td>
+                    <td className="py-4 px-6 font-mono font-bold text-slate-900">{r.provider?.providerNumber || '—'}</td>
                     <td className="py-4 px-6">
                       <div className="font-extrabold text-slate-900">
                         {r.provider?.user?.name || r.provider?.user?.email || 'Unknown'}
@@ -207,7 +207,7 @@ export default function AdminOtherServicesRequestsPanel() {
                         <span className="text-[10px] font-bold text-slate-500">{r.experienceYears} yrs</span>
                       )}
                     </div>
-                    <div className="text-[10px] font-mono font-bold text-slate-400 break-all">{r.id}</div>
+                    <div className="text-[10px] font-mono font-bold text-slate-400 break-all">{r.provider?.providerNumber || ''}</div>
                   </div>
 
                   <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap break-words">

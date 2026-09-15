@@ -31,7 +31,6 @@ const PROVIDER_SCALAR_FIELDS = [
   'specialties',
   'serviceAreas',
   'photo',
-  'serviceInterested',
   'isVerified',
   'isFeatured',
   'providerLevel',
@@ -41,8 +40,6 @@ const PROVIDER_SCALAR_FIELDS = [
   'maxRadiusKm',
   'isOnline',
   'acceptingBookings',
-  'availableDays',
-  'timeSlots',
   'createdAt',
   'updatedAt'
 ];
@@ -93,15 +90,18 @@ export function badgeItem(badge) {
 /** Review as rendered by the review audit list. */
 export function reviewItem(review) {
   if (!review) return null;
-  return pick(review, [
-    'id',
-    'rating',
-    'comment',
-    'reviewerName',
-    'serviceCategory',
-    'bookingId',
-    'date'
-  ]);
+  return {
+    ...pick(review, [
+      'id',
+      'rating',
+      'comment',
+      'reviewerName',
+      'serviceCategory',
+      'bookingId',
+      'createdAt'
+    ]),
+    bookingNumber: review.booking?.bookingNumber ?? null
+  };
 }
 
 /** Availability slot as rendered by the calendar availability UI. */

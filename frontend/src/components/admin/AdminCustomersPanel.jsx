@@ -19,7 +19,7 @@ import { exportAllPages } from '../../utils/exportExcel';
 const PAGE_SIZES = [9];
 
 const CUSTOMER_EXPORT_COLUMNS = [
-  { header: 'Customer ID', key: 'id' },
+  { header: 'Customer Number', key: 'customerNumber' },
   { header: 'Name', key: 'name' },
   { header: 'Email', key: 'email' },
   { header: 'Phone', key: 'phone' },
@@ -207,7 +207,7 @@ export default function AdminCustomersPanel() {
                     <img className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0" src={c.avatar} alt={c.name} referrerPolicy="no-referrer" />
                     <div className="min-w-0">
                       <h4 className="font-extrabold text-slate-900 text-sm truncate">{c.name}</h4>
-                      <span className="text-[10px] text-slate-400 block font-mono mt-0.5 truncate">{c.customerNumber || c.id}</span>
+                      <span className="text-[10px] text-slate-400 block font-mono mt-0.5 truncate">{c.customerNumber || '—'}</span>
                     </div>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[9px] uppercase font-black border ${STATUS_STYLES[c.status] || STATUS_STYLES.ACTIVE}`}>
@@ -302,7 +302,7 @@ function CustomerDetailDrawer({ customer: c, onClose }) {
                 {c.name}
                 {c.profileComplete && <BadgeCheck className="w-4 h-4 text-teal-600" />}
               </h4>
-              <span className="text-[10px] text-slate-400 block font-mono">{c.customerNumber || c.id}</span>
+              <span className="text-[10px] text-slate-400 block font-mono">{c.customerNumber || '—'}</span>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">

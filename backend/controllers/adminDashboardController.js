@@ -317,36 +317,39 @@ export const AdminDashboardController = {
   // Additional analytics endpoint
   getAnalytics: async (req, res) => {
     try {
-      const { period = '30d' } = req.query;
-      if (!['7d', '30d', '90d'].includes(period)) {
-        return sendApiError(res, 400, 'INVALID_PERIOD', 'period must be one of: 7d, 30d, 90d.');
-      }
-      
-      let startDate = new Date();
-      if (period === '7d') {
-        startDate.setDate(startDate.getDate() - 7);
-      } else if (period === '30d') {
-        startDate.setDate(startDate.getDate() - 30);
-      } else if (period === '90d') {
-        startDate.setDate(startDate.getDate() - 90);
+      const { period = 'all' } = req.query;
+      if (!['7d', '30d', '90d', 'all'].includes(period)) {
+        return sendApiError(res, 400, 'INVALID_PERIOD', 'period must be one of: 7d, 30d, 90d, all.');
       }
 
-      // Get booking trends, top providers, top services, rating distribution.
-      // All four are independent aggregates — run them in parallel.
-      const [bookingsByDay, topProviders, topServices, ratingGroups] = await Promise.all([
+      // 'all' = all-time (no date filter). Everything else = rolling window.
+      let startDate = null;
+      let whereTime = {};
+      if (period !== 'all') {
+        startDate = new Date();
+        if (period === '7d') {
+          startDate.setDate(startDate.getDate() - 7);
+        } else if (period === '30d') {
+          startDate.setDate(startDate.getDate() - 30);
+        } else if (period === '90d') {
+          startDate.setDate(startDate.getDate() - 90);
+        }
+        whereTime = { createdAt: { gte: startDate } };
+      }
+
+      // Independent aggregates — run them in parallel.
+      const [bookingsByDay, topProviders, topServices, ratingGroups, userGroups] = await Promise.all([
         prisma.booking.groupBy({
           by: ['status'],
           _count: true,
-          where: {
-            createdAt: { gte: startDate }
-          }
+          where: whereTime
         }),
         prisma.booking.groupBy({
           by: ['providerId'],
           _count: true,
           where: {
-            status: 'COMPLETED',
-            createdAt: { gte: startDate }
+            ...whereTime,
+            status: 'COMPLETED'
           },
           orderBy: {
             _count: {
@@ -358,9 +361,7 @@ export const AdminDashboardController = {
         prisma.booking.groupBy({
           by: ['serviceCategory'],
           _count: true,
-          where: {
-            createdAt: { gte: startDate }
-          },
+          where: whereTime,
           orderBy: {
             _count: {
               serviceCategory: 'desc'
@@ -371,7 +372,11 @@ export const AdminDashboardController = {
         prisma.review.groupBy({
           by: ['rating'],
           _count: true,
-          where: { createdAt: { gte: startDate } }
+          where: whereTime
+        }),
+        prisma.user.groupBy({
+          by: ['role'],
+          _count: true
         })
       ]);
 
@@ -383,14 +388,23 @@ export const AdminDashboardController = {
         totalReviewsThisPeriod += g._count;
       }
 
+      const userCounts = { customers: 0, providers: 0, admins: 0, other: 0 };
+      for (const g of userGroups) {
+        if (g.role === 'customer') userCounts.customers = g._count;
+        else if (g.role === 'provider') userCounts.providers = g._count;
+        else if (g.role === 'admin') userCounts.admins = g._count;
+        else userCounts.other += g._count;
+      }
+
       sendApiSuccess(res, 200, {
         period,
-        startDate,
+        ...(startDate ? { startDate } : {}),
         bookingsByStatus: bookingsByDay,
         topProviders,
         topServices,
         ratingDistribution,
-        totalReviewsThisPeriod
+        totalReviewsThisPeriod,
+        userCounts
       });
     } catch (err) {
       console.error('[AdminDashboardController] Analytics Error:', err);

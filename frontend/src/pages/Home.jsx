@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData, useUI } from '../context/AppContext';
+import { api as apiClient } from '../utils/apiClient';
 import { useSEO } from '../hooks/useSEO';
 
 // Components
@@ -8,10 +9,6 @@ import CategoryGrid from '../components/CategoryGrid';
 import HowItWorks from '../components/HowItWorks';
 import SkeletonLoader from '../components/SkeletonLoader';
 import LiveTrackingShowcase from '../components/home/LiveTrackingShowcase';
-import BeforeAfterProof from '../components/home/BeforeAfterProof';
-import CoverageArea from '../components/home/CoverageArea';
-import QualityAudit from '../components/home/QualityAudit';
-import MarketplaceSections from '../components/home/MarketplaceSections';
 import { HOME_SEO } from '../data/seoRoutes';
 
 const HOME_SCHEMA = {
@@ -122,7 +119,6 @@ const HOME_SCHEMA = {
 
 export const Home = ({ onNavigate, onBecomePartner }) => {
   const {
-    selectedArea, setArea,
     searchQuery, setSearchQuery, setCategory,
   } = useUI();
   const { providers, services, servicesLoading } = useData();
@@ -135,6 +131,17 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
   });
 
   const [inputQuery, setInputQuery] = useState(searchQuery);
+  const [topServices, setTopServices] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.get('/services/top-rated?limit=5').then((res) => {
+      if (!cancelled && res.ok && Array.isArray(res.data)) {
+        setTopServices(res.data);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -142,7 +149,6 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
     setCategory(null);
     const params = new URLSearchParams();
     if (inputQuery.trim()) params.set('query', inputQuery.trim());
-    if (selectedArea) params.set('location', selectedArea);
     const qs = params.toString();
     window.history.pushState({}, '', `/services${qs ? `?${qs}` : ''}`);
     onNavigate('services');
@@ -170,11 +176,10 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
     <div id="home-page" className="min-h-screen overflow-hidden bg-[#f8f9ff]">
       <Hero
         onSearch={handleSearchSubmit}
-        selectedArea={selectedArea}
-        setArea={setArea}
         inputQuery={inputQuery}
         setInputQuery={setInputQuery}
         onQuickSearch={handleQuickSearch}
+        topServices={topServices}
       />
 
       {servicesLoading && !hasServices ? (
@@ -197,14 +202,7 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
       )}
 
       <LiveTrackingShowcase />
-      <BeforeAfterProof />
-      <CoverageArea />
-      <QualityAudit />
       <HowItWorks />
-      <MarketplaceSections
-        onBrowse={() => onNavigate('services')}
-        onBecomePartner={onBecomePartner || (() => onNavigate('signup'))}
-      />
     </div>
   );
 };

@@ -23,8 +23,12 @@ window.addEventListener(
 );
 
   // Public SEO routes may contain a build-time HTML shell. The SPA owns the
-  // interactive root after startup, so remove only that static shell first.
+  // interactive root after startup, so remove that static shell first.
   document.getElementById('seo-static-content')?.remove();
+  // The prerender also injects a static JSON-LD graph into <head>; the useSEO
+  // hook re-injects client-side schemas when the page mounts, so drop the
+  // static copy to avoid duplicate structured data in the DOM.
+  document.querySelectorAll('script[data-prerendered-schema]').forEach((el) => el.remove());
   
   createRoot(document.getElementById('root')).render(
   <StrictMode>

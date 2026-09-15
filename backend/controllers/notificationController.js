@@ -1,6 +1,7 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parseCursor, sliceCursorPage } from '../utils/pagination.js';
+import { withBookingNumber } from '../utils/bookingRefs.js';
 
 export const NotificationController = {
   getAll: async (req, res) => {
@@ -45,7 +46,7 @@ export const NotificationController = {
         ]);
 
         const { items, nextCursor, hasMore } = sliceCursorPage(raw, limit);
-        return sendApiSuccess(res, 200, { notifications: items, pagination: { total, nextCursor, hasMore } });
+        return sendApiSuccess(res, 200, { notifications: await withBookingNumber(items), pagination: { total, nextCursor, hasMore } });
       }
 
       const notifications = await prisma.notification.findMany({
@@ -53,7 +54,7 @@ export const NotificationController = {
         orderBy: { createdAt: 'desc' },
         take: limit
       });
-      return sendApiSuccess(res, 200, notifications);
+      return sendApiSuccess(res, 200, await withBookingNumber(notifications));
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch notifications', err.message);
     }

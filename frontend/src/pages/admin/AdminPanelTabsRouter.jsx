@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, Component } from 'react';
 import { Loader2 } from 'lucide-react';
 
 // Route-level code splitting: each admin tab loads on demand instead of being
@@ -27,8 +27,52 @@ function TabFallback() {
   );
 }
 
+// A tab crash must never blank the whole admin panel. This boundary renders a
+// friendly, actionable message + retry instead of unmounting the app tree.
+class TabErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    // eslint-disable-next-line no-console
+    console.error('Admin tab crashed:', error, info);
+  }
+
+  handleReload = () => {
+    this.setState({ error: null });
+  };
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="bg-white border border-rose-200 rounded-2xl p-8 text-center space-y-3">
+          <p className="text-sm font-extrabold text-rose-700">This section failed to load.</p>
+          <p className="text-xs text-slate-500">Something went wrong rendering this tab. Your data is safe — refresh the page or retry.</p>
+          <button
+            onClick={this.handleReload}
+            className="text-xs font-black px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function LazyTab({ children }) {
-  return <Suspense fallback={<TabFallback />}>{children}</Suspense>;
+  return (
+    <TabErrorBoundary>
+      <Suspense fallback={<TabFallback />}>{children}</Suspense>
+    </TabErrorBoundary>
+  );
 }
 
 export default function AdminPanelTabsRouter({ activeTab, tabProps }) {

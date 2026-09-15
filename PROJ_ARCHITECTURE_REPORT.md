@@ -9,7 +9,7 @@
 1. [High-level architecture](#1-high-level-architecture)
 2. [Repository layout](#2-repository-layout)
 3. [Backend stack & request lifecycle](#3-backend-stack--request-lifecycle)
-4. [API surface (140 routes)](#4-api-surface-140-routes)
+4. [API surface (142 routes)](#4-api-surface-142-routes)
 5. [Security, validation & middleware](#5-security-validation--middleware)
 6. [Auth & token model](#6-auth--token-model)
 7. [Data layer (Prisma)](#7-data-layer-prisma)
@@ -55,18 +55,18 @@ servego-platform/
 ├── package.json               # root orchestration (dev: all, build: frontend)
 ├── package-lock.json
 ├── AGENTS.md                  # permanent engineering rules (authored separately)
-├── API_LIST_GET_POST_GROUPED.md  # generated API reference (140 routes)
+├── API_LIST_GET_POST_GROUPED.md  # generated API reference (142 routes)
 ├── PROJ_ARCHITECTURE_REPORT.md   # this document
 ├── backend/
 │   ├── server.js              # bootstrap: express, socket.io, queue, timers
-│   ├── routes/api.js          # all 140 REST routes
+│   ├── routes/api.js          # all 142 REST routes
 │   ├── controllers/           # 26 controllers (HTTP layer)
 │   ├── middleware/            # 4 middleware modules
 │   ├── services/              # 23 service modules (19 top-level + 4 queue/)
 │   ├── utils/                 # 12 shared utilities
 │   ├── prisma/
 │   │   ├── schema.prisma      # 37 models + 22 enums
-│   │   ├── migrations/        # 54 migrations
+│   │   ├── migrations/        # 56 migrations
 │   │   └── seed.js            # dev seed
 │   ├── seeders/               # servicesSeed + businessModelSeed (idempotent)
 │   ├── scripts/               # photo migration script
@@ -95,17 +95,18 @@ helmet → hpp → cors (getCorsConfig) → general rate limiter
 → trailing-slash 301 normalization
 → GET /api/health (DB liveness; 503 when DB unreachable)
 → GET /api/versions (uncached version registry)
-→ /api/v1/* via apiRouter (140 routes)
+→ /api/v1/* via apiRouter (142 routes)
 → 404 JSON { success:false, code:'NOT_FOUND', ... }
 → global errorHandler (last)
 ```
 
-Boot (`bootstrap`): creates HTTP + Socket.IO servers, seeds the service catalog and
-business model if empty, starts the auto-cancel cron, schedules lead-expiry timers,
-recovers interruped queue jobs, then starts the queue workers. Graceful shutdown
-drains the queue and disconnects Prisma.
+Boot (`bootstrap`): creates HTTP + Socket.IO servers, starts the auto-cancel cron,
+schedules lead-expiry timers, recovers interruped queue jobs, then starts the queue
+workers. No auto-seeding happens on boot — the service catalog, configs and level
+rules are only ever created by the explicit seed scripts (`prisma/seed.js`,
+`seeders/*`). Graceful shutdown drains the queue and disconnects Prisma.
 
-## 4) API surface (140 routes)
+## 4) API surface (142 routes)
 
 100 % of routes live in `backend/routes/api.js` and are exposed under `/api/v1`. The
 grouped reference (methods, paths, access roles, validation) is generated from that
@@ -122,7 +123,7 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Tickets | `GET/POST /tickets`, `POST /support-tickets` (optional auth), admin resolve/status |
 | Reviews | `POST /reviews`, `GET /providers/:id/reviews`, `GET /bookings/:id/review` (view a review for one booking), admin list/delete |
 | Referrals | `POST /referrals/apply`, `GET /referrals/me`, `POST /referrals/generate` |
-| Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /categories/:slug`, admin CRUD, `GET /admin/services` (ops list incl. hidden) |
+| Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /services/top-rated` (max 5 best-rated services — used for "popular issues" chips), `GET /categories/:slug`, admin CRUD, `GET /admin/services` (ops list incl. hidden) |
 | Leads | `GET /leads`, `GET /leads/:id`, `PATCH /leads/:id/{view,accept,reject}` |
 | Permanent requests | `POST /permanent-service-requests`, `GET .../mine`, admin list/update, `POST .../cancel` |
 | Wallet | `GET /wallet`, `GET /wallet/ledger`, `POST /wallet/withdrawals`, `GET /wallet/withdrawals`, `GET /wallet/withdrawal/config`, admin wallet/withdrawals/credit/process |
@@ -159,11 +160,10 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
   JWTs carry a stable `sub` (user id) + `iss`; the refresh flow validates allowed
   token `type` and an `absoluteExpiry` claim before issuing a new access token.
 - `normalizeEmail` whitelists gmail/company mailbox patterns (`GMAIL_VALID_RE`) so
-  vanity/business addresses are rejected up front; verification codes are 4-digit
-  emails.
+  vanity/business addresses are rejected up front.
 - `register` accepts `role` customer or provider:
   - **Customer:** requires address + pincode, creates `Customer` profile + wallet-less
-    user, issues a 4-digit email `verificationCode`.
+    user.
   - **Provider:** creates `Provider` (sector `GENERAL`, `isOnline`, `acceptingBookings`,
     `maxRadiusKm: 50`, `profileComplete: false`, `isVerified: false`, `accountStatus: ACTIVE`),
     links `user.providerId`, creates a `Wallet`, writes `ProviderLevelHistory` (BRONZE/INITIAL)
@@ -184,16 +184,17 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
 
 ## 7) Data layer (Prisma)
 
-37 models, 22 enums, 54 migrations, all indexes defined as `@@index` in
+37 models, 22 enums, 56 migrations, all indexes defined as `@@index` in
 `schema.prisma` and mirrored by migration SQL (naming `Table_col1_col2_idx`).
 
 Key models:
 
-- `User` (role, verification, referral fields, avatar) → `Customer` / `Provider` (1:1).
+- `User` (role, referral fields, avatar) → `Customer` / `Provider` (1:1).
 - `Provider` — `category`, `sector` (`ProviderSector`, default `GENERAL`), `isOnline`,
   `acceptingBookings`, `maxRadiusKm`, `profileComplete`, `isVerified`, `accountStatus`,
-  `serviceAreas`, `specialties`, `availableDays`, `timeSlots`, `rating`, `reviewCount`,
-  `serviceFee`, `latitude`/`longitude` (matching/bounding-box source).
+  `serviceAreas`, `specialties`, `rating`, `reviewCount`,
+  `serviceFee`, `latitude`/`longitude` (matching/bounding-box source), availability via
+  the normalized `AvailabilitySlot` table.
 - `Service` (name, `nameNormalized`, `isHidden`, GIN/trigram search fields) →
   `ProviderService` (approved link, per-provider description) and `ProviderServiceRequest`
   (approval workflow).
@@ -368,11 +369,25 @@ indicator, and on reconnect refetches `GET /notifications?after=...` and
 
 - Search: `services/searchService.js` over a GIN/trigram index (`search_trgm`
   migration); service category + location filtering pushed into SQL; results ranked,
-  not arbitrary.
+  not arbitrary. `GET /services/top-rated` reuses `getServiceStats()` and ranks
+  services by average provider rating (rated first), filling the remainder from
+  unrated services so the marquee always returns up to the requested count.
 - Caching is selective (rule 14): short-TTL in-memory caches only — services catalog
   30 s (`serviceController`), admin config 30 s (`adminConfigService`), provider level
   rules 60 s (`providerLevelService`) — each with an invalidation hook on write.
   Booking status, lead acceptance, payment state and live location are never cached.
+- Observability (zero DB pressure): `middleware/logging.js` emits one structured JSON
+  line per request (`requestId`, `userId`, `role`, method, resolved route pattern,
+  `statusCode`, numeric `durationMs`, `errorCode`) and, on error, a `request.error`
+  line with message + stack. The `requestId` flows through an AsyncLocalStorage
+  request context (`utils/telemetry/requestContext.js`) and is propagated into queue
+  jobs (`__ctx` in the job payload), booking/audit events (`prisma/client.js`
+  log-only query extension), and all service logs via the shared structured logger
+  (`utils/telemetry/logger.js`). Rolling in-memory metrics
+  (`utils/telemetry/metrics.js`: per-route count/error rate/avg/p95/p99, error-code
+  distribution, queue + email counters) are exposed to admins at `GET /admin/metrics`
+  and flushed to the log stream every 60 s. No new tables, columns, or per-request
+  DB writes are introduced.
 
 ## 15) ServeGo business model
 
@@ -390,8 +405,9 @@ Admin-configurable marketplace (`AdminConfig`, `ProviderLevelRule`):
   fixed service fee charged to customers on declined quotations is ₹249 default
   (`serviceFeeDefault`). Both are AdminConfig overrides, not code.
 - The business-model seed (`seeders/businessModelSeed.js`) creates config + level-row
-  defaults if absent. There is no subscription or premium-SECTOR plan anymore — every
-  provider is `GENERAL` and all approved services are treated equally.
+  defaults — it must be run explicitly (not on boot). There is no subscription or
+  premium-SECTOR plan anymore — every provider is `GENERAL` and all approved services
+  are treated equally.
 
 ## 16) Provider lifecycle
 
@@ -548,8 +564,8 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 
 - 26 controllers, 23 service modules (19 top-level + 4 queue), 11 utils,
   4 middleware modules.
-- 37 Prisma models, 22 enums, 54 migrations.
-- 140 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
+- 37 Prisma models, 22 enums, 56 migrations.
+- 142 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
 - 19 test files (18 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases)
   and the newer `locationCleanup` / `providerLevelIncentive` suites.
 - Frontend: 29 page files (14 entry pages + admin tab router + 14 lazy tab chunks),

@@ -38,7 +38,7 @@ export default function ChatPanel({ booking, onSend, sending }) {
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
           <span className="font-extrabold text-slate-800 text-[10px] uppercase tracking-wider">Quick Messages</span>
         </div>
-        <span className="text-[10px] text-slate-500 font-mono font-bold bg-slate-200 px-2 py-0.5 rounded">ID: {booking.id}</span>
+        <span className="text-[10px] text-slate-500 font-mono font-bold bg-slate-200 px-2 py-0.5 rounded">ID: {booking.bookingNumber || '—'}</span>
       </div>
 
       <div className="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col min-h-0 bg-white">

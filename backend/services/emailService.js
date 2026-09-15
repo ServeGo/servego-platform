@@ -41,7 +41,11 @@ export async function sendEmail({ to, subject, text = null, html = null }) {
 }
 
 export async function sendPasswordResetEmail(toEmail, resetToken) {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
+    throw new Error('SMTP not configured — SMTP_EMAIL or SMTP_PASSWORD missing from .env');
+  }
+  console.log('[EmailService] Sending reset email to:', toEmail, 'via', process.env.SMTP_EMAIL);
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
   const html = `

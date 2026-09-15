@@ -30,7 +30,6 @@ model User {
   // directory, booking records, and provider leads.
   customerNumber          String?        @unique
   providerNumber          String?        @unique
-  verificationCode        String?
   profileComplete         Boolean        @default(false)
   resetToken              String?
   resetTokenExpiry        DateTime?
@@ -68,7 +67,6 @@ model Customer {
   userId    String   @unique
   address   String
   pincode   String?
-  preferences Json    @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -189,7 +187,6 @@ model Provider {
   specialties       Json      @default("[]")
   serviceAreas      Json      @default("[]")
   photo             String?
-  serviceInterested String?
   isVerified        Boolean   @default(false)
   isFeatured        Boolean   @default(false)
 
@@ -203,8 +200,6 @@ model Provider {
   isOnline          Boolean       @default(true)
   acceptingBookings Boolean       @default(true)
 
-  availableDays     Json      @default("[]")
-  timeSlots         Json      @default("[]")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -467,7 +462,6 @@ model Review {
   bookingId       String?
   rating          Float
   comment         String?
-  date            DateTime @default(now())
   serviceCategory String?
   createdAt       DateTime @default(now())
   booking         Booking? @relation(fields: [bookingId], references: [id])

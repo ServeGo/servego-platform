@@ -31,8 +31,6 @@ export const Services = ({ onNavigate }) => {
     searchQuery,
     setSearchQuery,
     setCategory,
-    selectedArea,
-    setArea,
   } = useUI();
   const { searchServices, createBooking } = useData();
   const { currentUser } = useAuth();
@@ -80,6 +78,7 @@ export const Services = ({ onNavigate }) => {
   const [inputSearch, setInputSearch] = useState(searchQuery);
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [topServices, setTopServices] = useState([]);
   const [page, setPage] = useState(1);
   const gridRef = useRef(null);
 
@@ -156,14 +155,24 @@ export const Services = ({ onNavigate }) => {
   const searchAbortRef = useRef(null);
   const searchSeqRef = useRef(0);
 
-  // On mount: read ?query= and ?location= from URL and seed the search state
+  // On mount: read ?query= from URL and seed the search state
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = params.get('query') || '';
     setInputSearch(urlQuery);
     setSearchQuery(urlQuery);
-    setArea(params.get('location') || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch top-rated services for the popular chips
+  useEffect(() => {
+    let cancelled = false;
+    apiClient.get('/services/top-rated?limit=5').then((res) => {
+      if (!cancelled && res.ok && Array.isArray(res.data)) {
+        setTopServices(res.data);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -179,7 +188,7 @@ export const Services = ({ onNavigate }) => {
     debounceTimerRef.current = setTimeout(() => {
       if (seq !== searchSeqRef.current) return;
       setIsLoading(true);
-      searchServices(searchQuery, selectedArea, controller.signal).then((data) => {
+      searchServices(searchQuery, '', controller.signal).then((data) => {
         // `data` is null for aborted requests; the seq guard also rejects any
         // response that raced past the abort.
         if (seq === searchSeqRef.current && data) {
@@ -194,7 +203,7 @@ export const Services = ({ onNavigate }) => {
       clearTimeout(debounceTimerRef.current);
       if (searchAbortRef.current) searchAbortRef.current.abort();
     };
-  }, [searchQuery, selectedArea, searchServices]);
+  }, [searchQuery, searchServices]);
 
   // Live filtering: every keystroke updates the searchQuery
   const handleSearchChange = (value) => {
@@ -206,7 +215,6 @@ export const Services = ({ onNavigate }) => {
     e.preventDefault();
     const params = new URLSearchParams();
     if (inputSearch.trim()) params.set('query', inputSearch.trim());
-    if (selectedArea) params.set('location', selectedArea);
     window.history.replaceState({}, '', `/services${params.toString() ? `?${params}` : ''}`);
     setSearchQuery(inputSearch);
   };
@@ -245,6 +253,24 @@ export const Services = ({ onNavigate }) => {
       }
     } catch {
       sessionStorage.removeItem('servego_booking_intent');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  // Resume a stored request-a-service intent (set when an unauthenticated user
+  // tapped Request a Service) — open the choice dialog right away once logged in.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'customer') return;
+    const raw = sessionStorage.getItem('servego_request_intent');
+    if (!raw) return;
+    try {
+      const intent = JSON.parse(raw);
+      sessionStorage.removeItem('servego_request_intent');
+      if (intent.requestService) {
+        setShowRequestChoice(true);
+      }
+    } catch {
+      sessionStorage.removeItem('servego_request_intent');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
@@ -331,7 +357,16 @@ export const Services = ({ onNavigate }) => {
     setSearchQuery(issue);
   };
 
-  const handleRequestService = () => setShowRequestChoice(true);
+  const handleRequestService = () => {
+    if (currentUser?.role === 'customer') {
+      setShowRequestChoice(true);
+    } else {
+      // Store the intent so the login page can resume it after sign-in —
+      // same pattern as Book Now on the service cards.
+      sessionStorage.setItem('servego_request_intent', JSON.stringify({ requestService: true }));
+      onNavigate('login');
+    }
+  };
 
   const handleRequestPermanent = () => {
     setShowRequestChoice(false);
@@ -466,7 +501,7 @@ export const Services = ({ onNavigate }) => {
         )}
 
         <ServiceHeader
-          selectedArea={selectedArea}
+          topServices={topServices}
           inputSearch={inputSearch}
           setInputSearch={setInputSearch}
           onSearchSubmit={handleSearchSubmit}

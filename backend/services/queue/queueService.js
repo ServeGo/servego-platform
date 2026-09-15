@@ -1,6 +1,9 @@
 import prisma from '../../prisma/client.js';
 import { jobHandlers, registerHandler } from './jobHandlers.js';
 import { queueMetrics, idleBackoffMs } from './queueMetrics.js';
+import { runWithRequestContext, getRequestContext } from '../../utils/telemetry/requestContext.js';
+import { logger } from '../../utils/telemetry/logger.js';
+import { metrics } from '../../utils/telemetry/metrics.js';
 
 /**
  * Durable job queue backed by PostgreSQL.
@@ -78,6 +81,11 @@ export async function enqueueJob({
     throw new Error(`No queue handler registered for job type "${type}".`);
   }
 
+  const ctx = getRequestContext();
+  const payloadToStore = ctx?.requestId
+    ? { ...payload, __ctx: { requestId: ctx.requestId, userId: ctx.userId || null, role: ctx.role || null } }
+    : payload;
+
   if (dedupeKey) {
     const existing = await prisma.job.findFirst({
       where: { dedupeKey, status: { in: ['PENDING', 'PROCESSING'] } },
@@ -87,16 +95,19 @@ export async function enqueueJob({
   }
 
   const availableAt = runAt ? new Date(runAt) : new Date(Date.now() + Math.max(0, delayMs || 0));
-  return prisma.job.create({
+  const job = await prisma.job.create({
     data: {
       type,
-      payload,
+      payload: payloadToStore,
       maxAttempts: Math.max(1, parseInt(maxAttempts, 10) || 3),
       priority: parseInt(priority, 10) || 0,
       dedupeKey,
       availableAt
     }
   });
+
+  metrics.recordCounter('jobs.enqueued');
+  return job;
 }
 
 /** Register a handler at runtime (used by tests and plugin code). */
@@ -154,19 +165,33 @@ export async function claimJobs(type, limit = CLAIM_BATCH_SIZE) {
 export async function processClaimedJob(job) {
   inFlight.add(job.id);
   const startedAt = Date.now();
+  const { __ctx = {}, ...data } = (job.payload && typeof job.payload === 'object') ? job.payload : {};
+  const context = {
+    requestId: __ctx.requestId || null,
+    userId: __ctx.userId || null,
+    role: __ctx.role || null
+  };
+
   try {
-    const handler = jobHandlers[job.type];
-    if (!handler) throw new Error(`No handler registered for job type "${job.type}".`);
-    const result = await handler(job.payload);
-    await prisma.job.update({
-      where: { id: job.id },
-      data: { status: 'SUCCEEDED', finishedAt: new Date(), lastError: null, result: result ?? undefined }
+    await runWithRequestContext(context, async () => {
+      const handler = jobHandlers[job.type];
+      if (!handler) throw new Error(`No handler registered for job type "${job.type}".`);
+      const result = await handler(data);
+      await prisma.job.update({
+        where: { id: job.id },
+        data: { status: 'SUCCEEDED', finishedAt: new Date(), lastError: null, result: result ?? undefined }
+      });
+      queueMetrics.recordQuery();
+      queueMetrics.recordSucceeded({ durationMs: Date.now() - startedAt });
+      metrics.recordCounter('jobs.succeeded');
+      logger.info('queue.job.succeeded', { jobId: job.id, type: job.type, attempts: job.attempts, durationMs: Date.now() - startedAt });
     });
-    queueMetrics.recordQuery();
-    queueMetrics.recordSucceeded({ durationMs: Date.now() - startedAt });
   } catch (err) {
-    // A payload error that retrying can NEVER fix (missing required fields,
-    // corrupted payload) dead-letters immediately instead of churning retries.
+    const logInContext = async (event, fields) => {
+      await runWithRequestContext(context, () => logger[event](event, fields));
+    };
+    const errorFields = { jobId: job.id, type: job.type, error: err.message };
+
     if (err?.permanent === true) {
       await prisma.job.update({
         where: { id: job.id },
@@ -174,11 +199,12 @@ export async function processClaimedJob(job) {
       });
       queueMetrics.recordQuery();
       queueMetrics.recordDead();
-      console.error(`[Queue] Job ${job.id} (${job.type}) blocked as permanent error: ${err.message}`);
+      metrics.recordCounter('jobs.dead');
+      metrics.recordError('QUEUE_PERMANENT');
+      await logInContext('error', errorFields);
       return;
     }
-    // `job.attempts` was incremented by the claim before the handler ran, so
-    // this execution is attempt number (attempts + 1).
+
     const attemptNumber = (Number(job.attempts) || 0) + 1;
     if (attemptNumber >= Math.max(1, Number(job.maxAttempts) || 3)) {
       await prisma.job.update({
@@ -187,7 +213,9 @@ export async function processClaimedJob(job) {
       });
       queueMetrics.recordQuery();
       queueMetrics.recordDead();
-      console.error(`[Queue] Job ${job.id} (${job.type}) dead after ${attemptNumber} attempts: ${err.message}`);
+      metrics.recordCounter('jobs.dead');
+      metrics.recordError('QUEUE_DEAD');
+      await logInContext('error', { ...errorFields, attempts: attemptNumber });
     } else {
       const backoff = backoffDelayMs(attemptNumber);
       await prisma.job.update({
@@ -200,7 +228,8 @@ export async function processClaimedJob(job) {
       });
       queueMetrics.recordQuery();
       queueMetrics.recordRequeued();
-      console.warn(`[Queue] Job ${job.id} (${job.type}) attempt ${attemptNumber} failed — retry in ${backoff}ms: ${err.message}`);
+      metrics.recordCounter('jobs.failed');
+      await logInContext('warn', { ...errorFields, attempts: attemptNumber, retryInMs: backoff });
     }
   } finally {
     inFlight.delete(job.id);

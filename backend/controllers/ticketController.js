@@ -1,6 +1,7 @@
 import prisma from '../prisma/client.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
+import { withBookingNumber } from '../utils/bookingRefs.js';
 
 export const TicketController = {
   getAll: async (req, res) => {
@@ -21,7 +22,7 @@ export const TicketController = {
         prisma.ticket.count({ where })
       ]);
 
-      return sendApiSuccess(res, 200, { tickets, pagination: offsetMeta(total, page, limit) });
+      return sendApiSuccess(res, 200, { tickets: await withBookingNumber(tickets), pagination: offsetMeta(total, page, limit) });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve support tickets', err.message);
     }
@@ -59,7 +60,7 @@ export const TicketController = {
       });
       const io = req.app?.get('socketio');
       if (io) io.to('room:admin').emit('adminAlert:newSupportTicket', { ticketId: ticket.id });
-      return sendApiSuccess(res, 201, ticket);
+      return sendApiSuccess(res, 201, (await withBookingNumber([ticket]))[0]);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to file support ticket', err.message);
     }
@@ -93,7 +94,7 @@ export const TicketController = {
           resolvedAt: new Date()
         }
       });
-      return sendApiSuccess(res, 200, ticket);
+      return sendApiSuccess(res, 200, (await withBookingNumber([ticket]))[0]);
     } catch (err) {
       if (err.code === 'P2025') {
         return sendApiError(res, 404, 'NOT_FOUND', 'Support ticket not found');
@@ -114,7 +115,7 @@ export const TicketController = {
       if (response !== undefined) data.adminResponse = String(response).trim() || null;
       if (data.status === 'RESOLVED') data.resolvedAt = new Date();
       const ticket = await prisma.ticket.update({ where: { id: req.params.id }, data });
-      return sendApiSuccess(res, 200, ticket);
+      return sendApiSuccess(res, 200, (await withBookingNumber([ticket]))[0]);
     } catch (err) {
       if (err.code === 'P2025') return sendApiError(res, 404, 'NOT_FOUND', 'Support ticket not found.');
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update support ticket', err.message);

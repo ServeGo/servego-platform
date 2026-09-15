@@ -2,6 +2,9 @@ export function sendApiError(res, status, code, message, details = null) {
   // A request-timeout middleware may have already sent a 504 while a slow
   // handler was still running. Sending again throws ERR_HTTP_HEADERS_SENT.
   if (res.headersSent) return;
+  // Expose the stable code to observability (request log, metrics) without
+  // touching the wire contract.
+  if (res.locals) res.locals.errorCode = code;
   // Controllers may log raw ORM errors, but those details must never cross the
   // API boundary on a server failure.
   const safeDetails = status >= 500 ? null : details;

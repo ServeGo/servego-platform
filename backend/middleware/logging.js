@@ -1,3 +1,7 @@
+import { runWithRequestContext, getRequestContext } from '../utils/telemetry/requestContext.js';
+import { logger } from '../utils/telemetry/logger.js';
+import { metrics } from '../utils/telemetry/metrics.js';
+
 const LOG_LEVELS = { ERROR: 'ERROR', WARN: 'WARN', INFO: 'INFO' };
 
 const SENSITIVE_FIELDS = ['password', 'confirmPassword', 'token', 'refreshToken', 'apiKey', 'secret'];
@@ -26,13 +30,35 @@ function generateRequestId() {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
 }
 
+/**
+ * Resolve the Express route pattern (e.g. `POST /api/v1/bookings`) instead of
+ * the raw path, so logs group by endpoint even when ids appear in the URL.
+ * Falls back to the raw path for unrouted 404s.
+ */
+function resolveRoutePattern(req) {
+  const base = req.baseUrl || '';
+  const pattern = req.route?.path;
+  return pattern ? `${req.method} ${base}${pattern}` : `${req.method} ${req.path}`;
+}
+
+function fallbackErrorCode(statusCode) {
+  if (statusCode >= 500) return 'INTERNAL_ERROR';
+  if (statusCode === 429) return 'RATE_LIMITED';
+  if (statusCode === 404) return 'NOT_FOUND';
+  if (statusCode === 401) return 'UNAUTHORIZED';
+  if (statusCode === 403) return 'FORBIDDEN';
+  return `HTTP_${statusCode}`;
+}
+
 export const requestLogger = (req, res, next) => {
   if (req.path === '/api/health') return next();
 
   const startTime = process.hrtime();
   const requestId = generateRequestId();
+  const context = { requestId, userId: null, role: null, startTime };
 
   req.requestId = requestId;
+  req._startTime = startTime;
   res.setHeader('X-Request-ID', requestId);
 
   const originalEnd = res.end.bind(res);
@@ -41,49 +67,63 @@ export const requestLogger = (req, res, next) => {
     res.end = originalEnd;
     const result = originalEnd(chunk, encoding);
 
-    const responseTime = getResponseTime(startTime);
+    const durationMs = getResponseTime(startTime);
     const logLevel = getLogLevel(res.statusCode);
+    const route = resolveRoutePattern(req);
+    const errorCode = res.locals?.errorCode || (res.statusCode >= 400 ? fallbackErrorCode(res.statusCode) : null);
 
-    const logData = JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: logLevel,
+    metrics.recordRequest({ route, statusCode: res.statusCode, durationMs });
+    if (res.statusCode >= 400) metrics.recordError(errorCode);
+
+    const logData = {
+      event: 'request.finish',
       requestId,
+      userId: req.user?.id || context.userId || null,
+      userRole: req.user?.role || context.role || null,
       method: req.method,
+      route,
       path: req.path,
       query: Object.keys(req.query || {}).length > 0 ? req.query : undefined,
       statusCode: res.statusCode,
-      responseTime: `${responseTime}ms`,
+      durationMs,
+      responseTime: `${durationMs}ms`,
+      errorCode,
       ip: req.ip || req.socket?.remoteAddress,
       userAgent: req.get('user-agent'),
-      userId: req.user?.id || null,
-      userRole: req.user?.role || null,
       contentLength: res.get('content-length') || 0
-    });
+    };
 
-    if (logLevel === LOG_LEVELS.ERROR) console.error(logData);
-    else if (logLevel === LOG_LEVELS.WARN) console.warn(logData);
-    else if (process.env.NODE_ENV !== 'production') console.log(logData);
+    if (logLevel === LOG_LEVELS.ERROR) logger.error('request.finish', logData);
+    else if (logLevel === LOG_LEVELS.WARN) logger.warn('request.finish', logData);
+    else if (process.env.NODE_ENV !== 'production') logger.info('request.finish', logData);
 
     return result;
   };
 
-  next();
+  return runWithRequestContext(context, next);
 };
 
 export const errorHandler = (err, req, res, next) => {
-  console.error(JSON.stringify({
-    timestamp: new Date().toISOString(),
-    level: 'ERROR',
-    requestId: req.requestId,
+  const durationMs = req._startTime ? getResponseTime(req._startTime) : null;
+  const route = resolveRoutePattern(req);
+  const errorCode = err.code || (err.statusCode === 500 || !err.statusCode ? 'INTERNAL_ERROR' : fallbackErrorCode(err.statusCode || 500));
+
+  // Error-code metrics are recorded centrally in requestLogger's finish hook.
+  if (res.locals) res.locals.errorCode = errorCode;
+
+  logger.error('request.error', {
+    requestId: req.requestId || getRequestContext().requestId,
+    method: req.method,
+    route,
+    path: req.path,
+    durationMs,
+    errorCode,
     error: {
       message: err.message,
-      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
-      code: err.code
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
     },
-    method: req.method,
-    path: req.path,
     body: sanitizeRequestBody(req.body)
-  }));
+  });
 
   if (err.name === 'ValidationError') {
     return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Request validation failed', requestId: req.requestId });
@@ -127,14 +167,12 @@ export const errorHandler = (err, req, res, next) => {
 export const requestTimeout = (timeoutMs = 30000) => (req, res, next) => {
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
-      console.warn(JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'WARN',
+      logger.warn('request.timeout', {
         requestId: req.requestId,
-        message: 'Request timeout',
         method: req.method,
+        route: resolveRoutePattern(req),
         path: req.path
-      }));
+      });
       res.status(504).json({ success: false, code: 'REQUEST_TIMEOUT', message: 'Request processing time exceeded limit', requestId: req.requestId });
     }
   }, timeoutMs);

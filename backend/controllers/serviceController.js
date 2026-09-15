@@ -326,6 +326,33 @@ export const ServiceController = {
     }
   },
 
+  getTopRated: async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+      const statsMap = await getServiceStats();
+
+      const services = await prisma.service.findMany({ where: { isHidden: false } });
+
+      const ranked = services
+        .map((s) => {
+          const st = statsMap[s.id];
+          return {
+            id: s.id,
+            name: s.name,
+            popularIssues: Array.isArray(s.popularIssues) ? s.popularIssues : [],
+            avgRating: st?.ratedCount ? Number((st.ratingSum / st.ratedCount).toFixed(1)) : 0,
+            activeSpecialistCount: st?.count || 0,
+          };
+        })
+        .sort((a, b) => b.avgRating - a.avgRating || b.activeSpecialistCount - a.activeSpecialistCount)
+        .slice(0, limit);
+
+      return sendApiSuccess(res, 200, ranked);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch top-rated services', err.message);
+    }
+  },
+
   hideOne: async (req, res) => {
     try {
       const { id } = req.params;

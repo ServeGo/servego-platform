@@ -232,10 +232,9 @@ export default function AdminServicesPanel({
             </div>
 
             {serviceAddError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceAddError}</div>
-            )}
-            {serviceAddSuccess && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceAddSuccess}</div>
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <span className="shrink-0">⚠</span> {serviceAddError}
+              </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -330,10 +329,9 @@ export default function AdminServicesPanel({
             </div>
 
             {serviceEditError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold">{serviceEditError}</div>
-            )}
-            {serviceEditSuccess && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold">{serviceEditSuccess}</div>
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <span className="shrink-0">⚠</span> {serviceEditError}
+              </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

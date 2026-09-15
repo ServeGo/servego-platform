@@ -76,8 +76,8 @@ export default function ProviderReviews({ rating, reviews }) {
   // All reviews, newest first — no filters, just direct pagination.
   const sorted = useMemo(() => {
     const toTime = (r) => {
-      if (!r?.date) return 0;
-      const d = new Date(r.date);
+      if (!r?.createdAt) return 0;
+      const d = new Date(r.createdAt);
       return !Number.isNaN(d.getTime()) ? d.getTime() : 0;
     };
     return [...safeReviews].sort((a, b) => toTime(b) - toTime(a));
@@ -149,7 +149,7 @@ export default function ProviderReviews({ rating, reviews }) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-[9px] text-slate-400 font-mono block">{formatDate(rev.date)}</div>
+                          <div className="text-[9px] text-slate-400 font-mono block">{formatDate(rev.createdAt)}</div>
                           <div className="mt-2">
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-black border border-slate-200 bg-slate-50 text-slate-700">
                               {(rev.serviceCategory || 'Other').toString()}
@@ -167,7 +167,7 @@ export default function ProviderReviews({ rating, reviews }) {
                       {rev.bookingId ? (
                         <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                           <div className="text-[10px] font-bold text-slate-400">Booking</div>
-                          <div className="text-[10px] font-mono text-slate-700">{rev.bookingId}</div>
+                          <div className="text-[10px] font-mono text-slate-700">{rev.bookingNumber || '—'}</div>
                         </div>
                       ) : null}
                     </div>

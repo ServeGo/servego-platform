@@ -24,7 +24,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function TimelineModal({ bookingId, onClose }) {
+function TimelineModal({ bookingId, bookingNumber, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -49,7 +49,7 @@ function TimelineModal({ bookingId, onClose }) {
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <div>
             <h3 className="text-base font-extrabold text-slate-900">Booking Timeline</h3>
-            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{bookingId}</p>
+            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{bookingNumber || '—'}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors" aria-label="Close timeline">
             <X className="w-4 h-4" />
@@ -124,7 +124,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('pending');
-  const [timelineBookingId, setTimelineBookingId] = useState(null);
+  const [timelineBooking, setTimelineBooking] = useState(null);
 
   const STATUS_FILTERS = ['pending', 'confirmed', 'ongoing', 'completed', 'cancelled'];
 
@@ -172,13 +172,11 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
 
   return (
     <div className="space-y-6">
-      {timelineBookingId && (
-        <TimelineModal bookingId={timelineBookingId} onClose={() => setTimelineBookingId(null)} />
-      )}
+      {timelineBooking && <TimelineModal bookingId={timelineBooking.id} bookingNumber={timelineBooking.number} onClose={() => setTimelineBooking(null)} />}
 
       <div>
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Global Transaction Escrows</h2>
-        <p className="text-slate-500 text-xs">Live dispatch tracker, schedule audits, and order cancellations. Search by Booking ID to view the full event timeline.</p>
+        <p className="text-slate-500 text-xs">Live dispatch tracker, schedule audits, and order cancellations. Search by Booking No to view the full event timeline.</p>
       </div>
 
       {/* Filters */}
@@ -188,7 +186,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
           <input
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search by Booking ID, customer, provider..."
+            placeholder="Search by Booking No, customer, provider..."
             className="w-full bg-slate-50 border border-slate-200 focus:border-teal-500 rounded-xl pl-9 pr-3 py-2.5 text-xs font-bold outline-none"
           />
         </div>
@@ -211,7 +209,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
           <table className="w-full text-left text-xs font-semibold">
             <thead>
               <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px] bg-slate-50/50">
-                <th className="py-3 px-5">Code ID</th>
+                <th className="py-3 px-5">Booking No</th>
                 <th className="py-3 px-5">Customer</th>
                 <th className="py-3 px-5">Specialist</th>
                 <th className="py-3 px-5">Schedule</th>
@@ -239,7 +237,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
               )}
               {rows.map(bk => (
                 <tr key={bk.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="py-4 px-5 font-mono font-bold text-slate-900 text-[11px]">{bk.id}</td>
+                  <td className="py-4 px-5 font-mono font-bold text-slate-900 text-[11px]">{bk.bookingNumber || '—'}</td>
                   <td className="py-4 px-5">
                     <span className="text-slate-950 block font-extrabold leading-tight">{bk.customerName}</span>
                     <span className="text-[10px] text-slate-400 font-mono">{bk.customerPhone}</span>
@@ -253,7 +251,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
                   <td className="py-4 px-5 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => setTimelineBookingId(bk.id)}
+                        onClick={() => setTimelineBooking({ id: bk.id, number: bk.bookingNumber })}
                         className="bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 font-bold px-3 py-1.5 text-[10px] rounded-lg transition-colors"
                       >
                         Timeline
@@ -291,7 +289,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
         {rows.map(bk => (
           <div key={bk.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-mono font-bold text-slate-900 text-xs">{bk.id}</span>
+              <span className="font-mono font-bold text-slate-900 text-xs">{bk.bookingNumber || '—'}</span>
               <StatusBadge status={bk.status} />
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
@@ -310,7 +308,7 @@ export default function AdminBookingsPanel({ onOverrideCancel }) {
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2 justify-end">
               <button
-                onClick={() => setTimelineBookingId(bk.id)}
+                onClick={() => setTimelineBooking({ id: bk.id, number: bk.bookingNumber })}
                 className="bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 font-bold px-3 py-1.5 text-[10px] rounded-lg transition-colors"
               >
                 Timeline

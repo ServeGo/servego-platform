@@ -7,17 +7,18 @@ import jwt from 'jsonwebtoken';
 
 import apiRouter from './routes/api.js';
 import { SECRET } from './utils/auth.js';
-import { seedServicesIfEmpty } from './seeders/servicesSeed.js';
+
 import { getCorsConfig, resolvePort } from './utils/runtimeConfig.js';
 import { helmetConfig, hppConfig, generalRateLimiter } from './middleware/security.js';
 import { requestLogger, errorHandler, requestTimeout } from './middleware/logging.js';
 import { sendApiSuccess } from './utils/response.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
 import { sweepClosedLocationHistory } from './services/trackingService.js';
-import { seedBusinessModelIfEmpty } from './seeders/businessModelSeed.js';
+
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
 import { socketMetrics } from './services/socketMetrics.js';
 import { startQueueWorkers, stopQueueWorkers, drainQueueWorkers, recoverInterruptedJobs } from './services/queue/queueService.js';
+import { startPeriodicMetricsLog } from './utils/telemetry/metrics.js';
 
 dotenv.config();
 
@@ -293,6 +294,9 @@ async function bootstrap() {
         console.error('Queue recovery failed:', err.message);
       });
 
+    // In-memory observability: flush structured metrics to the log stream.
+    startPeriodicMetricsLog();
+
     // Fail-safe location sweep: any booking that is COMPLETED/CANCELLED must
     // not keep its pings or stale live fix. Reruns every 15 minutes; a
     // long-running pass never overlaps the next tick.
@@ -320,14 +324,6 @@ async function bootstrap() {
       console.error('❌ Server error:', err.message);
     }
     process.exit(1);
-  });
-
-  void seedServicesIfEmpty().catch((seedErr) => {
-    console.error('Service catalog seed skipped:', seedErr.message);
-  });
-
-  void seedBusinessModelIfEmpty().catch((seedErr) => {
-    console.error('Business model seed skipped:', seedErr.message);
   });
 
   // Graceful shutdown

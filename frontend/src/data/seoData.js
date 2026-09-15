@@ -61,7 +61,7 @@ function buildJsonLd(route) {
   if (['service', 'city-service', 'intent'].includes(route.kind)) {
     const service = route.kind === 'intent' ? route.service : route;
     graph.push({
-      '@type': 'Service',
+      '@type': service.serviceSchema || 'Service',
       '@id': `${absoluteUrl(route.path)}#service`,
       name: service.name,
       description: service.description,

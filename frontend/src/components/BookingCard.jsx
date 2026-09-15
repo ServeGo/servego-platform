@@ -80,7 +80,7 @@ export default function BookingCard({
         </div>
 
         <div className="flex justify-end w-full sm:w-auto min-w-0">
-          <span className="text-slate-400 uppercase tracking-tight">Booking {booking.bookingNumber ? 'No' : 'ID'}: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded break-all">{booking.bookingNumber || booking.id}</span></span>
+          <span className="text-slate-400 uppercase tracking-tight">Booking No: <span className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded break-all">{booking.bookingNumber || '—'}</span></span>
         </div>
       </div>
 

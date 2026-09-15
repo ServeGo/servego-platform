@@ -227,7 +227,13 @@ export function MainLayout() {
 
       if (!segments.length) {
         setServiceIntentSlug(null);
-        setCurrentPage('home');
+        if (currentUser) {
+          const redirectPage = getDefaultDashboardForRole(currentUser);
+          setCurrentPage(redirectPage);
+          updateBrowserRoute(redirectPage);
+        } else {
+          setCurrentPage('home');
+        }
         return;
       }
 
@@ -880,22 +886,23 @@ export function MainLayout() {
           </div>
         )}
 
-      <Navbar
+        <Navbar
 
-        onNavigate={handlePageTransition}
-        currentPage={currentPage}
-        customerActiveTab={customerActiveTabExternal}
-        setCustomerActiveTab={setCustomerTab}
-        providerActiveTab={providerActiveTabExternal}
-        setProviderActiveTab={setProviderTab}
-      />
+          onNavigate={handlePageTransition}
+          currentPage={currentPage}
+          customerActiveTab={customerActiveTabExternal}
+          setCustomerActiveTab={setCustomerTab}
+          providerActiveTab={providerActiveTabExternal}
+          setProviderActiveTab={setProviderTab}
+          setAdminActiveTab={setAdminActiveTabExternal}
+        />
 
       <main className="flex-1">{renderContent()}</main>
 
       {/* Footer for public pages, customer pages, and provider pages */}
       {currentPage !== 'login' && currentPage !== 'signup' && (!currentUser || currentUser.role === 'customer' || (currentUser.role === 'provider' && (currentPage === 'provider-home' || currentPage === 'dashboard-provider'))) && (
         <div className={currentUser?.role === 'customer' || currentUser?.role === 'provider' ? 'pb-16 md:pb-0' : ''}>
-          <Footer onNavigate={handlePageTransition} />
+          <Footer />
         </div>
       )}
 

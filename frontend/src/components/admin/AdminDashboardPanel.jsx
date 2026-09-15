@@ -128,7 +128,7 @@ export default function AdminDashboardPanel({
                   >
                     <div className="space-y-1 min-w-0 w-full flex-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded truncate">{bk.bookingNumber || bk.id}</span>
+                        <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded truncate">{bk.bookingNumber || '—'}</span>
                         <span className="text-slate-900 font-extrabold text-sm truncate">{bk.serviceCategory}</span>
                       </div>
                       <div className="text-[11px] text-slate-500 font-medium truncate">

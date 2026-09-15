@@ -34,7 +34,7 @@ export default function CategoryGrid({ categories, providers, onCategoryClick, o
         </div>
         <button
           onClick={onSeeAll}
-          className="mt-4 md:mt-0 inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 font-bold group transition-all text-xs focus:outline-none"
+          className="mt-4 md:mt-0 self-end md:self-auto inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 font-bold group transition-all text-xs focus:outline-none"
         >
           <span>See All Services</span>
           <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />

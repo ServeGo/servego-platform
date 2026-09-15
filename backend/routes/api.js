@@ -25,6 +25,7 @@ import { AddressController } from '../controllers/addressController.js';
 import { QueueController } from '../controllers/queueController.js';
 import { SocketController } from '../controllers/socketController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
+import { MetricsController } from '../controllers/metricsController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
 import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
@@ -121,6 +122,7 @@ apiRouter.post('/referrals/claim', requireAuth, ReferralsController.applyReferra
 
 // --- Services (Service Categories) ---
 apiRouter.get('/services/search', ServiceController.search);
+apiRouter.get('/services/top-rated', ServiceController.getTopRated);
 apiRouter.get('/services', ServiceController.getAll);
 apiRouter.get('/categories/:slug', ServiceController.getCategoryBySlug);
 apiRouter.get('/categories/:slug/providers', ProviderServiceDiscoveryController.getApprovedProvidersByCategory);
@@ -220,6 +222,9 @@ apiRouter.post('/admin/queue/requeue', requireAuth, requireRole('admin'), QueueC
 // --- Realtime (Socket.IO) traffic ---
 apiRouter.get('/admin/socket/stats', requireAuth, requireRole('admin'), SocketController.getStats);
 apiRouter.post('/admin/socket/stats/reset', requireAuth, requireRole('admin'), SocketController.resetStats);
+
+// --- Observability (in-memory metrics, no DB) ---
+apiRouter.get('/admin/metrics', requireAuth, requireRole('admin'), MetricsController.getMetrics);
 
 // --- Feature flags (runtime toggles + announcement banner) ---
 apiRouter.get('/feature-flags/public', FeatureFlagController.getPublic);

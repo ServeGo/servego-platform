@@ -65,7 +65,7 @@ export default function TicketsView({ tickets, onSubmit, subject, setSubject, me
               <div key={t.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-3xs">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">ID: {t.id}</span>
+                    <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">ID: {t.bookingNumber || '—'}</span>
                     <h5 className="font-bold text-slate-900 text-xs sm:text-sm mt-1">{t.subject}</h5>
                   </div>
                   <span className={`px-2.5 py-0.5 text-[9px] uppercase font-black rounded-full border ${t.status === 'open' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>

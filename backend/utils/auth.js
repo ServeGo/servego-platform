@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import process from 'node:process';
+import { setRequestUser } from './telemetry/requestContext.js';
 
 dotenv.config();
 
@@ -128,6 +129,7 @@ export function requireAuth(req, res, next) {
   }
 
   req.user = decoded;
+  setRequestUser(decoded.id, decoded.role);
   return next();
 }
 
@@ -171,6 +173,7 @@ export function optionalAuth(req, res, next) {
     const decoded = verifyAuthToken(token);
     if (decoded && !decoded.expired) {
       req.user = decoded;
+      setRequestUser(decoded.id, decoded.role);
     }
   }
   

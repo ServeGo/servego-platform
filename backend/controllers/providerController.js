@@ -34,7 +34,8 @@ const REVIEW_SELECT = {
   reviewerName: true,
   serviceCategory: true,
   bookingId: true,
-  date: true
+  createdAt: true,
+  booking: { select: { bookingNumber: true } }
 };
 const BADGE_SELECT = { badgeType: true, awardedAt: true };
 const SLOT_SELECT = { id: true, dayOfWeek: true, startTime: true, endTime: true };
@@ -138,7 +139,7 @@ export const ProviderController = {
         where: { userId: req.user.id },
         include: {
           user: { select: PROVIDER_USER_SELECT },
-          reviews: { select: REVIEW_SELECT, orderBy: { date: 'desc' } },
+          reviews: { select: REVIEW_SELECT, orderBy: { createdAt: 'desc' } },
           badges: { select: BADGE_SELECT },
           availabilitySlots: { select: SLOT_SELECT }
         }
@@ -299,7 +300,8 @@ export const ProviderController = {
         if (own) {
           own.reviews = await prisma.review.findMany({
             where: { providerId: ownProviderId },
-            orderBy: { date: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { booking: { select: { bookingNumber: true } } }
           });
         }
       }
@@ -327,7 +329,7 @@ export const ProviderController = {
         where: { id },
         include: {
           user: { select: PROVIDER_USER_SELECT },
-          reviews: { select: REVIEW_SELECT, orderBy: { date: 'desc' } },
+          reviews: { select: REVIEW_SELECT, orderBy: { createdAt: 'desc' } },
           badges: { select: BADGE_SELECT },
           availabilitySlots: { select: SLOT_SELECT }
         }
@@ -403,7 +405,7 @@ export const ProviderController = {
   updateAvailability: async (req, res) => {
     try {
       const { id } = req.params;
-      const { availableDays, timeSlots, availabilitySlots } = req.body;
+      const { availabilitySlots } = req.body;
       const provider = await prisma.provider.findUnique({ where: { id }, select: { userId: true } });
       if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Service provider profile missing');
       if (req.user.role !== 'admin' && provider.userId !== req.user.id) {
@@ -426,12 +428,8 @@ export const ProviderController = {
           await tx.availabilitySlot.deleteMany({ where: { providerId: id } });
           if (slots.length) await tx.availabilitySlot.createMany({ data: slots.map((slot) => ({ ...slot, providerId: id })) });
         }
-        return tx.provider.update({
+        return tx.provider.findUnique({
           where: { id },
-          data: {
-            availableDays: Array.isArray(availableDays) ? availableDays : undefined,
-            timeSlots: Array.isArray(timeSlots) ? timeSlots : undefined
-          },
           include: { availabilitySlots: true }
         });
       }, { maxWait: 20000, timeout: 30000 });
