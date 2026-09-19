@@ -21,7 +21,7 @@ const SPEND_CATEGORIES = new Set(['BOOKING_PAYMENT', 'SERVICE_FEE']);
 // customer paid (directly to the specialist or as a cancellation service fee).
 const CATEGORY_META = {
   BOOKING_PAYMENT: { label: 'Service payment', icon: Receipt, tone: 'bg-indigo-50 text-indigo-600' },
-  SERVICE_FEE: { label: 'Service fee', icon: Receipt, tone: 'bg-rose-50 text-rose-500' }
+  SERVICE_FEE: { label: 'Cancellation fee', icon: Receipt, tone: 'bg-rose-50 text-rose-500' }
 };
 const GENERIC_META = { label: 'Spending', icon: Receipt, tone: 'bg-slate-100 text-slate-600' };
 

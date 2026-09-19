@@ -7,7 +7,7 @@ import {
   recordJobCompleted
 } from './providerPerformanceService.js';
 import { refreshProviderReputation } from './providerReputationService.js';
-import { debitWalletAllowNegative } from './walletService.js';
+import { debitWalletAllowNegative, recordWalletEarning } from './walletService.js';
 import { getCommissionTiers, computeCommission, round2 } from './quotationService.js';
 import { normalizeBookingStatus } from '../utils/workflow.js';
 import { consumeAlertsByData } from './alertService.js';
@@ -489,6 +489,7 @@ export async function createBookingWithLead({
 export async function createManuallyAssignedBookingWithLead({
   customerId,
   providerId,
+  serviceId = null,
   serviceCategory,
   locationAddress = '',
   city = 'Hyderabad',
@@ -506,6 +507,7 @@ export async function createManuallyAssignedBookingWithLead({
         bookingNumber,
         customerId,
         providerId,
+        serviceId,
         serviceCategory,
         locationAddress,
         city,
@@ -671,6 +673,23 @@ export async function acceptLeadForBooking({ bookingId, providerId, client = pri
       (!lead || lead.providerId === providerId)
     ) {
       return { booking: existing, alreadyAccepted: true, cancelledProviders: [] };
+    }
+
+    // Wallet re-check at accept time: a provider may have been offered this lead
+    // while their balance was fine, then completed another job whose commission
+    // pushed the wallet negative (the balance is never credited on completion —
+    // the customer pays the provider directly). The offer is stale by then, so
+    // block the accept: a negative balance must never secure new work, even for
+    // a lead already sitting in Action Required. Guarded by CURRENT DB state.
+    const walletRow = await tx.provider.findUnique({
+      where: { id: providerId },
+      select: { user: { select: { wallet: { select: { balance: true } } } } }
+    });
+    if (walletRow?.user?.wallet && Number(walletRow.user.wallet.balance) < 0) {
+      throw serviceError(
+        'WALLET_BELOW_ZERO',
+        'Your wallet balance is negative. Clear your outstanding balance before accepting a new request.'
+      );
     }
 
     const historyBefore = await tx.booking.findUnique({
@@ -867,19 +886,27 @@ export async function completeBooking({ bookingId, providerId, client = prisma }
     await refreshProviderReputation(providerId, tx);
     const promotion = await applyPromotion(providerId, tx);
 
-    if (commission > 0) {
-      const providerRow = await tx.provider.findUnique({ where: { id: providerId }, select: { userId: true } });
-      if (providerRow?.userId) {
-        await debitWalletAllowNegative({
-          userId: providerRow.userId,
-          amount: commission,
-          category: 'COMMISSION',
-          referenceType: 'BOOKING',
-          referenceId: bookingId,
-          description: `Platform commission (${commission} on ₹${amount}) charged on completed ${serviceLabel} booking`,
-          client: tx
-        });
-      }
+    const providerRow = await tx.provider.findUnique({ where: { id: providerId }, select: { userId: true } });
+
+    if (commission > 0 && providerRow?.userId) {
+      await debitWalletAllowNegative({
+        userId: providerRow.userId,
+        amount: commission,
+        category: 'COMMISSION',
+        referenceType: 'BOOKING',
+        referenceId: bookingId,
+        description: `Platform commission (${commission} on ₹${amount}) charged on completed ${serviceLabel} booking`,
+        client: tx
+      });
+    }
+
+    // The customer pays the provider directly (external settlement), so the
+    // wallet balance is never credited on completion. Track the accepted
+    // quotation total as lifetime earnings instead, so admin/provider views can
+    // show how much the provider has earned. CompleteBooking is CAS-locked to a
+    // single ONGOING → COMPLETED transition, so this increments exactly once.
+    if (amount > 0 && providerRow?.userId) {
+      await recordWalletEarning({ userId: providerRow.userId, amount, client: tx });
     }
 
     // Display-only customer ledger entry: a completed job records the amount the

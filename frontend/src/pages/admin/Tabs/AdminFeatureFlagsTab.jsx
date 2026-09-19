@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api as apiClient } from '../../../utils/apiClient';
 
 /**
  * Feature Flags (admin):
- *   - referralBonusAmount: the referral payout, applied to every referral.
  *   - New Feature Announcement: one "what's new" banner, targeted to a single
  *     audience (customers OR providers) with the message the admin types.
+ *   - Live Tracking toggles for customers and providers.
  * Backed by the /feature-flags endpoints (AdminConfig table, ~30s cache).
  */
 
@@ -47,7 +47,14 @@ export default function AdminFeatureFlagsTab() {
     setLoaded(true);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Guard so React StrictMode's dev double-mount does not fire the same request
+  // twice (real tab re-mounts get a fresh ref).
+  const fetchedOnceRef = useRef(false);
+  useEffect(() => {
+    if (fetchedOnceRef.current) return;
+    fetchedOnceRef.current = true;
+    load();
+  }, [load]);
 
   const flash = (tone, text) => {
     setMessageTone(tone);
@@ -72,7 +79,6 @@ export default function AdminFeatureFlagsTab() {
   const announcementEnabled = get('newFeatureEnabled', false) === true;
   const announcementAudience = get('newFeatureAudience', 'customer');
   const announcementText = get('newFeatureText', '');
-  const referralAmount = get('referralBonusAmount', 250);
 
   const setValue = (key, value) => setFlags((prev) => prev.map((f) => (f.key === key ? { ...f, value } : f)));
 
@@ -101,37 +107,6 @@ export default function AdminFeatureFlagsTab() {
       {!loaded && !loadError && <p className="text-slate-400 text-sm">Loading feature flags…</p>}
 
       <div className="space-y-8">
-        <div className="space-y-3">
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-600">Growth</h3>
-          <Card>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-extrabold text-slate-900">Referral Bonus Amount (₹)</p>
-                <p className="text-slate-500 text-xs mt-1">Bonus credited to a new user when they apply a referral code. Applies to every referral.</p>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={referralAmount ?? ''}
-                onChange={(e) => setValue('referralBonusAmount', e.target.value === '' ? '' : Number(e.target.value))}
-                onKeyDown={(e) => { if (e.key === 'Enter') save('referralBonusAmount', Number(referralAmount)); }}
-                disabled={savingKey === 'referralBonusAmount'}
-                className="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 disabled:opacity-60"
-              />
-              <button
-                onClick={() => save('referralBonusAmount', Number(referralAmount))}
-                disabled={savingKey === 'referralBonusAmount'}
-                className="px-3 py-2 rounded-xl text-xs font-black bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50"
-              >
-                {savingKey === 'referralBonusAmount' ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </Card>
-        </div>
-
         <div className="space-y-3">
           <h3 className="text-sm font-black uppercase tracking-wider text-slate-600">Marketing</h3>
           <Card>

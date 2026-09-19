@@ -438,9 +438,9 @@ export const createServiceValidation = [
     .notEmpty().withMessage('Service name is required')
     .isLength({ min: 2, max: 200 }).withMessage('Service name must be between 2 and 200 characters'),
   body('description')
-    .optional()
     .trim()
-    .isLength({ max: 2000 }).withMessage('Description too long'),
+    .notEmpty().withMessage('Service description is required')
+    .isLength({ min: 2, max: 2000 }).withMessage('Description must be between 2 and 2000 characters'),
   body('popularIssues')
     .optional()
     .isArray().withMessage('Popular issues must be an array'),

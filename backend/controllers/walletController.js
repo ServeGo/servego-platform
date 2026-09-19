@@ -117,6 +117,34 @@ export const WalletController = {
     }
   },
 
+  /**
+   * Admin: a single provider's live wallet snapshot.
+   * Reads only the three scalars the provider popup renders (rule 12) and
+   * returns zeros when the wallet has not been created yet.
+   */
+  getProviderWallet: async (req, res) => {
+    try {
+      const provider = await prisma.provider.findUnique({
+        where: { id: req.params.id },
+        select: { userId: true }
+      });
+      if (!provider) {
+        return sendApiError(res, 404, 'PROVIDER_NOT_FOUND', 'Service provider not found.');
+      }
+      const wallet = await prisma.wallet.findUnique({
+        where: { userId: provider.userId },
+        select: { balance: true, totalEarned: true, totalWithdrawn: true }
+      });
+      return sendApiSuccess(res, 200, {
+        balance: Number(wallet?.balance || 0),
+        totalEarned: Number(wallet?.totalEarned || 0),
+        totalWithdrawn: Number(wallet?.totalWithdrawn || 0)
+      });
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load provider wallet', err.message);
+    }
+  },
+
   /** Admin: all wallet transactions (paginated, filterable). */
   getAdminLedger: async (req, res) => {
     try {

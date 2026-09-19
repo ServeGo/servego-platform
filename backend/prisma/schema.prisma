@@ -19,11 +19,6 @@ model User {
   status                  AccountStatus  @default(ACTIVE)
   address                 String?
   pincode                 String?
-  referralCode            String?
-  referredBy              String?
-  referralsCount          Int            @default(0)
-  referralDiscountBalance Float          @default(0)
-  referralBonusEarned     Float          @default(0)
   providerId              String?
   // Business display identifiers (CID-0001 / PID-0001). Minted at signup and
   // shown everywhere in place of the raw cuid — customer list, provider
@@ -46,6 +41,10 @@ model User {
   @@index([email])
   @@index([providerId])
   @@index([createdAt])
+  // Typo-tolerant search (pg_trgm). Created via raw SQL in the search_trgm
+  // migrations; declared here so `migrate dev`/`db push` never treats these
+  // GIN indexes as drift and drops them.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "User_name_trgm_idx")
 
   authEvents              AuthEvent[]
   bookingsAsCustomer      Booking[]      @relation("CustomerBookings")
@@ -212,6 +211,10 @@ model Provider {
   @@index([createdAt])
   @@index([accountStatus])
   @@index([accountStatus, isVerified])
+  // Typo-tolerant search (pg_trgm), created by raw SQL in the search_trgm
+  // migrations — declared so Prisma drift detection doesn't drop them.
+  @@index([category(ops: raw("gin_trgm_ops"))], type: Gin, map: "Provider_category_trgm_idx")
+  @@index([bio(ops: raw("gin_trgm_ops"))], type: Gin, map: "Provider_bio_trgm_idx")
 
   bookings          Booking[]
   user              User      @relation(fields: [userId], references: [id])
@@ -228,7 +231,6 @@ model Provider {
   promotionHistory        PromotionHistory[]
   levelHistory            ProviderLevelHistory[]
   performance             ProviderPerformance?
-  rankingMetrics          RankingMetrics?
   locationUpdates         BookingLocationUpdate[]
   permanentServiceAssignments PermanentServiceRequest[] @relation("PermanentServiceAssignments")
   walletWithdrawalRequests WalletWithdrawalRequest[]
@@ -261,6 +263,12 @@ model Service {
 
   bookings       Booking[]
   providerServices ProviderService[]
+
+  // Typo-tolerant search (pg_trgm), created by raw SQL in the search_trgm
+  // migrations — declared so Prisma drift detection doesn't drop them.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Service_name_trgm_idx")
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "Service_description_trgm_idx")
+  @@index([nameNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Service_nameNormalized_trgm_idx")
 }
 
 // Provider’s approved global services
@@ -276,12 +284,11 @@ model ProviderService {
   provider          Provider @relation(fields: [providerId], references: [id])
   service           Service  @relation(fields: [serviceId], references: [id])
 
-  providerServiceRequests ProviderServiceRequest[]
-
   @@unique([providerId, serviceId])
   @@unique([providerServiceRequestId])
   @@index([providerId])
   @@index([serviceId])
+  @@index([createdAt])
 }
 
 // Provider’s pending/denied service registration request
@@ -303,7 +310,6 @@ model ProviderServiceRequest {
   updatedAt             DateTime      @updatedAt
 
   provider              Provider @relation(fields: [providerId], references: [id])
-  providerServices     ProviderService[]
 
   @@index([status, createdAt])
   @@index([providerId, status])
@@ -788,26 +794,6 @@ model ProviderPerformance {
   cooldownUntil         DateTime?
   cooldownCount         Int       @default(0)
   updatedAt             DateTime  @updatedAt
-
-  provider Provider @relation(fields: [providerId], references: [id])
-}
-
-// Precomputed snapshot used by the provider ranking algorithm.
-model RankingMetrics {
-  id               String        @id @default(cuid())
-  providerId       String        @unique
-  rankScore        Float         @default(0)
-  distanceKm       Float?
-  rating           Float         @default(0)
-  acceptanceRate   Float         @default(0)
-  responseRate     Float         @default(0)
-  cancellationRate Float         @default(0)
-  experienceYears  Int           @default(0)
-  reviewCount      Int           @default(0)
-  completedJobs    Int           @default(0)
-  providerLevel    ProviderLevel @default(BRONZE)
-  sector           ProviderSector @default(GENERAL)
-  lastComputedAt   DateTime      @updatedAt
 
   provider Provider @relation(fields: [providerId], references: [id])
 }

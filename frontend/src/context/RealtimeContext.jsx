@@ -175,6 +175,18 @@ export const RealtimeProvider = ({ children }) => {
       };
       socket.on('provider:onTheWay', applyDispatchPhase);
       socket.on('provider:arrived', applyDispatchPhase);
+      // Provider arrival / trip end stops the live feed; keep the last fix so
+      // the customer map freezes at the arrival point instead of a blank.
+      socket.on('location:stopped', (payload) => {
+        if (!payload?.bookingId) return;
+        setLocationUpdates((prev) => ({
+          ...prev,
+          [payload.bookingId]: {
+            ...(prev[payload.bookingId] || {}),
+            locationSharingActive: false
+          }
+        }));
+      });
       // A quotation was submitted/revised for one of my bookings — pull the
       // canonical record so the quotation panel (and its total) appears fresh
       // without waiting for the 30s poll.
@@ -262,9 +274,14 @@ export const RealtimeProvider = ({ children }) => {
 
     connectSocket(SOCKET_URL);
 
-    // Poll bookings every 30s — initial fetch already handled by the data-fetch effect above
+    // Eventual-consistency net (rule 23), NOT the freshness source: a healthy
+    // socket patches bookings live, so a blank 30s refetch of every user is
+    // waste. Poll only while the socket is down (or never connected), where
+    // reconnect resync (`.connected` is false) can still miss something.
     const intervalId = window.setInterval(() => {
-      if (currentUser?.id) fetchBookings();
+      if (!currentUser?.id) return;
+      if (socketRef.current?.connected) return;
+      fetchBookings();
     }, 30000);
 
     return () => {

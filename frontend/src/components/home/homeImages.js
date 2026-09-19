@@ -1,2 +1,0 @@
-// ── Live Tracking Showcase ───────────────────────────────────────────────────
-export const TRACKING_MAP = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329516/servego/public/elvgllb287vgfwjjdcsg.jpg';

@@ -38,6 +38,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState('');
   const [invoiceBooking, setInvoiceBooking] = useState(null);
 
   // Ticket state
@@ -100,12 +101,24 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
   useEffect(() => { fetchPermanentCount(); }, [fetchPermanentCount]);
 
   // Actions
+  const openReview = useCallback((booking) => {
+    setReviewError('');
+    setReviewComment('');
+    setReviewRating(5);
+    setReviewBooking(booking);
+  }, []);
+
   const handlePublishReview = async (e) => {
     e.preventDefault();
-    if (!reviewBooking) return;
+    if (!reviewBooking || reviewSubmitting) return;
     setReviewSubmitting(true);
+    setReviewError('');
     try {
-      submitReview(reviewBooking.id, reviewBooking.providerId, reviewRating, reviewComment);
+      const result = await submitReview(reviewBooking.id, reviewBooking.providerId, reviewRating, reviewComment);
+      if (result?.ok === false) {
+        setReviewError(getErrorInfo(result.error, 'Could not publish your review. Please try again.').message);
+        return;
+      }
       setReviewBooking(null);
       setReviewComment('');
       setReviewRating(5);
@@ -144,9 +157,10 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             booking={reviewBooking}
             rating={reviewRating} setRating={setReviewRating}
             comment={reviewComment} setComment={setReviewComment}
-            onClose={() => setReviewBooking(null)}
+            onClose={() => { setReviewBooking(null); setReviewError(''); }}
             onSubmit={handlePublishReview}
             submitting={reviewSubmitting}
+            error={reviewError}
           />
         )}
 
@@ -172,7 +186,7 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
             {userBookings.length === 0 && pendingManualRequests.length === 0 ? (
               <EmptyBookings onNavigate={onNavigate} />
             ) : (
-              <BookingSubTabs bookings={userBookings} manualRequests={pendingManualRequests} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={setReviewBooking} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
+              <BookingSubTabs bookings={userBookings} manualRequests={pendingManualRequests} onDownloadReceipt={setInvoiceBooking} onCancel={updateBookingStatus} onReview={openReview} onQuotationConfirm={performQuotationConfirm} onQuotationCancel={performQuotationCancel} openChatBookingId={openChatBookingId} setOpenChatBookingId={setOpenChatBookingId} onSendMessage={sendChatMessage} onNavigate={onNavigate} />
             )}
           </div>
         )}
@@ -323,6 +337,7 @@ function BookingSubTabs({ bookings, manualRequests = [], onDownloadReceipt, onCa
           // AND chat messages must all match, otherwise message-only updates
           // (quick replies) would never reach the visible card.
           if (item.status === fresh.status && providerId(item) === providerId(fresh) &&
+              Boolean(item.reviewed) === Boolean(fresh.reviewed) &&
               JSON.stringify(item.messages || []) === JSON.stringify(fresh.messages || [])) continue;
           changed = true;
         }

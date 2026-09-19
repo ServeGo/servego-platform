@@ -17,10 +17,7 @@ async function main() {
       role: 'admin',
       password,
       status: 'ACTIVE',
-      profileComplete: true,
-      referralCode: 'SERVEGO-ADMIN-001',
-      referralsCount: 0,
-      referralDiscountBalance: 0,
+      profileComplete: true
     },
   });
 

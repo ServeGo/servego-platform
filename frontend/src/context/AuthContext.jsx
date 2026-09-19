@@ -182,36 +182,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const applyReferralCode = async (code) => {
-    try {
-      if (!currentUser?.id) return { success: false, message: 'Please login to apply a referral code.' };
-
-      const res = await api(`${API_BASE_URL}/referrals/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id, code })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, message: data?.error || 'Failed to apply referral code.' };
-      }
-
-      // Refresh currentUser so referredBy/earnings reflect immediately.
-      setCurrentUser(prev => (prev ? { ...prev, referredBy: data.referredBy } : prev));
-
-      return {
-        success: true,
-        message: `Referral applied! You referred by ${data.referredBy}. Bonus: ₹${data.bonusEarned}`,
-        referredBy: data.referredBy,
-        referredCount: data.referredCount,
-        bonusEarned: data.bonusEarned
-      };
-    } catch (err) {
-      return { success: false, message: 'Network error while applying referral code.' };
-    }
-  };
-
   return (
     <AuthContext.Provider value={{
       currentUser,
@@ -222,8 +192,7 @@ export const AuthProvider = ({ children }) => {
       forgotPassword,
       resetPassword,
       logout,
-      updateUserProfile,
-      applyReferralCode
+      updateUserProfile
     }}>
       {children}
     </AuthContext.Provider>

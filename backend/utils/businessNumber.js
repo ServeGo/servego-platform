@@ -6,19 +6,20 @@ import prisma from '../prisma/client.js';
 //   BOOKING  -> SG24-0001
 //   CUSTOMER -> CID-0001
 //   PROVIDER -> PID-0001
-//   SERVICE  -> SG24-0001 (legacy shared prefix with BOOKING)
+//   SERVICE  -> SID-0001  (SG24 is reserved exclusively for bookings)
 const PREFIXES = {
   BOOKING: 'SG24',
   CUSTOMER: 'CID',
   PROVIDER: 'PID',
-  SERVICE: 'SG24'
+  SERVICE: 'SID'
 };
 
-// Maps counter key → Prisma model field that stores the generated number,
-// so we can derive the correct starting value from existing rows.
-const MODEL_FIELD = {
-  CUSTOMER: 'customerNumber',
-  PROVIDER: 'providerNumber'
+// Maps counter key → the Prisma model table + column that stores the generated
+// number, so we can derive the correct starting value from existing rows.
+const COUNTER_MODEL = {
+  CUSTOMER: { table: 'User', column: 'customerNumber' },
+  PROVIDER: { table: 'User', column: 'providerNumber' },
+  SERVICE: { table: 'Service', column: 'serviceNumber' }
 };
 
 // Formats a plain integer into a family-specific business number.
@@ -29,18 +30,17 @@ export function formatBusinessNumber(value, key = 'BOOKING') {
 
 /**
  * Derive the next counter value from existing rows when the
- * BusinessSequenceCounter is missing or stale. Scans the User table for the
+ * BusinessSequenceCounter is missing or stale. Scans the model table for the
  * highest sequential number already assigned under the given prefix and returns
  * that count (so the next call to nextBusinessNumber produces count + 1).
  */
 async function deriveCounterFromExistingRows(key) {
   const prefix = PREFIXES[key];
-  const field = MODEL_FIELD[key];
-  if (!prefix || !field) return 0;
+  const model = COUNTER_MODEL[key];
+  if (!prefix || !model) return 0;
 
-  // e.g. SELECT "customerNumber" FROM "User" WHERE "customerNumber" LIKE 'CID-%'
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT "${field}" AS num FROM "User" WHERE "${field}" LIKE $1`,
+    `SELECT "${model.column}" AS num FROM "${model.table}" WHERE "${model.column}" LIKE $1`,
     `${prefix}-%`
   );
 

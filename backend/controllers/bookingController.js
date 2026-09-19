@@ -185,6 +185,29 @@ export const BookingController = {
         if (!Number.isNaN(ts.getTime())) where.updatedAt = { gt: ts };
       }
 
+      // Per-status counts for admin tab badges — one GROUP BY regardless of the
+      // number of status filters (rule 12). Compiled WITHOUT the status filter
+      // itself so every badge always reflects the full list scope (search etc.),
+      // and skipped entirely for provider/customer hot paths.
+      let counts = null;
+      if (req.user.role === 'admin') {
+        const countsWhere = { ...where };
+        delete countsWhere.status;
+        const grouped = await prisma.booking.groupBy({
+          by: ['status'],
+          where: countsWhere,
+          _count: { _all: true }
+        });
+        counts = { PENDING: 0, CONFIRMED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0, TOTAL: 0 };
+        for (const g of grouped) {
+          const n = g._count._all || 0;
+          if (Object.hasOwn(counts, g.status)) {
+            counts[g.status] = n;
+            counts.TOTAL += n;
+          }
+        }
+      }
+
       const cursorToken = String(req.query.cursor || '').trim();
       const cursorMode = cursorToken || String(req.query.mode || '').toLowerCase() === 'cursor';
 
@@ -215,7 +238,8 @@ export const BookingController = {
         const { items, nextCursor, hasMore } = sliceCursorPage(raw, maxLimit);
         return sendApiSuccess(res, 200, {
           bookings: items.map(bookingListItem),
-          pagination: { total, nextCursor, hasMore }
+          pagination: { total, nextCursor, hasMore },
+          ...(counts && { counts })
         });
       }
 
@@ -234,7 +258,8 @@ export const BookingController = {
 
       return sendApiSuccess(res, 200, {
         bookings: bookings.map(bookingListItem),
-        pagination: offsetMeta(total, parseInt(page), maxLimit)
+        pagination: offsetMeta(total, parseInt(page), maxLimit),
+        ...(counts && { counts })
       });
     } catch (err) {
       console.error('[BookingController.getAll] Error:', err);

@@ -323,6 +323,12 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
     return { actionable, active, closed };
   }, [leads]);
 
+  // A provider with an active job may still hold open offers, but cannot accept
+  // a new one until the active job is completed/cancelled (rule 17). Enforced
+  // server-side in acceptLeadForBooking (ACTIVE_BOOKING_EXISTS); surfaced here
+  // up-front so the button never fails in the user's face.
+  const hasActiveJob = categorized.active.length > 0;
+
   const counts = useMemo(
     () => ({
       actionable: categorized.actionable.length,
@@ -358,6 +364,15 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
   );
 
   const handleAccept = async (lead) => {
+    // Guard: one active job at a time. Skip the round-trip and show the same
+    // friendly copy the backend would return (ACTIVE_BOOKING_EXISTS).
+    if (hasActiveJob) {
+      showActionError(
+        { code: 'ACTIVE_BOOKING_EXISTS' },
+        'You have an active lead. Complete it before accepting another request.'
+      );
+      return;
+    }
     if (!window.confirm('Accept this lead? The booking will be confirmed for you.')) return;
     setBusyId(lead.id);
     setActionError('');
@@ -490,6 +505,13 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
         </div>
       )}
 
+      {filter === 'actionable' && hasActiveJob && (
+        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold rounded-2xl px-4 py-3">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          You have an active lead. Complete it before accepting another request.
+        </div>
+      )}
+
       {error && (
         <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-2xl px-4 py-3">
           <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
@@ -524,6 +546,7 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
               key={lead.id}
               lead={lead}
               busy={busyId === lead.id}
+              hasActiveJob={hasActiveJob}
               onOpen={() => markViewed(lead)}
               onAccept={() => handleAccept(lead)}
               onReject={() => handleReject(lead)}
@@ -673,12 +696,13 @@ function EmptyInbox({ filter }) {
   );
 }
 
-function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onComplete }) {
+function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onReject, onQuote, onComplete }) {
   const { getBookingLocation } = useRealtime();
   const { liveTrackingProviders } = useFeatureFlags();
   const now = useNowTick(lead.status === 'NEW' || lead.status === 'VIEWED');
   const booking = lead.booking || {};
   const actionable = lead.status === 'NEW' || lead.status === 'VIEWED';
+  const acceptBlocked = actionable && hasActiveJob;
   const expiryMs = lead.expiryTime ? new Date(lead.expiryTime).getTime() - now : null;
   const expired = expiryMs != null && expiryMs <= 0;
   const bookingStatus = booking.status || 'PENDING';
@@ -698,16 +722,18 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
     Number.isFinite(Number(location.latitude)) &&
     Number.isFinite(Number(location.longitude))
   );
-  const showLiveTracking = activeDuty && liveTrackingProviders === true && (
-    hasProviderGps(realtimeLocation) ||
-    hasProviderGps({ latitude: booking.providerLatitude, longitude: booking.providerLongitude })
-  );
-  const liveLocation = showLiveTracking ? realtimeLocation : null;
-
   // Dispatch phase read live-first (socket/realtime) with the persisted value
   // from GET /leads as the reload fallback.
   const providerPhase = getBookingLocation(booking.id)?.providerPhase || booking.providerPhase || null;
   const arrived = providerPhase === 'ARRIVED';
+
+  // The provider's own live map hides once they have arrived: sharing has
+  // stopped, so there is nothing left to track.
+  const showLiveTracking = activeDuty && !arrived && liveTrackingProviders === true && (
+    hasProviderGps(realtimeLocation) ||
+    hasProviderGps({ latitude: booking.providerLatitude, longitude: booking.providerLongitude })
+  );
+  const liveLocation = showLiveTracking ? realtimeLocation : null;
 
   useEffect(() => {
     onOpen();
@@ -811,7 +837,7 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
         {(bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING') && (
           <>
             <ProviderDispatchControls booking={booking} />
-            <ProviderLocationShare bookingId={booking.id} />
+            <ProviderLocationShare bookingId={booking.id} arrived={arrived} />
           </>
         )}
         {actionable ? (
@@ -825,11 +851,12 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
             </button>
             <button
               onClick={onAccept}
-              disabled={busy}
-              className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
+              disabled={busy || acceptBlocked}
+              title={acceptBlocked ? 'Complete your active lead first' : undefined}
+              className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {busy ? 'Processing...' : 'Accept & Confirm'}
+              {busy ? 'Processing...' : acceptBlocked ? 'Active lead in progress' : 'Accept & Confirm'}
             </button>
           </>
         ) : bookingStatus === 'CONFIRMED' ? (
@@ -865,17 +892,27 @@ function LeadCardItem({ lead, busy, onOpen, onAccept, onReject, onQuote, onCompl
  * reach the network; the server applies its own minimum interval as a second
  * gate.
  */
-function ProviderLocationShare({ bookingId }) {
+function ProviderLocationShare({ bookingId, arrived = false }) {
   const { shareProviderLocation } = useRealtime();
   const [sharing, setSharing] = useState(false);
   const [statusText, setStatusText] = useState('Share Live Location');
   const [tone, setTone] = useState('slate');
   const watchIdRef = useRef(null);
 
+  const stopSharing = () => {
+    if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+    watchIdRef.current = null;
+    setSharing(false);
+    setStatusText('Share Live Location');
+    setTone('slate');
+  };
+
   useEffect(() => {
     // Location sharing defaults to ON: this control only mounts for a
     // CONFIRMED/ONGOING booking, i.e. the moment the offer was accepted — so
     // the GPS watch starts immediately. The provider can still toggle it off.
+    // Once arrived, sharing is over: never (re)start the watch.
+    if (arrived) return undefined;
     if (typeof navigator === 'undefined' || !navigator.geolocation) return undefined;
     startSharing();
     return () => {
@@ -883,6 +920,12 @@ function ProviderLocationShare({ bookingId }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Arrival automatically ends sharing (no manual toggle needed).
+  useEffect(() => {
+    if (arrived) stopSharing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived]);
 
   const startSharing = () => {
     if (!navigator.geolocation) {
@@ -913,14 +956,6 @@ function ProviderLocationShare({ bookingId }) {
     );
   };
 
-  const stopSharing = () => {
-    if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-    watchIdRef.current = null;
-    setSharing(false);
-    setStatusText('Share Live Location');
-    setTone('slate');
-  };
-
   const styles = {
     slate: 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200',
     emerald: 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500',
@@ -931,11 +966,14 @@ function ProviderLocationShare({ bookingId }) {
   return (
     <button
       type="button"
+      disabled={arrived}
       onClick={sharing ? stopSharing : startSharing}
-      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border flex items-center gap-1.5 mr-auto ${styles[tone]}`}
+      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border flex items-center gap-1.5 mr-auto ${
+        arrived ? 'bg-emerald-600/10 text-emerald-700 border-emerald-200' : styles[tone]
+      }`}
     >
-      <LocateFixed className={`w-3.5 h-3.5 ${sharing ? 'animate-pulse' : ''}`} />
-      {statusText}
+      <LocateFixed className={`w-3.5 h-3.5 ${sharing && !arrived ? 'animate-pulse' : ''}`} />
+      {arrived ? 'Arrived — location sharing stopped' : statusText}
     </button>
   );
 }

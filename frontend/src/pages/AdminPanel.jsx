@@ -16,7 +16,8 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     customersList,
 
     // dashboard stats
-    totalVolume,
+    adminCommission,
+    adminSummaryLoading,
     pendingPartnersCount,
     activeTicketsCount,
 
@@ -35,6 +36,7 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     isAddingService,
     isEditingService,
     isSubmittingService,
+    servicesLoading,
     newServiceForm,
     editServiceForm,
     serviceAddError,
@@ -89,7 +91,8 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     customersList,
 
     // dashboard
-    totalVolume,
+    adminCommission,
+    adminSummaryLoading,
     pendingPartnersCount,
     activeTicketsCount,
     bookings,
@@ -106,6 +109,7 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     isAddingService,
     isEditingService,
     isSubmittingService,
+    servicesLoading,
     newServiceForm,
     editServiceForm,
     serviceAddError,

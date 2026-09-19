@@ -3,21 +3,48 @@ import { Loader2 } from 'lucide-react';
 
 // Route-level code splitting: each admin tab loads on demand instead of being
 // bundled into the single initial chunk (Feature 25 — lazy loading).
-const AdminDashboardTab = lazy(() => import('./Tabs/AdminDashboardTab'));
-const AdminCustomersTab = lazy(() => import('./Tabs/AdminCustomersTab'));
-const AdminProvidersTab = lazy(() => import('./Tabs/AdminProvidersTab'));
-const AdminServiceRequestsTab = lazy(() => import('./Tabs/AdminServiceRequestsTab'));
-const AdminServicesTab = lazy(() => import('./Tabs/AdminServicesTab'));
-const AdminBookingsTab = lazy(() => import('./Tabs/AdminBookingsTab'));
-const AdminTicketsTab = lazy(() => import('./Tabs/AdminTicketsTab'));
-const AdminAnalyticsTab = lazy(() => import('./Tabs/AdminAnalyticsTab'));
-const AdminSettingsTab = lazy(() => import('./Tabs/AdminSettingsTab'));
-const AdminReviewsTab = lazy(() => import('./Tabs/AdminReviewsTab'));
-const AdminReportsTab = lazy(() => import('./Tabs/AdminReportsTab'));
-const AdminServeGoTab = lazy(() => import('./Tabs/AdminServeGoTab'));
-const AdminPermanentServicesTab = lazy(() => import('./Tabs/AdminPermanentServicesTab'));
-const AdminManualBookingRequestsTab = lazy(() => import('./Tabs/AdminManualBookingRequestsTab'));
-const AdminFeatureFlagsTab = lazy(() => import('./Tabs/AdminFeatureFlagsTab'));
+
+// A failed tab `import()` is almost always NOT a code bug: it's either a
+// transient network blip or a stale deployment (the browser still holds an old
+// index.html that references asset hashes the CDN no longer serves). Auto-retry
+// once so a blip self-heals; if it still fails, the error boundary recognises
+// the failure as a chunk-load error and offers a hard reload that pulls the
+// current app shell instead of a "Retry" that re-requests the same dead hash.
+const CHUNK_FAILURE_RE = /failed to fetch dynamically imported module|loading chunk|error loading chunk/i;
+
+export function isChunkLoadError(error) {
+  return (
+    (error && error.name === 'ChunkLoadError') ||
+    CHUNK_FAILURE_RE.test((error && error.message) || '')
+  );
+}
+
+function lazyWithRetry(factory) {
+  return lazy(() =>
+    factory().catch((error) => {
+      if (!isChunkLoadError(error) || typeof window === 'undefined') throw error;
+      return new Promise((resolve) => {
+        window.setTimeout(() => resolve(factory()), 1500);
+      });
+    })
+  );
+}
+
+const AdminDashboardTab = lazyWithRetry(() => import('./Tabs/AdminDashboardTab'));
+const AdminCustomersTab = lazyWithRetry(() => import('./Tabs/AdminCustomersTab'));
+const AdminProvidersTab = lazyWithRetry(() => import('./Tabs/AdminProvidersTab'));
+const AdminServiceRequestsTab = lazyWithRetry(() => import('./Tabs/AdminServiceRequestsTab'));
+const AdminServicesTab = lazyWithRetry(() => import('./Tabs/AdminServicesTab'));
+const AdminBookingsTab = lazyWithRetry(() => import('./Tabs/AdminBookingsTab'));
+const AdminTicketsTab = lazyWithRetry(() => import('./Tabs/AdminTicketsTab'));
+const AdminAnalyticsTab = lazyWithRetry(() => import('./Tabs/AdminAnalyticsTab'));
+const AdminSettingsTab = lazyWithRetry(() => import('./Tabs/AdminSettingsTab'));
+const AdminReviewsTab = lazyWithRetry(() => import('./Tabs/AdminReviewsTab'));
+const AdminReportsTab = lazyWithRetry(() => import('./Tabs/AdminReportsTab'));
+const AdminServeGoTab = lazyWithRetry(() => import('./Tabs/AdminServeGoTab'));
+const AdminPermanentServicesTab = lazyWithRetry(() => import('./Tabs/AdminPermanentServicesTab'));
+const AdminManualBookingRequestsTab = lazyWithRetry(() => import('./Tabs/AdminManualBookingRequestsTab'));
+const AdminFeatureFlagsTab = lazyWithRetry(() => import('./Tabs/AdminFeatureFlagsTab'));
 
 function TabFallback() {
   return (
@@ -32,11 +59,11 @@ function TabFallback() {
 class TabErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, isChunkLoadError: false };
   }
 
   static getDerivedStateFromError(error) {
-    return { error };
+    return { error, isChunkLoadError: isChunkLoadError(error) };
   }
 
   componentDidCatch(error, info) {
@@ -44,21 +71,32 @@ class TabErrorBoundary extends Component {
     console.error('Admin tab crashed:', error, info);
   }
 
-  handleReload = () => {
-    this.setState({ error: null });
+  handleRetry = () => {
+    if (this.state.isChunkLoadError) {
+      // The chunk hash is gone from the deployment — re-rendering would just
+      // re-request the same dead URL. Reloading the shell pulls fresh assets.
+      window.location.reload();
+      return;
+    }
+    this.setState({ error: null, isChunkLoadError: false });
   };
 
   render() {
     if (this.state.error) {
+      const isStaleChunk = this.state.isChunkLoadError;
       return (
         <div className="bg-white border border-rose-200 rounded-2xl p-8 text-center space-y-3">
           <p className="text-sm font-extrabold text-rose-700">This section failed to load.</p>
-          <p className="text-xs text-slate-500">Something went wrong rendering this tab. Your data is safe — refresh the page or retry.</p>
+          <p className="text-xs text-slate-500">
+            {isStaleChunk
+              ? 'The app was updated while this page was open. Reloading will load the latest version.'
+              : 'Something went wrong rendering this tab. Your data is safe — refresh the page or retry.'}
+          </p>
           <button
-            onClick={this.handleReload}
+            onClick={this.handleRetry}
             className="text-xs font-black px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800"
           >
-            Retry
+            {isStaleChunk ? 'Reload page' : 'Retry'}
           </button>
         </div>
       );
@@ -76,44 +114,68 @@ function LazyTab({ children }) {
 }
 
 export default function AdminPanelTabsRouter({ activeTab, tabProps }) {
+  let tabContent;
   switch (activeTab) {
     case 'dashboard':
-      return <LazyTab><AdminDashboardTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminDashboardTab {...tabProps} />;
+      break;
     case 'customers':
-      return <LazyTab><AdminCustomersTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminCustomersTab {...tabProps} />;
+      break;
     case 'providers':
-      return <LazyTab><AdminProvidersTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminProvidersTab {...tabProps} />;
+      break;
     case 'providerServiceRequests':
-      return <LazyTab><AdminServiceRequestsTab /></LazyTab>;
+      tabContent = <AdminServiceRequestsTab />;
+      break;
     case 'services':
-      return <LazyTab><AdminServicesTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminServicesTab {...tabProps} />;
+      break;
     case 'bookings':
-      return <LazyTab><AdminBookingsTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminBookingsTab {...tabProps} />;
+      break;
     case 'tickets':
-      return <LazyTab><AdminTicketsTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminTicketsTab {...tabProps} />;
+      break;
     case 'analytics':
-      return <LazyTab><AdminAnalyticsTab /></LazyTab>;
+      tabContent = <AdminAnalyticsTab />;
+      break;
     case 'settings':
-      return <LazyTab><AdminSettingsTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminSettingsTab {...tabProps} />;
+      break;
     case 'featureFlags':
-      return <LazyTab><AdminFeatureFlagsTab /></LazyTab>;
+      tabContent = <AdminFeatureFlagsTab />;
+      break;
     case 'servego':
-      return <LazyTab><AdminServeGoTab /></LazyTab>;
-
+      tabContent = <AdminServeGoTab />;
+      break;
     case 'permanentServiceRequests':
-      return <LazyTab><AdminPermanentServicesTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminPermanentServicesTab {...tabProps} />;
+      break;
     case 'manualBookingRequests':
-      return <LazyTab><AdminManualBookingRequestsTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminManualBookingRequestsTab {...tabProps} />;
+      break;
 
     // Optional sidebar entries that currently have no dedicated implementation.
     // Keeping them mapped to existing tabs prevents the UI from appearing broken/blank.
     case 'reviews':
-      return <LazyTab><AdminReviewsTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminReviewsTab {...tabProps} />;
+      break;
     case 'reports':
-      return <LazyTab><AdminReportsTab {...tabProps} /></LazyTab>;
-
+      tabContent = <AdminReportsTab {...tabProps} />;
+      break;
 
     default:
-      return <LazyTab><AdminDashboardTab {...tabProps} /></LazyTab>;
+      tabContent = <AdminDashboardTab {...tabProps} />;
+      break;
   }
+
+  return (
+    // Key by activeTab so each tab mount gets a FRESH error boundary. If the
+    // boundary were shared across tabs, one tab's crash would leave it in the
+    // error state forever and every subsequent tab would show
+    // "This section failed to load." — the exact bug that made one failing tab
+    // take down the whole admin panel.
+    <LazyTab key={activeTab}>{tabContent}</LazyTab>
+  );
 }

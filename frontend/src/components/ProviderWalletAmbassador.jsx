@@ -56,7 +56,7 @@ export default function ProviderWalletAmbassador() {
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Wallet & Ambassador</h3>
-        <p className="text-slate-500 text-xs mt-0.5">Manage your earnings, request payouts, and grow your network with referral bonuses.</p>
+        <p className="text-slate-500 text-xs mt-0.5">Manage your earnings, request payouts, and track your service history.</p>
       </div>
 
       <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 rounded-3xl p-5 sm:p-8 text-white relative overflow-hidden">

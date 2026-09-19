@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, ArrowRight } from 'lucide-react';
 import { api } from '../utils/apiClient';
-
-const HERO_IMAGE_DESKTOP = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg';
-const HERO_IMAGE_MOBILE = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789398273/img1_m1lbe8.png';
+import { HERO_IMAGE_DESKTOP, HERO_IMAGE_MOBILE } from '../data/websiteImages';
 
 export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearch, topServices = [] }) {
   const [marqueeServices, setMarqueeServices] = useState([]);

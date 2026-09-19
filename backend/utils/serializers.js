@@ -128,7 +128,7 @@ export function providerListItem(provider, opts = {}) {
   const contactUser =
     user.id === undefined
       ? user
-      : pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance', 'providerNumber', 'customerNumber']);
+      : pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'providerNumber', 'customerNumber']);
 
   const item = {
     ...pick(provider, PROVIDER_SCALAR_FIELDS),
@@ -139,9 +139,15 @@ export function providerListItem(provider, opts = {}) {
       ? {
           email: user.email || '',
           phone: user.phone || '',
-          referralCode: user.referralCode || null,
-          referralsCount: user.referralsCount ?? 0,
-          referralsEarningsBonus: user.referralBonusEarned ?? 0
+          // Wallet summary is admin/owner-only, mirroring the contact fields.
+          // The relation lives on User, so read it off the user object.
+          wallet: user.wallet
+            ? {
+                balance: user.wallet.balance ?? 0,
+                totalEarned: user.wallet.totalEarned ?? 0,
+                totalWithdrawn: user.wallet.totalWithdrawn ?? 0
+              }
+            : null
         }
       : {}),
     badges: Array.isArray(provider.badges) ? provider.badges.map(badgeItem) : []
@@ -179,10 +185,7 @@ export function providerDetails(provider, opts = {}) {
     ...(includeContact
       ? {
           email: user.email || '',
-          phone: user.phone || '',
-          referralCode: user.referralCode || null,
-          referralsCount: user.referralsCount ?? 0,
-          referralsEarningsBonus: user.referralBonusEarned ?? 0
+          phone: user.phone || ''
         }
       : {}),
     badges: Array.isArray(provider.badges) ? provider.badges.map(badgeItem) : [],
@@ -194,7 +197,7 @@ export function providerDetails(provider, opts = {}) {
 
   item.user = includeContact
     ? {
-        ...pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'referralCode', 'referralsCount', 'referralBonusEarned', 'referralDiscountBalance', 'providerNumber', 'customerNumber']),
+        ...pick(user, ['id', 'name', 'email', 'phone', 'avatar', 'role', 'status', 'providerNumber', 'customerNumber']),
         joinedDate: user.createdAt || null
       }
     : pick(user, ['id', 'name', 'avatar']);

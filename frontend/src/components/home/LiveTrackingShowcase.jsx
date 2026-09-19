@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigation, Clock, Smartphone, MapPin, Home, CheckCircle2 } from 'lucide-react';
-import { TRACKING_MAP } from './homeImages';
+import { TRACKING_MAP } from '../../data/websiteImages';
 
 const STEPS = ['Booking confirmed', 'Specialist on the way', 'Work starts'];
 
@@ -69,7 +69,6 @@ export default function LiveTrackingShowcase() {
             <div className="relative rounded-2xl overflow-hidden border border-slate-800 shadow-2xl shadow-black/40">
               <img
                 src={TRACKING_MAP}
-                onError={(event) => { event.currentTarget.src = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=85'; }}
                 alt="Live tracking map with your specialist en route"
                 className="w-full h-[300px] sm:h-[400px] object-cover"
                 loading="lazy"

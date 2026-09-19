@@ -20,7 +20,7 @@ const STEPS = [
   {
     icon: FileText,
     title: 'Quotation & Start Work',
-    desc: 'The specialist shares an itemised quotation — the fixed ₹249/- service fee plus the job charges. Confirm it to start work instantly.',
+    desc: 'The specialist shares an itemised quotation with just the job charges. Confirm it to start work — no service fee on a confirmed booking.',
   },
   {
     icon: CheckCircle2,

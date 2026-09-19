@@ -287,19 +287,25 @@ Flow:
 1. Customer submits a `NO_PROVIDER` permanent service request (requires `serviceCategory`,
    `locationAddress`, `additionalInfo`).
 2. Request lands in admin queue with status `PENDING`.
-3. Admin views requests in **AdminManualBookingRequestsTab**, fetches eligible
-   providers via `/providers/by-approved-service?serviceName=...`.
-4. Admin selects a verified, active provider approved for that service and
-   clicks **Assign** → `PATCH /permanent-service-requests/:id` with
+3. Admin views requests in **AdminManualBookingRequestsTab**, which lists every
+   provider approved for the requested service via the admin-only
+   `/admin/providers/by-approved-service?serviceName=...`. The list is NOT
+   gated by eligibility: providers who are blocked, on hold, unverified,
+   inactive or short on wallet balance are still returned, each tagged with an
+   `eligible` flag and a human `statusLabel` so the admin can decide.
+4. Admin selects any listed provider and clicks **Assign** →
+   `PATCH /permanent-service-requests/:id` with
    `status: APPROVED, assignedProviderId`.
-5. Backend validates provider eligibility, then calls
+5. Backend applies the admin's choice unconditionally — it verifies only that
+   the provider exists, then calls
    `leadService.createManuallyAssignedBookingWithLead()` which:
    - Creates a `Booking` with status `CONFIRMED` and status history
    - Creates a `Lead` with status `ACCEPTED`
    - Creates `LeadAssignmentHistory` with reason `ADMIN_MANUAL_ASSIGNMENT`
    - Emits realtime events: `booking:created`, `booking:statusChanged` to
      customer; `lead:new` to provider
-6. Request status becomes `APPROVED` with `assignedProviderId` set.
+6. Request status becomes `APPROVED` with `assignedProviderId` set. The created
+   booking is a normal booking and appears in the customer/admin booking lists.
 
 Validation rules (in `validation.js` and controller):
 - `NO_PROVIDER` only requires `serviceCategory`, `locationAddress`, `additionalInfo`
@@ -310,23 +316,37 @@ Controller endpoint:
 - `POST /permanent-service-requests` — create (validates by requestType)
 - `PATCH /permanent-service-requests/:id` — update status, assign provider
 - `GET /permanent-service-requests?requestType=NO_PROVIDER&status=PENDING` — admin list
+- `GET /admin/providers/by-approved-service?serviceName=...` — admin provider list
+  (every provider approved for the service, `eligible` + `statusLabel`, wallet
+  ignored). The public `GET /providers/by-approved-service` stays eligibility-gated.
 
 Frontend:
 - `AdminManualBookingRequestsTab.jsx` — admin UI to view, filter, assign providers
 - Added to `AdminPanelTabsRouter.jsx`
 
-## 25. Quotation decline — external payment model
+## 25. Quotation fees — service fee only on customer cancel
 
-When a customer declines a live quotation, payment is now settled externally
-between customer and provider. The customer wallet is **never debited** for the
-service fee. Instead:
+A provider's quotation contains **only the provider's payable line items** —
+there is no service-fee row and `submitQuotation` stores `serviceFee: 0`, so
+`totalAmount = sum(items)`. When the customer confirms the quotation, that total
+is the booking amount and **no service fee is charged**.
 
-- Platform commission (configurable %, default 10%) is debited from the
-  **provider's wallet** (`COMMISSION` category, `debitWalletAllowNegative`).
-- Provider receives the service fee compensation externally (off-platform).
-- Quotation CAS (`where: { id, status: 'PENDING' }`) guarantees the settlement
-  runs exactly once — retries are no-ops.
-- Return value includes `feeDebited: false`, `commission`, `providerCompensation`.
+The fixed service fee (admin config `serviceFeeDefault`, default ₹249) is
+charged **only when the customer cancels after reviewing the quotation**
+(`declineQuotation`). On that path:
 
-This removes the risk of negative customer balances and simplifies the decline
-flow to a single provider-wallet write.
+- Platform commission (configurable %, default 10%) is **mandatorily** debited
+  from the **provider's wallet** (`COMMISSION` category,
+  `debitWalletAllowNegative`) — even though the customer cancelled.
+- Provider keeps the gross service fee as compensation, recorded as lifetime
+  earnings (`recordWalletEarning`).
+- The customer ledger gets a display-only `SERVICE_FEE` entry (rendered as a
+  "Cancellation Fee"). It is **not** a real charge and never gates the wallet.
+- All settlement is **ledger-only**: real money changes hands externally
+  (off-platform) between customer and provider. ServeGo is not responsible for
+  the actual payment — it only records wallet state.
+- Quotation CAS (`where: { id, status: 'SUBMITTED' }`) guarantees the settlement
+  runs exactly once — retries are no-ops returning `feeDebited: false`.
+- Settled returns include `feeDebited: true`, `commission`,
+  `providerCompensation`.
+

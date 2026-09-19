@@ -600,7 +600,15 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  // Guard on the user key so React StrictMode's dev double-mount does not fire
+  // the login pre-fetches twice, while a real login/logout change (different
+  // key) still re-fetches.
+  const lastLoginKeyRef = useRef('');
   useEffect(() => {
+    const loginKey = `${currentUser?.id}|${currentUser?.role}`;
+    if (lastLoginKeyRef.current === loginKey) return;
+    lastLoginKeyRef.current = loginKey;
+
     // Always fetch public catalog (services) so the home page works unauthenticated.
     fetchServices();
 
@@ -621,10 +629,8 @@ export const DataProvider = ({ children }) => {
       setMyProviderSummary(null);
       clearSeenNotifications();
     }
-
-    if (currentUser?.role === 'admin') {
-      fetchUsers();
-    }
+    // Admin user lists are owned by the Customers tab (AdminCustomersPanel),
+    // which pages/filters `/users` itself — no shared pre-fetch here.
     // Intentionally omit `fetchBookings`/`fetchTickets` from deps to avoid
     // re-creating these effects when their identity changes due to provider/service
     // updates (which caused reconnect loops). The functions themselves read
@@ -722,19 +728,22 @@ export const DataProvider = ({ children }) => {
         })
       });
       const data = await res.json();
-      if (res.ok) {
-        // Optimistically mark the booking as reviewed so the UI updates instantly
-        setBookings(prev =>
-          Array.isArray(prev)
-            ? prev.map(b => (b.id === bookingId ? { ...b, reviewed: true } : b))
-            : prev
-        );
-        fetchProviders();
-        fetchBookings();
-        fetchMyProviderSummary();
+      if (!res.ok) {
+        return { ok: false, error: data };
       }
+      // Optimistically mark the booking as reviewed so the UI updates instantly
+      setBookings(prev =>
+        Array.isArray(prev)
+          ? prev.map(b => (b.id === bookingId ? { ...b, reviewed: true } : b))
+          : prev
+      );
+      fetchProviders();
+      fetchBookings();
+      fetchMyProviderSummary();
+      return { ok: true, review: data?.review ?? null };
     } catch (err) {
       console.error('Failed to submit review:', err);
+      return { ok: false, error: err };
     }
   };
 
@@ -954,6 +963,23 @@ export const DataProvider = ({ children }) => {
   // --- Admin: provider service request approvals ---
   const [providerServiceRequests, setProviderServiceRequests] = useState([]);
   const [providerServiceItems, setProviderServiceItems] = useState([]);
+  const [providerServiceItemsPagination, setProviderServiceItemsPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    pages: 1
+  });
+  const [providerServiceItemsCounts, setProviderServiceItemsCounts] = useState({
+    PENDING: 0,
+    APPROVED: 0,
+    DENIED: 0,
+    TOTAL: 0
+  });
+  // Request sequencing: when the admin flips between tabs (All/Pending/Approved/
+  // Denied) faster than the server responds, an older response for a previous
+  // filter must never overwrite the list of the currently selected filter.
+  // Every call bumps the counter; only the latest request is allowed to write.
+  const providerServiceItemsRequestId = useRef(0);
 
   const fetchProviderAnalytics = useCallback(async (providerId, range = '90d') => {
     if (!providerId) return null;
@@ -988,19 +1014,41 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const fetchProviderServiceItems = async () => {
+  const fetchProviderServiceItems = async ({ page = 1, limit = 50, status } = {}) => {
     if (currentUser?.role !== 'admin') return;
+    const requestId = ++providerServiceItemsRequestId.current;
     try {
-      const res = await api(`${API_BASE_URL}/admin/provider-service-items?limit=100`);
+      const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (status) query.set('status', status);
+      const res = await api(`${API_BASE_URL}/admin/provider-service-items?${query.toString()}`);
       const data = await res.json();
       if (res.ok) {
+        if (requestId !== providerServiceItemsRequestId.current) return;
         const list = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         setProviderServiceItems(list);
-      } else {
+        if (data?.pagination) {
+          setProviderServiceItemsPagination({
+            page: Number(data.pagination.page) || page,
+            limit: Number(data.pagination.limit) || limit,
+            total: Number(data.pagination.total) || list.length,
+            pages: Number(data.pagination.pages) || 1
+          });
+        }
+        if (data?.counts) {
+          setProviderServiceItemsCounts({
+            PENDING: Number(data.counts.PENDING) || 0,
+            APPROVED: Number(data.counts.APPROVED) || 0,
+            DENIED: Number(data.counts.DENIED) || 0,
+            TOTAL: Number(data.counts.TOTAL) || list.length
+          });
+        }
+      } else if (requestId === providerServiceItemsRequestId.current) {
         console.error('Failed to fetch provider service items:', data);
       }
     } catch (err) {
-      console.error('Failed to fetch provider service items:', err);
+      if (requestId === providerServiceItemsRequestId.current) {
+        console.error('Failed to fetch provider service items:', err);
+      }
     }
   };
 
@@ -1008,7 +1056,6 @@ export const DataProvider = ({ children }) => {
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       fetchProviderServiceRequests();
-      fetchProviderServiceItems();
     } else {
       setProviderServiceRequests([]);
       setProviderServiceItems([]);
@@ -1071,6 +1118,8 @@ export const DataProvider = ({ children }) => {
       servicesLoading,
       providerServiceRequests,
       providerServiceItems,
+      providerServiceItemsPagination,
+      providerServiceItemsCounts,
       fetchProvidersByApprovedServiceName,
       fetchProviders,
       fetchMyProviderSummary,

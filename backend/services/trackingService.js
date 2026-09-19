@@ -151,6 +151,24 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
     throw trackingError('BOOKING_NOT_TRACKABLE', 'Location can only be shared while a booking is confirmed or in progress.');
   }
 
+  // Arrival ends live location sharing: once the provider reaches the customer
+  // we stop accepting fixes so a stale/racing client ping can't keep streaming.
+  // A no-op (not an error) keeps the provider client from surfacing noise.
+  if (booking.providerPhase === 'ARRIVED') {
+    if (client === prisma) dropLiveFix(booking.id);
+    return {
+      ok: true,
+      stopped: true,
+      payload: {
+        bookingId: booking.id,
+        status: booking.status,
+        providerPhase: 'ARRIVED',
+        locationSharingActive: false,
+        timestamp: new Date().toISOString()
+      }
+    };
+  }
+
   const now = Date.now();
   const inMemory = client === prisma ? (liveFixes.get(booking.id) || null) : null;
 
@@ -308,7 +326,7 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
   const hasLiveFix = isValidCoord(booking.providerLatitude) && isValidCoord(booking.providerLongitude);
   const staleMs = (Math.max(1, Number(await getConfig('locationUpdateMinIntervalSeconds', 3)) || 3) * 2 + 30) * 1000;
   const updatedAt = booking.providerLocationUpdatedAt ? new Date(booking.providerLocationUpdatedAt).getTime() : 0;
-  const locationSharingActive = hasLiveFix && Date.now() - updatedAt <= staleMs;
+  const locationSharingActive = hasLiveFix && booking.providerPhase !== 'ARRIVED' && Date.now() - updatedAt <= staleMs;
 
   let distanceKm = null;
   let etaMinutes = null;
@@ -532,9 +550,16 @@ export async function markProviderArrived({ bookingId, providerUserId, io = null
   });
 
   const payload = { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', arrivedSource: updated.arrivedSource, timestamp: new Date().toISOString() };
+  // Arrival ends the trip's live feed: drop the in-memory fix and tell both
+  // rooms to stop rendering live movement (the customer keeps the last fix).
+  if (client === prisma) dropLiveFix(booking.id);
   if (io) {
     io.to(`user:${booking.customerId}`).emit('provider:arrived', payload);
-    if (provider.userId) io.to(`user:${provider.userId}`).emit('provider:arrived', payload);
+    io.to(`user:${booking.customerId}`).emit('location:stopped', { bookingId: booking.id, reason: 'ARRIVED' });
+    if (provider.userId) {
+      io.to(`user:${provider.userId}`).emit('provider:arrived', payload);
+      io.to(`user:${provider.userId}`).emit('location:stopped', { bookingId: booking.id, reason: 'ARRIVED' });
+    }
   }
   await client.bookingEvent.create({
     data: { bookingId: booking.id, actorId: provider.id, actorRole: 'provider', action: 'PHASE_ARRIVED', note: 'Provider has arrived at your location' }

@@ -7,7 +7,8 @@ export default function ReviewModal({
   comment, setComment, 
   onClose, 
   onSubmit,
-  submitting
+  submitting,
+  error
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -50,16 +51,19 @@ export default function ReviewModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide mb-1">Your Detailed Comment *</label>
+            <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide mb-1">Your Detailed Comment <span className="text-slate-400 normal-case font-semibold">(optional)</span></label>
             <textarea
               rows={3}
-              required
               placeholder="Describe their punctuality, cleanliness, professional advice, etc..."
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 outline-none"
             />
           </div>
+
+          {error ? (
+            <p className="text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{error}</p>
+          ) : null}
 
           <div className="flex gap-2">
             <button

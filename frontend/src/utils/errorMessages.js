@@ -54,7 +54,9 @@ const CODE_COPY = {
   NOT_ASSIGNED: { message: 'This lead is not assigned to you anymore.', action: 'Refresh leads' },
   ACCEPT_RACE: { message: 'Another provider accepted this lead just before you.', action: 'Refresh leads' },
   NO_CHANGE: { message: 'This lead has already been handled.', action: 'Refresh leads' },
+  ACTIVE_BOOKING_EXISTS: { message: 'You have an active lead. Complete it before accepting another request.', action: 'View active jobs' },
   CUSTOMER_BUSY: { message: 'You already have an active booking for this service. Complete or cancel it before booking the same service again.', action: 'View bookings' },
+  WALLET_BELOW_ZERO: { message: 'Your wallet balance is negative. Clear your outstanding balance before accepting a new request.', action: 'View wallet' },
   NO_ELIGIBLE_PROVIDERS: { message: 'No providers are currently available for this service in your area. Please try again later or browse other services.', action: 'Browse Services' },
 
   // --- bookings ---
@@ -91,7 +93,6 @@ const CODE_COPY = {
 
   // --- reviews / services ---
   INVALID_RATING: { message: 'Please pick a rating between 1 and 5.' },
-  INVALID_REFERRAL: { message: 'That referral code is not valid.' },
   INVALID_PINCODE: { message: 'That PIN code is not valid.' },
   INVALID_DATE: { message: 'That date is not valid. Please pick another one.' },
   INVALID_PERIOD: { message: 'That period is not valid. Please adjust the dates.' },

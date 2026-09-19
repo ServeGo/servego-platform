@@ -379,7 +379,8 @@ function makeAcceptClient({
   updateCount = 1,
   otherActive = null,
   cancelledRows = [],
-  cancelledRowUsers = []
+  cancelledRowUsers = [],
+  walletBalance = 0
 } = {}) {
   const calls = { updateMany: [], bookingEvents: [], perf: [] };
   const perf = () => ({ ...perfRow, providerId });
@@ -419,6 +420,9 @@ function makeAcceptClient({
     },
     bookingEvent: { create: async (args) => calls.bookingEvents.push(args) },
     $executeRaw: async () => {},
+    provider: {
+      findUnique: async () => ({ user: { wallet: { balance: walletBalance } } })
+    },
     providerPerformance: {
       findUniqueOrThrow: async () => perf(),
       update: async ({ data }) => ({ ...perf(), ...data })
@@ -500,6 +504,35 @@ test('RULE 3: an idempotent retry of an already-accepted booking returns committ
   assert.equal(result.booking.status, 'CONFIRMED');
   assert.equal(calls.updateMany.length, 0, 'no offer churn on a replay');
   assert.equal(calls.bookingEvents.length, 0, 'no duplicate event on a replay');
+});
+
+test('RULE 3: a negative wallet balance blocks accepting an already-offered lead (WALLET_BELOW_ZERO)', async () => {
+  // Edge case: offered while balance was fine, then another job completed and
+  // the commission debit pushed the wallet negative. The stale Action Required
+  // card must not be acceptable until the balance is cleared.
+  const { client, calls } = makeAcceptClient({
+    lead: baseLead(),
+    booking: { id: 'b1', providerId: 'p1', status: 'PENDING', statusHistory: [] },
+    walletBalance: -50
+  });
+
+  await assert.rejects(
+    acceptLeadForBooking({ bookingId: 'b1', providerId: 'p1', client }),
+    (err) => err.code === 'WALLET_BELOW_ZERO'
+  );
+  assert.equal(calls.bookingEvents.length, 0, 'no event recorded before the wallet guard aborts');
+  assert.equal(calls.bookingUpdate, undefined, 'the booking is not confirmed for a negative wallet');
+});
+
+test('RULE 3: a zero wallet balance still accepts (only negative blocks)', async () => {
+  const { client } = makeAcceptClient({
+    lead: baseLead(),
+    booking: { id: 'b1', providerId: 'p1', status: 'PENDING', statusHistory: [] },
+    walletBalance: 0
+  });
+
+  const result = await acceptLeadForBooking({ bookingId: 'b1', providerId: 'p1', client });
+  assert.equal(result.booking.status, 'CONFIRMED');
 });
 
 // ---- RULE 4: customer re-booking rules ---------------------------------------
