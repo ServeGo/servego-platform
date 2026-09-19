@@ -1,79 +1,40 @@
 import React, { useState } from 'react';
-import { Camera, Loader2, ImagePlus, Users, ChevronLeft, ChevronRight } from 'lucide-react';
-import { api } from '../../utils/apiClient';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Layers,
+  Loader2,
+  PackagePlus,
+  Pencil,
+  Users,
+} from 'lucide-react';
+import ServiceFormModal from './ServiceFormModal';
 
 const SERVICES_PER_PAGE = 9;
 
-const inputClass =
-  'w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all';
+const STATUS = {
+  live: { label: 'Live in catalog', dot: 'bg-emerald-500', text: 'text-emerald-700', chip: 'bg-emerald-50' },
+  hidden: { label: 'Hidden from catalog', dot: 'bg-rose-500', text: 'text-rose-600', chip: 'bg-rose-50' },
+};
 
-/**
- * Service photo uploader. Uploads go to Cloudinary under servego/services and
- * hand the returned URL back through onChange. A photo is required to create a
- * service; on edit it can be kept or replaced.
- */
-function ServiceImageField({ label, imageUrl, required = false, onChange }) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-
-  const handleFile = async (file) => {
-    if (!file) return;
-    if (!/^image\//.test(file.type)) {
-      setUploadError('Please choose an image file (JPG, PNG, WebP).');
-      return;
-    }
-    setUploading(true);
-    setUploadError('');
-    try {
-      const fd = new FormData();
-      fd.append('image', file);
-      fd.append('folder', 'servego/services');
-      const res = await api.postFormData('/images/upload', fd);
-      if (res.ok && res.data?.url) {
-        onChange(res.data.url);
-      } else {
-        setUploadError((res.data && (res.data.message || res.data.error)) || 'Upload failed. Try again.');
-      }
-    } catch {
-      setUploadError('Upload failed. Try again.');
-    } finally {
-      setUploading(false);
-    }
-  };
-
+function SkeletonCard() {
   return (
-    <div>
-      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-        {label} {required && <span className="text-rose-600">*</span>}
-        {!required && imageUrl && <span className="text-slate-400 normal-case font-semibold ml-1">(keep current if left unchanged)</span>}
-      </label>
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-4 animate-pulse">
       <div className="flex items-center gap-3">
-        <div className="w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
-          {imageUrl ? (
-            <img src={imageUrl} alt="Service" className="w-full h-full object-cover" />
-          ) : (
-            <Camera className="w-6 h-6 text-slate-300" />
-          )}
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-100" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3.5 w-2/3 rounded bg-slate-100" />
+          <div className="h-2.5 w-1/3 rounded bg-slate-100" />
         </div>
-        <div className="flex-1 min-w-0">
-          <label className="cursor-pointer inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-bold px-3 py-2 rounded-lg transition-colors">
-            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-            {uploading ? 'Uploading...' : imageUrl ? 'Replace photo' : 'Upload photo'}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-            />
-          </label>
-          {required && !imageUrl && (
-            <p className="text-[10px] font-semibold text-slate-400 mt-1.5">Required — every service needs a photo for the catalog.</p>
-          )}
-          {uploadError && <p className="text-[10px] font-bold text-rose-600 mt-1.5">{uploadError}</p>}
-        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-2.5 w-full rounded bg-slate-100" />
+        <div className="h-2.5 w-4/5 rounded bg-slate-100" />
+      </div>
+      <div className="pt-2 border-t border-slate-100 flex justify-end">
+        <div className="h-7 w-24 rounded-lg bg-slate-100" />
       </div>
     </div>
   );
@@ -87,9 +48,7 @@ export default function AdminServicesPanel({
   newServiceForm,
   editServiceForm,
   serviceAddError,
-  serviceAddSuccess,
   serviceEditError,
-  serviceEditSuccess,
   submitNewService,
   submitEditService,
   openAddService,
@@ -99,13 +58,14 @@ export default function AdminServicesPanel({
   setNewServiceForm,
   setEditServiceForm,
   services,
+  servicesLoading,
   hideService,
   partnerCountForService,
 }) {
   const canManage = isAdmin;
 
   const [page, setPage] = useState(1);
-  // Inner filter tabs: Active / Hidden. Hidden services live in the admin list
+  // Inner filter: Active / Hidden. Hidden services live in the admin list
   // (GET /admin/services); a hide/unhide issued in this session is ALSO tracked
   // locally so the row always lands in the Hidden tab instantly, even if the
   // admin list endpoint is momentarily unreachable.
@@ -116,10 +76,11 @@ export default function AdminServicesPanel({
   const [busy, setBusy] = useState(null);
 
   const allServices = Array.isArray(services) ? services : [];
-  // A service is hidden if the server (or this session's toggle) says so.
   const isCatHidden = (cat) => (localHidden[cat.id] !== undefined ? localHidden[cat.id] : cat.isHidden === true);
   const activeCount = allServices.filter((cat) => !isCatHidden(cat)).length;
   const hiddenCount = allServices.filter((cat) => isCatHidden(cat)).length;
+
+  const loading = Boolean(servicesLoading) && allServices.length === 0;
 
   const filteredServices = allServices.filter((cat) => {
     if (filter === 'active') return !isCatHidden(cat);
@@ -178,308 +139,211 @@ export default function AdminServicesPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center sm:items-start justify-between gap-3">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Active Services & Hourly Rates</h2>
-          <p className="text-slate-500 text-xs">Configure base cost index listings and regional specialist capacities.</p>
+          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Service Catalog</h2>
+          <p className="text-slate-500 text-xs mt-0.5">
+            Mange service categories, visibility, and provider partnerships.
+          </p>
         </div>
 
         {canManage && (
           <button
             onClick={openAddService}
-            className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-2 shadow-xs"
+            className="shrink-0 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-extrabold px-4 py-2.5 rounded-xl text-xs transition-all shadow-xs"
           >
-            <span>+ Add Service</span>
+            <PackagePlus className="w-4 h-4" />
+            Add Service
           </button>
         )}
       </div>
 
+      {/* Filter segmented control */}
       {canManage && (
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="inline-flex items-center gap-1 bg-slate-100 rounded-xl p-1">
           {filterTabs.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => { setFilter(t.key); setPage(1); }}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-extrabold transition-all ${
                 filter === t.key
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-700'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {t.label} ({t.count})
+              {t.label}
+              <span
+                className={`min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full text-[9px] font-black ${
+                  filter === t.key ? 'bg-slate-100 text-slate-500' : 'bg-white/80 text-slate-400'
+                }`}
+              >
+                {t.count}
+              </span>
             </button>
           ))}
         </div>
       )}
 
+      {/* Create / edit modal */}
       {canManage && isAddingService && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-overlay-in">
-          <form onSubmit={submitNewService} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-lg w-full relative shadow-2xl animate-fade-in space-y-5 max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
-            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Add new service category</h3>
-                <p className="text-slate-500 text-xs mt-1">Providers will show under the matching service name (case-insensitive).</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeAddService}
-                disabled={isSubmittingService}
-                className="cursor-pointer shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                Exit
-              </button>
-            </div>
-
-            {serviceAddError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
-                <span className="shrink-0">⚠</span> {serviceAddError}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
-                <input
-                  value={newServiceForm.name}
-                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, name: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                  placeholder="e.g. Electrician"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
-                <input
-                  value={newServiceForm.popularIssuesText}
-                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                  placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-                <textarea
-                  value={newServiceForm.description}
-                  onChange={(e) => setNewServiceForm((prev) => ({ ...prev, description: e.target.value }))}
-                  rows={3}
-                  className={inputClass}
-                  placeholder="Short description for the service category"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <ServiceImageField
-                  label="Service Photo"
-                  required
-                  imageUrl={newServiceForm.imageUrl}
-                  onChange={(url) => setNewServiceForm((prev) => ({ ...prev, imageUrl: url }))}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeAddService}
-                disabled={isSubmittingService}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200 disabled:opacity-40 disabled:pointer-events-none"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmittingService}
-                className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {isSubmittingService ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting…
-                  </>
-                ) : (
-                  'Save Service'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+        <ServiceFormModal
+          mode="add"
+          title="Add new service category"
+          subtitle="Providers will show under the matching service name (case-insensitive)."
+          form={newServiceForm}
+          error={serviceAddError}
+          isSubmitting={isSubmittingService}
+          imageRequired
+          onChange={(patch) => setNewServiceForm((prev) => ({ ...prev, ...patch }))}
+          onClose={closeAddService}
+          onSubmit={submitNewService}
+        />
       )}
 
       {canManage && isEditingService && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-overlay-in">
-          <form
-            onSubmit={submitEditService}
-            className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-lg w-full relative shadow-2xl animate-fade-in space-y-5 max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar"
-          >
-            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Update service category</h3>
-                <p className="text-slate-500 text-xs mt-1">Make changes to the listing details.</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeEditService}
-                disabled={isSubmittingService}
-                className="cursor-pointer shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 disabled:pointer-events-none"
-              >
-                Exit
-              </button>
-            </div>
+        <ServiceFormModal
+          mode="edit"
+          title="Update service category"
+          subtitle="Make changes to the listing details."
+          form={editServiceForm}
+          error={serviceEditError}
+          isSubmitting={isSubmittingService}
+          onChange={(patch) => setEditServiceForm((prev) => ({ ...prev, ...patch }))}
+          onClose={closeEditService}
+          onSubmit={submitEditService}
+        />
+      )}
 
-            {serviceEditError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
-                <span className="shrink-0">⚠</span> {serviceEditError}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Name</label>
-                <input
-                  value={editServiceForm.name}
-                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, name: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                  placeholder="e.g. Electrician"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Popular Issues</label>
-                <input
-                  value={editServiceForm.popularIssuesText}
-                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, popularIssuesText: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-indigo-600 transition-all"
-                  placeholder="Comma-separated, e.g. Short circuit fixing, Fan installation"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-                <textarea
-                  value={editServiceForm.description}
-                  onChange={(e) => setEditServiceForm((prev) => ({ ...prev, description: e.target.value }))}
-                  rows={3}
-                  className={inputClass}
-                  placeholder="Short description for the service category"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <ServiceImageField
-                  label="Service Photo"
-                  imageUrl={editServiceForm.imageUrl}
-                  onChange={(url) => setEditServiceForm((prev) => ({ ...prev, imageUrl: url }))}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeEditService}
-                disabled={isSubmittingService}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 text-xs font-bold rounded-lg transition-colors border border-slate-200 disabled:opacity-40 disabled:pointer-events-none"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={isSubmittingService}
-                className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 text-xs font-bold rounded-lg transition-colors shadow-2xs disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {isSubmittingService ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting…
-                  </>
-                ) : (
-                  'Update Service'
-                )}
-              </button>
-            </div>
-          </form>
+      {/* Skeleton while loading (rule 15: never show a blank screen) */}
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
-      {filteredServices.length === 0 ? (
-        <p className="text-slate-400 italic text-center py-12 text-xs font-semibold border border-dashed border-slate-200 rounded-2xl bg-white">
-          {allServices.length === 0
-            ? 'No services yet — add your first service category.'
-            : filter === 'hidden'
-              ? 'No hidden services. Hiding a category keeps it out of the customer catalog until you unhide it.'
-              : 'No visible services — everything is currently hidden from the catalog.'}
-        </p>
-      ) : (
+      {/* Empty state with CTA */}
+      {!loading && filteredServices.length === 0 && (
+        <div className="bg-white rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+            <Layers className="w-7 h-7" />
+          </div>
+          <div>
+            <p className="text-slate-900 text-sm font-extrabold">
+              {allServices.length === 0 ? 'No services yet' : 'Nothing here'}
+            </p>
+            <p className="text-slate-500 text-xs font-medium mt-1 max-w-sm">
+              {allServices.length === 0
+                ? 'Add your first service category to start building the catalog.'
+                : filter === 'hidden'
+                  ? 'No hidden services. Hiding a category keeps it out of the customer catalog until you unhide it.'
+                  : 'No visible services — everything is currently hidden from the catalog.'}
+            </p>
+          </div>
+          {canManage && allServices.length === 0 && (
+            <button
+              onClick={openAddService}
+              className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-xs"
+            >
+              <PackagePlus className="w-4 h-4" />
+              Add your first service
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Service grid */}
+      {!loading && filteredServices.length > 0 && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {pageServices.map((cat) => {
-          const partnerCount = partnerCountForService(cat.name);
-          const isHidden = isCatHidden(cat);
-          return (
-            <div key={cat.id} className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between gap-4">
-              <div className="space-y-3 font-semibold">
-                <div className="flex items-center gap-3">
-                  {cat.image ? (
-                    <img src={cat.image} alt={cat.name} className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover border border-slate-100 shrink-0" />
-                  ) : (
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-teal-50 flex items-center justify-center text-teal-700 font-extrabold text-base shrink-0">
-                      {(cat.name || '?').charAt(0)}
+              const partnerCount = partnerCountForService(cat.name);
+              const isHidden = isCatHidden(cat);
+              const st = isHidden ? STATUS.hidden : STATUS.live;
+              return (
+                <article
+                  key={cat.id}
+                  className="group bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 transition-all duration-200 flex flex-col"
+                >
+                  <div className="p-4 sm:p-5 flex-1 space-y-3">
+                    <div className="flex items-start gap-3">
+                      {cat.image ? (
+                        <img
+                          src={cat.image}
+                          alt={cat.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border border-slate-100 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 font-extrabold text-base shrink-0">
+                          {(cat.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-extrabold text-slate-900 truncate">{cat.name}</h4>
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {cat.serviceNumber && (
+                            <span className="text-[9px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 tracking-wide">
+                              {cat.serviceNumber}
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            {partnerCount} partner{partnerCount === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className={`shrink-0 inline-flex items-center gap-1.5 ${st.chip} ${st.text} px-2 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                        {isHidden ? 'Hidden' : 'Live'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">
+                      {cat.description || 'No description yet.'}
+                    </p>
+                  </div>
+
+                  {canManage && (
+                    <div className="px-4 sm:px-5 py-2.5 border-t border-slate-100 bg-slate-50/60 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        title="Edit service"
+                        onClick={() => openEditService(cat)}
+                        disabled={busy !== null}
+                        className="inline-flex items-center gap-1.5 bg-white hover:bg-indigo-50 border border-slate-200 text-slate-600 hover:text-indigo-700 font-extrabold px-2.5 py-1.5 text-[10px] rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        title={isHidden ? 'Show in catalog' : 'Hide from catalog'}
+                        onClick={() => handleHideToggle(cat)}
+                        disabled={busy !== null}
+                        className={`inline-flex items-center gap-1.5 bg-white border font-extrabold px-2.5 py-1.5 text-[10px] rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                          isHidden
+                            ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                            : 'border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-600'
+                        }`}
+                      >
+                        {busy?.action === 'hide' && busy?.id === cat.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : isHidden ? (
+                          <Eye className="w-3 h-3" />
+                        ) : (
+                          <EyeOff className="w-3 h-3" />
+                        )}
+                        {busy?.action === 'hide' && busy?.id === cat.id ? (isHidden ? 'Unhiding…' : 'Hiding…') : isHidden ? 'Unhide' : 'Hide'}
+                      </button>
                     </div>
                   )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-slate-900 font-extrabold text-sm truncate">{cat.name}</h4>
-                      {cat.serviceNumber && (
-                        <span className="text-[9px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded border border-slate-200 tracking-wide shrink-0">
-                          {cat.serviceNumber}
-                        </span>
-                      )}
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 mt-1">
-                      <Users className="w-3.5 h-3.5 text-slate-400" />
-                      {partnerCount} live partner{partnerCount === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-slate-500 text-xs font-medium leading-relaxed line-clamp-3">{cat.description}</p>
-              </div>
-
-              {canManage && (
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-                  <span className={`text-[9px] font-extrabold uppercase tracking-wide ${isHidden ? 'text-rose-500' : 'text-emerald-600'}`}>
-                    {isHidden ? 'Hidden from catalog' : 'Visible in catalog'}
-                  </span>
-                  <div className="flex items-center justify-end gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openEditService(cat)}
-                    disabled={busy !== null}
-                    className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-extrabold px-2.5 py-1 text-[10px] rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleHideToggle(cat)}
-                    disabled={busy !== null}
-                    className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold px-2.5 py-1 text-[10px] rounded-lg transition-colors disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1.5"
-                  >
-                    {busy?.action === 'hide' && busy?.id === cat.id ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" /> {isHidden ? 'Unhiding…' : 'Hiding…'}
-                      </>
-                    ) : isHidden ? 'Unhide' : 'Hide'}
-                  </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                </article>
+              );
+            })}
           </div>
 
           {totalPages > 1 && (
@@ -532,4 +396,3 @@ export default function AdminServicesPanel({
     </div>
   );
 }
-

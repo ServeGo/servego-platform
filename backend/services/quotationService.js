@@ -1,6 +1,6 @@
 import prisma from '../prisma/client.js';
 import { getConfig } from './adminConfigService.js';
-import { debitWallet, debitWalletAllowNegative } from './walletService.js';
+import { debitWallet, debitWalletAllowNegative, recordWalletEarning } from './walletService.js';
 import { startBookingWork, findEligibleProviders, cancelOpenOffers } from './leadService.js';
 import { recordLeadsOffered } from './providerPerformanceService.js';
 import { buildStatusHistory, normalizeBookingStatus } from '../utils/workflow.js';
@@ -83,9 +83,11 @@ export async function getServiceFeeDefault(client = prisma) {
 
 /**
  * Provider submits (or revises) the live quotation for their CONFIRMED booking.
- * The service fee row is fixed from admin config; the provider may add
- * purpose/amount rows. Total = fee + sum(items). Idempotent — a SUBMITTED
- * quotation is updated in place so re-submission never duplicates rows.
+ * The quotation carries ONLY the provider's payable line items — no service fee
+ * row. The fixed service fee (default ₹249) is charged ONLY if the customer
+ * later cancels after reviewing this quotation (see declineQuotation); a
+ * confirmed booking never includes it. Total = sum(items). Idempotent — a
+ * SUBMITTED quotation is updated in place so re-submission never duplicates.
  */
 export async function submitQuotation({ bookingId, providerId, items, client = prisma }) {
   return withClientTransaction(client, async (tx) => {
@@ -112,11 +114,10 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
           }))
       : [];
     if (cleanItems.length === 0) {
-      throw serviceError('INVALID_QUOTATION', 'At least one payable line item is required alongside the service fee.');
+      throw serviceError('INVALID_QUOTATION', 'At least one payable line item is required.');
     }
-    const fee = await getServiceFeeDefault(tx);
     const itemsTotal = round2(cleanItems.reduce((sum, row) => sum + Number(row.amount), 0));
-    const totalAmount = round2(fee + itemsTotal);
+    const totalAmount = itemsTotal;
     if (totalAmount <= 0) throw serviceError('INVALID_QUOTATION', 'Quotation total must be greater than zero.');
 
     const existing = await tx.quotation.findFirst({
@@ -126,10 +127,10 @@ export async function submitQuotation({ bookingId, providerId, items, client = p
     const quotation = existing
       ? await tx.quotation.update({
           where: { id: existing.id },
-          data: { serviceFee: fee, items: cleanItems, totalAmount }
+          data: { serviceFee: 0, items: cleanItems, totalAmount }
         })
       : await tx.quotation.create({
-          data: { bookingId, providerId, serviceFee: fee, items: cleanItems, totalAmount }
+          data: { bookingId, providerId, serviceFee: 0, items: cleanItems, totalAmount }
         });
 
     // First submission lands on the customer's tracking timeline. Revisions
@@ -230,12 +231,17 @@ export async function confirmQuotation({ bookingId, actorId, client = prisma }) 
 }
 
 /**
- * Customer declines the live quotation. Payment is settled externally between
- * customer and provider, so the customer wallet is never touched. The provider
- * receives the service-fee compensation externally, while the configured
- * platform commission (10% by default) is recorded against the provider wallet;
- * then the booking is re-broadcast or cancelled.
- * The quotation CAS guarantees the settlement runs only once.
+ * Customer declines the live quotation. The service fee (default ₹249 from
+ * admin config) is charged ONLY on this cancellation — a confirmed booking is
+ * never charged it. All settlement is ledger-only: real money is handled
+ * externally between customer and provider (off-platform), so no wallet balance
+ * is ever gated. The provider keeps the gross fee as compensation (recorded as
+ * lifetime earnings), while the configured platform commission (10% by default)
+ * is a mandatory COMMISSION debit from the provider wallet (may run negative,
+ * exactly like completion accounting). A display-only customer ledger entry
+ * mirrors the fee so the spend showcase reconciles; then the booking is
+ * re-broadcast or cancelled. The quotation CAS guarantees the settlement runs
+ * only once.
  */
 export async function declineQuotation({ bookingId, actorId, anotherProvider = false, note = null, client = prisma }) {
   return withClientTransaction(client, async (tx) => {
@@ -283,10 +289,15 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
 
     const fee = await getServiceFeeDefault(tx);
 
-    // The customer pays externally, so do not create a customer wallet debit.
-    // Payment is external. Only the platform commission is recorded against
-    // the provider wallet, and it may run negative like completion accounting.
+    // The service fee is charged ONLY on this cancellation (never on a
+    // confirmed booking). Settlement is ledger-only: the customer pays the
+    // provider directly off-platform, so no wallet balance is ever gated. The
+    // provider is compensated the gross fee, recorded as lifetime earnings,
+    // and the mandatory platform commission is charged against the provider
+    // wallet (may run negative, exactly like completion accounting). The
+    // quotation CAS keeps this settlement to a single execution.
     const commission = computeCommission(fee, await getCommissionTiers(tx));
+    const providerCompensation = fee;
     const feeProvider = await tx.provider.findUnique({
       where: { id: quotation.providerId },
       select: { userId: true }
@@ -303,6 +314,23 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
           client: tx
         });
       }
+      await recordWalletEarning({ userId: feeProvider.userId, amount: fee, client: tx });
+    }
+
+    // Customer ledger entry for the cancellation service fee. The customer wallet
+    // is a spend showcase, NOT a gated account — the debit runs negative
+    // freely, and the real money is settled off-platform between customer and
+    // provider (WalletView renders it as a "Cancellation Fee").
+    if (fee > 0) {
+      await debitWalletAllowNegative({
+        userId: booking.customerId,
+        amount: fee,
+        category: 'SERVICE_FEE',
+        referenceType: 'BOOKING',
+        referenceId: booking.id,
+        description: `${booking.serviceCategory || 'Service'} — ₹${fee} declined-quotation service fee settled directly with the provider`,
+        client: tx
+      });
     }
 
     if (anotherProvider) {
@@ -320,8 +348,9 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
         booking: result.booking || booking,
         lead: booking.lead,
         handled: false,
-        feeDebited: false,
-        commission
+        feeDebited: true,
+        commission,
+        providerCompensation
       };
     }
 
@@ -335,7 +364,7 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
       }
     });
     if (transitioned.count === 0) {
-      return { booking: await tx.booking.findUnique({ where: { id: bookingId } }), quotation, handled: false, feeDebited: false, commission, providerCompensation };
+      return { booking: await tx.booking.findUnique({ where: { id: bookingId } }), quotation, handled: false, feeDebited: true, commission, providerCompensation };
     }
 
     await tx.bookingEvent.create({
@@ -369,8 +398,9 @@ export async function declineQuotation({ bookingId, actorId, anotherProvider = f
       quotation,
       lead: booking.lead,
       handled: false,
-      feeDebited: false,
+      feeDebited: true,
       commission,
+      providerCompensation,
       cancelled: true
     };
   });

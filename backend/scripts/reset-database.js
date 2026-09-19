@@ -34,7 +34,6 @@ t += await del(`DELETE FROM "Booking" WHERE "customerId" = ANY($1)`, [uid]);
 t += await del(`DELETE FROM "WalletTransaction" WHERE "userId" = ANY($1)`, [uid]);
 t += await del(`DELETE FROM "PermanentServiceRequest" WHERE "customerId" = ANY($1)`, [uid]);
 t += await del(`DELETE FROM "ProviderPerformance" WHERE "providerId" IN (SELECT id FROM "Provider" WHERE "userId" = ANY($1))`, [uid]);
-t += await del(`DELETE FROM "RankingMetrics" WHERE "providerId" IN (SELECT id FROM "Provider" WHERE "userId" = ANY($1))`, [uid]);
 
 // Tier 1
 t += await del(`DELETE FROM "ProviderServiceRequest" WHERE "providerId" IN (SELECT id FROM "Provider" WHERE "userId" = ANY($1))`, [uid]);

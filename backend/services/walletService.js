@@ -110,7 +110,27 @@ export function debitWallet({ userId, amount, category, referenceType = null, re
 }
 
 /**
- * Bill a user without a balance check — the wallet may run negative, recording
+ * Record lifetime provider earnings on the wallet WITHOUT moving the balance.
+ *
+ * In the servego24 model the customer pays the provider directly (offline), so
+ * completion never credits the wallet balance. `totalEarned` must still reflect
+ * the accepted quotation totals, so this increments it directly instead of
+ * going through `creditWallet` (which would inflate the balance). Idempotency is
+ * guaranteed by the caller's COMPLETED compare-and-swap.
+ */
+export function recordWalletEarning({ userId, amount, client = prisma }) {
+  const amt = Number(amount) || 0;
+  if (!userId || amt <= 0) return null;
+  return withClientTransaction(client, async (tx) => {
+    const wallet = await getOrCreateWallet(userId, tx);
+    return tx.wallet.update({
+      where: { id: wallet.id },
+      data: { totalEarned: { increment: amt } }
+    });
+  });
+}
+
+/** Bill a user without a balance check — the wallet may run negative, recording
  * what is owed (e.g. the service fee for declining a quotation, or the full
  * accepted quotation total at completion). Used so billing/tab-style debits
  * never block the underlying flow; the balance resolves once funds are added.

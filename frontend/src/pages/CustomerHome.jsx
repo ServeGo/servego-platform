@@ -53,7 +53,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
         if (specialistDifference !== 0) return specialistDifference;
         return String(a.name).localeCompare(String(b.name));
       })
-      .slice(0, 5)
+      .slice(0, 4)
   ), [services]);
 
   const goBook = (serviceId) => {
@@ -123,7 +123,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
             </span>
             Explore Services
           </span>
-          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1">BOOK NOW <span className="text-slate-600">₹249/-</span></span>
+          <span className="text-[10px] font-bold text-teal-900 bg-white/90 rounded-full px-2.5 py-1 flex items-center gap-1">BOOK NOW</span>
         </button>
       </section>
 
@@ -185,7 +185,7 @@ export const CustomerHome = ({ onNavigate, onGoToTab }) => {
                 <span className="min-w-0">
                   <span className="block text-xs font-black text-slate-900 truncate">{s.name}</span>
                   <span className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-teal-600">
-                    Book now · <span className="text-slate-500">₹249/-</span> <ArrowRight className="w-2.5 h-2.5" />
+                    Book now <ArrowRight className="w-2.5 h-2.5" />
                   </span>
                 </span>
               </button>

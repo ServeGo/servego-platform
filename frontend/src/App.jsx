@@ -165,6 +165,12 @@ export function MainLayout() {
     updateBrowserRoute('dashboard-provider', tab);
   };
 
+  // Wrapper: set admin tab AND update URL so refresh preserves the tab
+  const setAdminTab = (tab) => {
+    setAdminActiveTabExternal(tab);
+    updateBrowserRoute('admin', tab);
+  };
+
   // Admin mobile "More" sheet: close on Escape.
   useEffect(() => {
     if (!adminMoreOpen) return undefined;
@@ -337,7 +343,7 @@ export function MainLayout() {
     }
 
     if (page === 'admin') {
-      updateBrowserRoute('admin', null, adminActiveTabExternal);
+      updateBrowserRoute('admin', adminActiveTabExternal);
     } else if (page === 'dashboard-customer') {
       updateBrowserRoute('dashboard-customer', tab || customerActiveTabExternal);
     } else if (page === 'dashboard-provider') {
@@ -451,7 +457,7 @@ export function MainLayout() {
         content = (
           <AdminPanel
             activeTab={adminActiveTabExternal}
-            setActiveTabExternal={setAdminActiveTabExternal}
+            setActiveTabExternal={setAdminTab}
           />
         );
         break;
@@ -483,7 +489,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('dashboard');
-                  updateBrowserRoute('admin', null, 'dashboard');
+                  updateBrowserRoute('admin', 'dashboard');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'dashboard'
@@ -499,7 +505,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('customers');
-                  updateBrowserRoute('admin', null, 'customers');
+                  updateBrowserRoute('admin', 'customers');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'customers'
@@ -515,7 +521,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('providers');
-                  updateBrowserRoute('admin', null, 'providers');
+                  updateBrowserRoute('admin', 'providers');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'providers'
@@ -531,7 +537,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('services');
-                  updateBrowserRoute('admin', null, 'services');
+                  updateBrowserRoute('admin', 'services');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'services'
@@ -547,7 +553,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('providerServiceRequests');
-                  updateBrowserRoute('admin', null, 'providerServiceRequests');
+                  updateBrowserRoute('admin', 'providerServiceRequests');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'providerServiceRequests'
@@ -564,7 +570,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('permanentServiceRequests');
-                  updateBrowserRoute('admin', null, 'permanentServiceRequests');
+                  updateBrowserRoute('admin', 'permanentServiceRequests');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'permanentServiceRequests'
@@ -580,7 +586,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('manualBookingRequests');
-                  updateBrowserRoute('admin', null, 'manualBookingRequests');
+                  updateBrowserRoute('admin', 'manualBookingRequests');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'manualBookingRequests'
@@ -596,7 +602,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('bookings');
-                  updateBrowserRoute('admin', null, 'bookings');
+                  updateBrowserRoute('admin', 'bookings');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'bookings'
@@ -612,7 +618,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('reviews');
-                  updateBrowserRoute('admin', null, 'reviews');
+                  updateBrowserRoute('admin', 'reviews');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'reviews'
@@ -628,7 +634,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('tickets');
-                  updateBrowserRoute('admin', null, 'tickets');
+                  updateBrowserRoute('admin', 'tickets');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'tickets'
@@ -644,7 +650,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('analytics');
-                  updateBrowserRoute('admin', null, 'analytics');
+                  updateBrowserRoute('admin', 'analytics');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'analytics'
@@ -660,7 +666,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('servego');
-                  updateBrowserRoute('admin', null, 'servego');
+                  updateBrowserRoute('admin', 'servego');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'servego'
@@ -675,7 +681,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('reports');
-                  updateBrowserRoute('admin', null, 'reports');
+                  updateBrowserRoute('admin', 'reports');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'reports'
@@ -691,7 +697,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('settings');
-                  updateBrowserRoute('admin', null, 'settings');
+                  updateBrowserRoute('admin', 'settings');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'settings'
@@ -707,7 +713,7 @@ export function MainLayout() {
               <button
                 onClick={() => {
                   setAdminActiveTabExternal('featureFlags');
-                  updateBrowserRoute('admin', null, 'featureFlags');
+                  updateBrowserRoute('admin', 'featureFlags');
                 }}
                 className={`shrink-0 md:w-full py-2 px-3 rounded-lg text-xs font-extrabold flex items-center gap-2.5 transition-all text-left whitespace-nowrap ${
                   adminActiveTabExternal === 'featureFlags'
@@ -751,7 +757,7 @@ export function MainLayout() {
                     onClick={() => {
                       setAdminMoreOpen(false);
                       setAdminActiveTabExternal(item.key);
-                      updateBrowserRoute('admin', null, item.key);
+                      updateBrowserRoute('admin', item.key);
                     }}
                     className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-bold transition-colors ${
                       isActive ? 'text-teal-600' : 'text-slate-500 hover:text-slate-800'
@@ -824,7 +830,7 @@ export function MainLayout() {
                         onClick={() => {
                           setAdminMoreOpen(false);
                           setAdminActiveTabExternal(item.key);
-                          updateBrowserRoute('admin', null, item.key);
+                          updateBrowserRoute('admin', item.key);
                         }}
                         className={`rounded-2xl border px-3 py-2.5 text-left transition-colors ${
                           isActive

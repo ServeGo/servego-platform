@@ -12,7 +12,6 @@ import { AdminProviderServiceController } from '../controllers/adminProviderServ
 import { AdminProviderServiceItemsController } from '../controllers/adminProviderServiceItemsController.js';
 import { AdminDashboardController } from '../controllers/adminDashboardController.js';
 import { AdminProviderStatusController } from '../controllers/adminProviderStatusController.js';
-import { ReferralsController } from '../controllers/referralsController.js';
 import { ProviderServiceDiscoveryController } from '../controllers/providerServiceDiscoveryController.js';
 import { ProviderAnalyticsController } from '../controllers/providerAnalyticsController.js';
 import { ImageController } from '../controllers/imageController.js';
@@ -114,12 +113,6 @@ apiRouter.post('/reviews', requireAuth, reviewRateLimiter, validate(createReview
 apiRouter.get('/providers/:id/reviews', ReviewController.getByProvider);
 apiRouter.delete('/reviews/:id', requireAuth, requireRole('admin'), ReviewController.deleteOne);
 
-// --- Referrals / Ambassador ---
-apiRouter.post('/referrals/apply', requireAuth, ReferralsController.applyReferral);
-apiRouter.get('/referrals/me', requireAuth, ReferralsController.getMeReferral);
-apiRouter.post('/referrals/generate', requireAuth, ReferralsController.generate);
-apiRouter.post('/referrals/claim', requireAuth, ReferralsController.applyReferral);
-
 // --- Services (Service Categories) ---
 apiRouter.get('/services/search', ServiceController.search);
 apiRouter.get('/services/top-rated', ServiceController.getTopRated);
@@ -143,6 +136,8 @@ apiRouter.get('/admin/analytics', requireAuth, requireRole('admin'), AdminDashbo
 apiRouter.get('/admin/audit-logs', requireAuth, requireRole('admin'), AdminDashboardController.getAuditLogs);
 apiRouter.get('/admin/bookings', requireAuth, requireRole('admin'), BookingController.getAll);
 apiRouter.get('/admin/providers', requireAuth, requireRole('admin'), AdminDashboardController.getPaginatedProviders);
+// Manual-booking queue: every provider approved for a service, eligible or not.
+apiRouter.get('/admin/providers/by-approved-service', requireAuth, requireRole('admin'), ProviderServiceDiscoveryController.getAdminApprovedProvidersByServiceName);
 
 // --- Admin: provider service items ---
 apiRouter.get('/admin/provider-service-items', requireAuth, requireRole('admin'), AdminProviderServiceItemsController.getAll);
@@ -153,6 +148,7 @@ apiRouter.post('/admin/providers/reputation/refresh', requireAuth, requireRole('
 
 // --- Admin: Provider Account Status ---
 apiRouter.patch('/admin/providers/:id/status', requireAuth, requireRole('admin'), AdminProviderStatusController.setStatus);
+apiRouter.get('/admin/providers/:id/wallet', requireAuth, requireRole('admin'), WalletController.getProviderWallet);
 
 // --- Image Upload (optionalAuth so providers can upload during signup) ---
 apiRouter.post('/images/upload', optionalAuth, uploadImage.single('image'), ImageController.upload);

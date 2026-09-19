@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
+import { DEFAULT_SEO_IMAGE as DEFAULT_IMAGE } from '../data/websiteImages';
 
 export const BASE_URL = 'https://servego24.com';
-const DEFAULT_IMAGE = 'https://res.cloudinary.com/dal84gvkm/image/upload/v1789329501/servego/public/j47zqpnzglwwelwn9ugf.jpg';
 const DEFAULT_IMAGE_WIDTH = '1200';
 const DEFAULT_IMAGE_HEIGHT = '630';
 

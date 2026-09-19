@@ -158,13 +158,26 @@ export default function BookingCard({
         </div>
       </div>
 
-      {/* Live Tracking Map */}
-      {liveTrackingCustomers && ['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
-        <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
-          <Suspense fallback={<MapLoadingFallback />}>
-            <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
-          </Suspense>
-        </div>
+      {/* Location panel: live map while the provider is en route; once the
+          provider has arrived the map is dropped and the service address is
+          shown in its place. Feature-flag OFF (non-arrived) shows nothing, as
+          before — the address already appears in the details above. */}
+      {['confirmed', 'ongoing', 'in_progress', 'en_route'].includes(booking.status) && (
+        dispatchPhase === 'ARRIVED' ? (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 flex items-start gap-2">
+            <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <span className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 block">Provider Arrived — Service Address</span>
+              <span className="text-slate-800 text-xs font-semibold leading-snug block break-words">{booking.locationAddress || '—'}{booking.city ? `, ${booking.city}` : ''}</span>
+            </div>
+          </div>
+        ) : liveTrackingCustomers ? (
+          <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
+            <Suspense fallback={<MapLoadingFallback />}>
+              <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+            </Suspense>
+          </div>
+        ) : null
       )}
 
       {/* Dispatch stepper (Uber-style): requested → on the way → arrived */}
@@ -208,8 +221,8 @@ export default function BookingCard({
         </div>
       )}
 
-      {/* Live quotation review — the customer decides to confirm (work starts)
-          or decline (pays the flat service fee). Never shown for other states. */}
+      {/* Live quotation review — the customer decides to confirm (work starts,
+          no service fee) or decline (charges the flat cancellation service fee). Never shown for other states. */}
       {booking.status === 'confirmed' && quotationSubmitted && (
         <QuotationReviewPanel
           booking={booking}
@@ -358,7 +371,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
   const { showToast } = useToast();
   const items = Array.isArray(quotation?.items) ? quotation.items : [];
   const fee = Number(quotation?.serviceFee) || SERVICE_FEE_DEFAULT;
-  const total = Number(quotation?.totalAmount) || fee + items.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const total = Number(quotation?.totalAmount) || items.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   const [decision, setDecision] = useState(null); // null | 'confirm' | 'cancel'
   const [anotherProvider, setAnotherProvider] = useState(false);
@@ -399,13 +412,9 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-3">
         <div className="divide-y divide-slate-100">
-          <div className="flex items-center justify-between px-4 py-2.5">
-            <span className="text-xs font-bold text-slate-600">servego24 Service Fee</span>
-            <span className="text-sm font-black text-teal-700">₹{Number(fee).toLocaleString('en-IN')}</span>
-          </div>
           {items.length === 0 && (
             <div className="flex items-center justify-between px-4 py-2.5">
-              <span className="text-xs font-semibold text-slate-400 italic">No itemised charges — just the service fee</span>
+              <span className="text-xs font-semibold text-slate-400 italic">No itemised charges provided</span>
             </div>
           )}
           {items.map((row, idx) => (
@@ -457,7 +466,7 @@ function QuotationReviewPanel({ booking, quotation, onConfirm, onCancel }) {
       {decision === 'cancel' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
           <p className="text-xs text-slate-600 font-semibold">
-            Declining cancels this quotation. Any payment is handled directly between you and the specialist; ServeGo does not charge your wallet.
+            Declining cancels this quotation and records a ₹{Number(fee).toLocaleString('en-IN')} cancellation service fee on your ServeGo wallet. The actual payment is settled directly between you and the specialist — ServeGo does not process it.
           </p>
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input

@@ -30,15 +30,47 @@ const statusInfo = (raw) => {
   return { label: s || '—', className: 'bg-slate-100 text-slate-700' };
 };
 
+const SkeletonCard = () => (
+  <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 animate-pulse">
+    <div className="h-2.5 bg-slate-100 rounded w-16 mb-3" />
+    <div className="h-6 bg-slate-100 rounded w-20" />
+  </div>
+);
+
+const DashboardSkeleton = () => (
+  <>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 animate-pulse">
+        <div className="h-3.5 bg-slate-100 rounded w-28" />
+        <div className="h-3 bg-slate-100 rounded w-full" />
+        <div className="h-3 bg-slate-100 rounded w-5/6" />
+        <div className="h-3 bg-slate-100 rounded w-3/4" />
+        <div className="h-3 bg-slate-100 rounded w-full" />
+      </div>
+      <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 space-y-4 animate-pulse">
+        <div className="h-3.5 bg-slate-100 rounded w-32" />
+        <div className="h-8 bg-slate-100 rounded w-16" />
+        <div className="h-9 bg-slate-100 rounded-xl w-full" />
+      </div>
+    </div>
+  </>
+);
+
 const cards = [
   {
     key: 'volume',
-    label: 'Total Volume',
+    label: 'Income',
     value: fmtINR(0),
     valueClass: 'text-slate-950',
     icon: Landmark,
     iconClass: 'bg-teal-50 text-teal-700',
-    render: (p) => fmtINR(p.totalVolume),
+    render: (p) => fmtINR(p.adminCommission),
   },
   {
     key: 'bookings',
@@ -67,13 +99,14 @@ const cards = [
 ];
 
 export default function AdminDashboardPanel({
-  totalVolume,
+  adminCommission,
+  adminSummaryLoading,
   pendingPartnersCount,
   activeTicketsCount,
   bookings,
   setActiveTab,
 }) {
-  const props = { totalVolume, pendingPartnersCount, activeTicketsCount, bookings: Array.isArray(bookings) ? bookings : [] };
+  const props = { adminCommission, pendingPartnersCount, activeTicketsCount, bookings: Array.isArray(bookings) ? bookings : [] };
   const recent = props.bookings.slice(0, 5);
 
   return (
@@ -83,6 +116,10 @@ export default function AdminDashboardPanel({
         <p className="text-slate-500 text-xs">Live platform overview and recent booking activity.</p>
       </div>
 
+      {adminSummaryLoading ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -177,6 +214,8 @@ export default function AdminDashboardPanel({
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

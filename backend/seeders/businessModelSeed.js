@@ -21,13 +21,10 @@ export const ADMIN_CONFIG_DEFAULTS = [
   // booking completes or is cancelled (and swept periodically as a fail-safe).
 
   // Wallet
-  { key: 'walletEnabled', value: true, description: 'Master switch for the credits wallet (provider earnings, referral bonuses, refunds).' },
+  { key: 'walletEnabled', value: true, description: 'Master switch for the credits wallet (provider earnings, refunds).' },
   { key: 'walletMinimumWithdrawal', value: 100, description: 'Minimum amount (₹) a provider can request in a single payout.' },
   { key: 'walletMaximumWithdrawal', value: 0, description: 'Maximum amount (₹) per payout request; 0 = unlimited.' },
   { key: 'walletWithdrawalNote', value: 'Payouts are processed within 24-48 hours after admin approval.', description: 'Info note shown on the provider withdrawal form.' },
-
-  // Referrals
-  { key: 'referralBonusAmount', value: 250, description: 'Referral bonus (₹) credited to a new user when a referral code is applied.' },
 
   // Platform controls (admin Settings): feature flags
   { key: 'newFeatureEnabled', value: false, description: 'Show the "what\u2019s new" announcement banner to the selected audience.' },
@@ -116,10 +113,8 @@ export async function seedBusinessModelIfEmpty() {
     // Dead keys.
     'cooldownPenalty',
     'lateArrivalGraceMinutes',
-    // Feature-flag keys removed with the Feature Flags subsystem. The premium
-    // category and referral restrictions are now always active.
+    // Feature-flag keys removed with the Feature Flags subsystem.
     'premiumCategoriesEnabled',
-    'referralEnabled',
     'discountEnabled',
     'levelDiscountsEnabled',
     'releaseBannerEnabled',
@@ -134,7 +129,9 @@ export async function seedBusinessModelIfEmpty() {
     'backupWeeklyTimeUtc',
     'backupWeeklyDay',
     'backupScheduleEnabled',
-    'backupRetentionCount'
+    'backupRetentionCount',
+    // Referral system removed entirely — retire its config key.
+    'referralBonusAmount'
   ];
   const removed = await prisma.adminConfig.deleteMany({ where: { key: { in: OBSOLETE_KEYS } } });
   if (removed.count > 0) {

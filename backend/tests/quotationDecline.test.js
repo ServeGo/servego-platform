@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import prisma from '../prisma/client.js';
-import { redistributeAfterDecline, declineQuotation } from '../services/quotationService.js';
+import { redistributeAfterDecline, declineQuotation, submitQuotation } from '../services/quotationService.js';
 
 // Pure unit tests (no DB): `redistributeAfterDecline` accepts a `client`, so a
 // mock lets us pin down the re-broadcast behaviour without a database. The
@@ -220,7 +220,7 @@ function makeDeclineTx() {
     lead: { id: 'lead-1', bookingId: 'b1', status: 'ACCEPTED' }
   };
   const quotation = { id: 'q1', bookingId: 'b1', providerId: 'p1', status: 'SUBMITTED' };
-  const txCalls = { leadUpdates: 0, offerCloses: 0, bookingReads: 0 };
+  const txCalls = { leadUpdates: 0, offerCloses: 0, bookingReads: 0, walletUpdates: [], walletTxns: [] };
   const tx = {
     adminConfig: { findUnique: async () => null },
     booking: {
@@ -241,11 +241,19 @@ function makeDeclineTx() {
     bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
     provider: { findUnique: async () => ({ userId: 'pu1' }) },
     wallet: {
-      findUnique: async () => ({ id: 'w1', userId: 'c1', balance: 0, totalCredited: 0, totalDebited: 0, totalEarned: 0 }),
-      update: async ({ data }) => ({ id: 'w1', ...data }),
+      findUnique: async () => ({ id: 'w1', userId: 'pu1', balance: 0, totalCredited: 0, totalDebited: 0, totalEarned: 0 }),
+      update: async ({ data }) => {
+        txCalls.walletUpdates.push(data);
+        return { id: 'w1', ...data };
+      },
       create: async (args) => ({ id: 'w1', balance: 0, ...args.data })
     },
-    walletTransaction: { create: async () => ({}) },
+    walletTransaction: {
+      create: async (args) => {
+        txCalls.walletTxns.push(args.data);
+        return {};
+      }
+    },
     lead: {
       update: async () => {
         txCalls.leadUpdates += 1;
@@ -268,7 +276,7 @@ test('BLOCKER 5: decline-without-replacement cancels the lead + closes offers in
   const { tx, txCalls } = makeDeclineTx();
   const escapes = { lead: 0, offers: 0, finalReads: 0, transactions: 0 };
 
-  await withPrismaStubs(
+  const result = await withPrismaStubs(
     {
       $transaction: async (fn) => {
         escapes.transactions += 1;
@@ -293,4 +301,79 @@ test('BLOCKER 5: decline-without-replacement cancels the lead + closes offers in
   assert.equal(escapes.lead, 0, 'lead.update must never go through the outer prisma');
   assert.equal(escapes.offers, 0, 'cancelOpenOffers must never go through the outer prisma');
   assert.equal(escapes.finalReads, 0, 'the final booking read must never go through the outer prisma');
+  assert.equal(result.feeDebited, true, 'the cancellation service fee settlement ran (only on customer cancel)');
+
+  // Settlement accounting (rule 25): the fee is charged ONLY on this customer
+  // cancellation — commission + gross fee are recorded against the provider, and
+  // a display-only SERVICE_FEE ledger entry mirrors the fee to the customer — all
+  // inside the same transaction. Defaults: fee ₹249, 10% commission → ₹24.90.
+  const categories = txCalls.walletTxns.map((t) => t.category).sort();
+  assert.deepEqual(categories, ['COMMISSION', 'SERVICE_FEE'], 'commission (provider) + display-only service fee (customer) settled once');
+  const serviceFeeTxn = txCalls.walletTxns.find((t) => t.category === 'SERVICE_FEE');
+  assert.equal(Number(serviceFeeTxn?.amount), 249, 'customer entry shows the gross ₹249 cancellation fee');
+  assert.equal(serviceFeeTxn.referenceType, 'BOOKING', 'customer entry references the booking');
+  const commissionTxn = txCalls.walletTxns.find((t) => t.category === 'COMMISSION');
+  assert.equal(Number(commissionTxn?.amount), 24.9, '10% commission on ₹249 = ₹24.90 is charged to the provider wallet');
+  const earningUpdate = txCalls.walletUpdates.find((d) => d.totalEarned?.increment);
+  assert.deepEqual(earningUpdate, { totalEarned: { increment: 249 } }, 'provider gross ₹249 fee recorded once as lifetime earnings');
+  assert.equal(result.commission, 24.9);
+  assert.equal(result.providerCompensation, 249);
+});
+
+// ---- service fee is NOT baked into the quotation ------------------------------
+// The provider's quotation contains only their payable line items. The fixed
+// service fee is charged exclusively on a customer cancellation, so a submitted
+// quotation must store serviceFee: 0 and totalAmount = sum(items).
+
+function makeSubmitTx() {
+  const booking = {
+    id: 'b1',
+    providerId: 'p1',
+    status: 'CONFIRMED',
+    serviceCategory: 'Plumbing',
+    customerId: 'c1',
+    statusHistory: []
+  };
+  const txCalls = { createdQuotations: [], updatedQuotations: [] };
+  const tx = {
+    booking: {
+      findUnique: async () => booking,
+      update: async () => booking
+    },
+    quotation: {
+      findFirst: async () => null,
+      create: async ({ data }) => {
+        txCalls.createdQuotations.push(data);
+        return { id: 'q1', ...data };
+      },
+      update: async ({ data }) => {
+        txCalls.updatedQuotations.push(data);
+        return { id: 'q1', ...data };
+      }
+    },
+    bookingEvent: { create: async () => ({}) }
+  };
+  return { tx, txCalls };
+}
+
+test('submitQuotation stores only line items — serviceFee is 0 and total = sum(items)', async () => {
+  const { tx, txCalls } = makeSubmitTx();
+
+  const result = await submitQuotation({
+    bookingId: 'b1',
+    providerId: 'p1',
+    items: [
+      { purpose: 'Labour', amount: 500 },
+      { purpose: 'Materials', amount: 250 }
+    ],
+    client: tx
+  });
+
+  const created = txCalls.createdQuotations[0];
+  assert.ok(created, 'a quotation row is created');
+  assert.equal(created.serviceFee, 0, 'no service fee is embedded in the quotation');
+  assert.equal(created.totalAmount, 750, 'total = sum(items) only');
+  assert.equal(result.quotation.totalAmount, 750);
+  // No adminConfig dependency on submit — the fee is only fetched at decline.
+  assert.equal(tx.adminConfig, undefined);
 });

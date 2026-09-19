@@ -3,19 +3,18 @@ import { Prisma } from '@prisma/client';
 import { rankedServiceMatches } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
-import { createTtlCache } from '../utils/ttlCache.js';
 import { nextBusinessNumber } from '../utils/businessNumber.js';
+import {
+  getCachedAdminServiceList,
+  getCachedCatalog,
+  getCachedServiceStats,
+  invalidateServiceListCaches,
+  setCachedAdminServiceList,
+  setCachedCatalog,
+  setCachedServiceStats
+} from '../services/serviceCacheService.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
-
-// The public services catalog (with active specialist counts) is read-heavy and
-// rarely changes. Cache it briefly; every write below invalidates it.
-const CATALOG_CACHE_TTL_MS = 30 * 1000;
-const catalogCache = createTtlCache(CATALOG_CACHE_TTL_MS);
-
-function invalidateCatalogCache() {
-  catalogCache.invalidate('catalog');
-}
 
 /**
  * Per-service provider stats: how many active/verified providers serve it and
@@ -29,6 +28,11 @@ function invalidateCatalogCache() {
  * grows linearly with the catalog on every cache miss and every search.
  */
 async function getServiceStats({ location = null } = {}) {
+  if (!location) {
+    const cached = getCachedServiceStats();
+    if (cached !== undefined) return cached;
+  }
+
   const rows = await prisma.$queryRaw`
     SELECT ps."serviceId" AS id,
            COUNT(*)::int AS count,
@@ -47,6 +51,8 @@ async function getServiceStats({ location = null } = {}) {
   for (const r of rows) {
     map[r.id] = { count: r.count, ratingSum: Number(r.ratingSum), ratedCount: r.ratedCount };
   }
+
+  if (!location) setCachedServiceStats(map);
   return map;
 }
 
@@ -103,7 +109,7 @@ export const ServiceController = {
         return ServiceController.search(req, res);
       }
 
-      const cached = catalogCache.get('catalog');
+      const cached = getCachedCatalog();
       if (cached !== undefined) return sendApiSuccess(res, 200, cached);
 
       const services = await prisma.service.findMany({ where: { isHidden: false } });
@@ -119,7 +125,7 @@ export const ServiceController = {
           avgRating: st?.ratedCount ? Number((st.ratingSum / st.ratedCount).toFixed(1)) : 0
         };
       });
-      catalogCache.set('catalog', result);
+      setCachedCatalog(result);
       return sendApiSuccess(res, 200, result);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch services', err.message);
@@ -127,9 +133,12 @@ export const ServiceController = {
   },
 
   // Admin-only listing: includes hidden services so the ops console can manage
-  // and un-hide them. Never served from the catalog cache (needs freshness).
+  // and un-hide them. Cached briefly and invalidated on every service write.
   adminList: async (req, res) => {
     try {
+      const cached = getCachedAdminServiceList();
+      if (cached !== undefined) return sendApiSuccess(res, 200, cached);
+
       const [rows, statsMap] = await Promise.all([
         prisma.service.findMany({ orderBy: { createdAt: 'desc' } }),
         getServiceStats()
@@ -141,6 +150,7 @@ export const ServiceController = {
         avgRating: statsMap[s.id]?.ratedCount ? Number((statsMap[s.id].ratingSum / statsMap[s.id].ratedCount).toFixed(1)) : 0
       }));
 
+      setCachedAdminServiceList(result);
       return sendApiSuccess(res, 200, result);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch services', err.message);
@@ -239,7 +249,7 @@ export const ServiceController = {
         });
       });
 
-      invalidateCatalogCache();
+      invalidateServiceListCaches();
 
       return sendApiSuccess(res, 201, created);
     } catch (err) {
@@ -277,7 +287,7 @@ export const ServiceController = {
         return { removedProviderLinks: del.count };
       });
 
-      invalidateCatalogCache();
+      invalidateServiceListCaches();
       return sendApiSuccess(res, 200, { message: 'Service deleted successfully', removedProviderLinks });
     } catch (err) {
       if (err.code === 'P2002') {
@@ -312,7 +322,7 @@ export const ServiceController = {
         }
       });
 
-      invalidateCatalogCache();
+      invalidateServiceListCaches();
 
       return sendApiSuccess(res, 200, { service: updated });
     } catch (err) {
@@ -369,7 +379,7 @@ export const ServiceController = {
         }
       });
 
-      invalidateCatalogCache();
+      invalidateServiceListCaches();
 
       return sendApiSuccess(res, 200, { service: updated });
     } catch (err) {

@@ -217,7 +217,7 @@ export const PermanentServiceRequestController = {
       if (status) where.status = String(status).toUpperCase();
       if (requestType) where.requestType = String(requestType).toUpperCase();
 
-      const [requests, total] = await Promise.all([
+      const [requests, total, statusCountRows, typeCountRows] = await Promise.all([
         prisma.permanentServiceRequest.findMany({
           where,
           include: REQUEST_INCLUDE,
@@ -225,12 +225,33 @@ export const PermanentServiceRequestController = {
           skip,
           take: limit
         }),
-        prisma.permanentServiceRequest.count({ where })
+        prisma.permanentServiceRequest.count({ where }),
+        // Two lightweight SQL aggregations power the "Pending (4)" style tab
+        // badges (rule 12: counts live in the database, never computed from
+        // fetched rows). Each matrix respects the OTHER active filter so the
+        // badges stay consistent with what the list shows.
+        prisma.permanentServiceRequest.groupBy({
+          by: ['status'],
+          where: requestType ? { requestType: String(requestType).toUpperCase() } : undefined,
+          _count: { _all: true }
+        }),
+        prisma.permanentServiceRequest.groupBy({
+          by: ['requestType'],
+          where: status ? { status: String(status).toUpperCase() } : undefined,
+          _count: { _all: true }
+        })
       ]);
+
+      const toMap = (rows, key) => Object.fromEntries(rows.map((r) => [r[key], r._count._all]));
+      const counts = {
+        byStatus: toMap(statusCountRows, 'status'),
+        byType: toMap(typeCountRows, 'requestType')
+      };
 
       return sendApiSuccess(res, 200, {
         requests,
-        pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        counts
       });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load service requests', err.message);
@@ -259,27 +280,13 @@ export const PermanentServiceRequestController = {
         if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Assigned provider not found.');
         providerId = provider.id;
       }
+      // Admin manual assignment is an explicit override: the admin may assign
+      // any existing provider regardless of verification, account/user status,
+      // service approval or wallet balance. The admin UI lists providers
+      // approved for the requested service to guide the choice, but assignment
+      // itself is deliberately unconditional (rule 24).
       if (nextStatus === 'APPROVED' && !providerId) {
         return sendApiError(res, 400, 'VALIDATION_ERROR', 'A provider must be assigned to approve this request.');
-      }
-
-      if (existing.requestType === 'NO_PROVIDER' && nextStatus === 'APPROVED') {
-        const provider = await prisma.provider.findUnique({
-          where: { id: providerId },
-          select: { id: true, isVerified: true, accountStatus: true, user: { select: { status: true } } }
-        });
-        const approvedService = provider
-          ? await prisma.providerService.findFirst({
-              where: {
-                providerId,
-                service: { name: { equals: existing.serviceCategory, mode: 'insensitive' } }
-              },
-              select: { id: true }
-            })
-          : null;
-        if (!provider || !provider.isVerified || provider.accountStatus !== 'ACTIVE' || provider.user?.status !== 'ACTIVE' || !approvedService) {
-          return sendApiError(res, 409, 'PROVIDER_UNAVAILABLE', 'Choose an active, verified provider approved for this service.');
-        }
       }
 
       let updated = await prisma.permanentServiceRequest.update({
@@ -295,9 +302,20 @@ export const PermanentServiceRequestController = {
       const io = req.app.get('socketio');
       if (nextStatus === 'APPROVED') {
         if (existing.requestType === 'NO_PROVIDER') {
+          // Link the created booking to the exact catalog service the customer
+          // booked (exact name match first, ignoring isHidden), so it behaves
+          // like any other booking and the provider list stays tied to that
+          // service. A missing catalog row just leaves serviceId null.
+          const bookedService = existing.serviceCategory
+            ? await prisma.service.findFirst({
+                where: { nameNormalized: String(existing.serviceCategory).trim().toLowerCase() },
+                select: { id: true }
+              })
+            : null;
           const assignment = await createManuallyAssignedBookingWithLead({
             customerId: existing.customerId,
             providerId,
+            serviceId: bookedService?.id || null,
             serviceCategory: existing.serviceCategory,
             locationAddress: existing.locationAddress || '',
             serviceLatitude: existing.serviceLatitude,

@@ -6,7 +6,7 @@ import { cachedRequest, invalidateCache } from '../../utils/requestCache';
  * Platform controls (admin Settings):
  *   - live tracking (on/off)
  * Backed by the plain /admin/configs endpoints (AdminConfig table, ~30s cache).
- * Referral bonus and the announcement banner live in the Feature Flags tab.
+ * The announcement banner lives in the Feature Flags tab.
  */
 
 const DEFAULTS = {
@@ -123,7 +123,7 @@ export default function AdminPlatformControls() {
       <div className="border-t border-slate-200 pt-8">
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Platform Controls</h2>
         <p className="text-slate-500 text-xs mt-1">
-          Operational toggles. Referral payout and the announcement banner live on the Feature Flags tab. Changes take effect within ~30s (config cache TTL).
+          Operational toggles. The announcement banner lives on the Feature Flags tab. Changes take effect within ~30s (config cache TTL).
         </p>
       </div>
 

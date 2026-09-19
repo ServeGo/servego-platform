@@ -16,10 +16,6 @@ const PROVIDER_USER_SELECT = {
   avatar: true,
   role: true,
   status: true,
-  referralCode: true,
-  referralsCount: true,
-  referralBonusEarned: true,
-  referralDiscountBalance: true,
   providerNumber: true,
   customerNumber: true,
   createdAt: true

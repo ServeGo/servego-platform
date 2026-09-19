@@ -24,8 +24,6 @@ function providerFixture(overrides = {}) {
       avatar: 'avatar.jpg',
       role: 'provider',
       status: 'ACTIVE',
-      referralCode: 'ARJUN10',
-      referralsCount: 3,
       createdAt: new Date('2024-01-01T00:00:00.000Z')
     },
     reviews: [
@@ -98,7 +96,6 @@ test('providerListItem exposes contact only for the profile owner', () => {
   assert.equal(item.email, 'arjun@example.com');
   assert.equal(item.phone, '+919000000000');
   assert.equal(item.user.email, 'arjun@example.com');
-  assert.equal(item.user.referralCode, 'ARJUN10');
   assert.equal(item.user.joinedDate instanceof Date, true);
   assert.equal(item.reviews.length, 1);
   assert.deepEqual(Object.keys(item.reviews[0]).sort(), [
@@ -169,14 +166,6 @@ test('serializers degrade gracefully on missing relations', () => {
   assert.equal(bookingListItem(null), null);
 });
 
-test('providerListItem with contact surfaces referral fields', () => {
-  const item = providerListItem(providerFixture(), { includeContact: true, isOwnRow: false });
-
-  assert.equal(item.referralCode, 'ARJUN10');
-  assert.equal(item.referralsCount, 3);
-  assert.equal(item.referralsEarningsBonus, 0);
-});
-
 test('providerDashboardSummary is the owner contract with contact + audit', () => {
   const full = providerFixture({
     availabilitySlots: [{ id: 'slot_1', dayOfWeek: 'Monday', startTime: '09:00', endTime: '12:00' }]
@@ -185,7 +174,6 @@ test('providerDashboardSummary is the owner contract with contact + audit', () =
 
   assert.equal(item.email, 'arjun@example.com');
   assert.equal(item.phone, '+919000000000');
-  assert.equal(item.referralCode, 'ARJUN10');
   assert.equal(item.user.email, 'arjun@example.com');
   assert.equal(item.user.joinedDate instanceof Date, true);
   assert.equal(item.reviews.length, 1);

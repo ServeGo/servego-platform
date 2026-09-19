@@ -3,9 +3,9 @@ import { Plus, Trash2, IndianRupee, Send, XCircle, FileText, Pencil } from 'luci
 import { api } from '../utils/apiClient';
 import { getErrorInfo } from '../utils/errorMessages';
 
-// The customer's fixed service fee row. The authoritative value returns in the
-// submitted quotation from the backend (AdminConfig `serviceFeeDefault`); the
-// UI keeps its own constant so the composer can render a live total.
+// The fixed service fee (AdminConfig `serviceFeeDefault`) is charged ONLY when
+// the customer cancels after reviewing a quotation — it is never baked into the
+// quotation itself. BookingCard imports this to show the cancellation amount.
 export const SERVICE_FEE_DEFAULT = 249;
 
 const fmtMoney = (v) => {
@@ -24,9 +24,7 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
   const [step, setStep] = useState('form');
   const [error, setError] = useState('');
 
-  const sum = rows.reduce((total, row) => total + (Math.max(0, Number(row.amount)) || 0), 0);
-  const fee = Number(existingQuotation?.serviceFee ?? SERVICE_FEE_DEFAULT) || SERVICE_FEE_DEFAULT;
-  const total = fee + sum;
+  const total = rows.reduce((sum, row) => sum + (Math.max(0, Number(row.amount)) || 0), 0);
 
   const updateRow = (idx, patch) => {
     setRows((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
@@ -42,7 +40,7 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
   const goPreview = () => {
     setError('');
     if (itemRows.length === 0) {
-      setError('Add at least one payable line item alongside the service fee.');
+      setError('Add at least one payable line item.');
       return;
     }
     setStep('preview');
@@ -52,7 +50,7 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
     if (submitting) return;
     setError('');
     if (itemRows.length === 0) {
-      setError('Add at least one payable line item alongside the service fee.');
+      setError('Add at least one payable line item.');
       return;
     }
     setSubmitting(true);
@@ -117,7 +115,6 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
                 </button>
               </div>
               <div className="divide-y divide-slate-100">
-                <QuoteRow purpose="ServeGo Service Fee" amount={fee} fixed feeLocked />
                 {rows.map((row, idx) => (
                   <QuoteRow
                     key={idx}
@@ -166,7 +163,6 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
                 </span>
               </div>
               <div className="divide-y divide-slate-100">
-                <PreviewRow purpose="ServeGo Service Fee" amount={fee} fixed />
                 {itemRows.map((row, idx) => (
                   <PreviewRow key={idx} purpose={row.purpose} amount={row.amount} />
                 ))}
@@ -206,55 +202,47 @@ export default function QuotationModal({ booking, existingQuotation, onClose, on
   );
 }
 
-function PreviewRow({ purpose, amount, fixed }) {
+function PreviewRow({ purpose, amount }) {
   return (
     <div className="flex items-center justify-between gap-2 px-3 py-2">
-      <span className={`min-w-0 flex-1 ${fixed ? 'text-[11px] font-black text-slate-800 uppercase tracking-wide' : 'text-xs font-semibold text-slate-700'}`}>
+      <span className="min-w-0 flex-1 text-xs font-semibold text-slate-700">
         {purpose}
       </span>
-      <span className={`shrink-0 ${fixed ? 'text-xs font-black text-teal-700' : 'text-xs font-bold text-slate-800'}`}>
+      <span className="shrink-0 text-xs font-bold text-slate-800">
         {fmtMoney(amount)}
       </span>
     </div>
   );
 }
 
-function QuoteRow({ purpose, amount, fixed, feeLocked, onChange, onRemove }) {
+function QuoteRow({ purpose, amount, onChange, onRemove }) {
   return (
     <div className="flex items-end gap-2 px-3 py-2">
       <div className="flex-[4] min-w-0">
-        {fixed ? (
-          <span className="block leading-7 text-[11px] font-black text-slate-800 uppercase tracking-wide">{purpose}</span>
-        ) : (
-          <label className="block">
-            <span className="block text-[10px] font-bold text-slate-500 mb-0.5">Work description</span>
-            <input
-              value={purpose}
-              onChange={(e) => onChange({ purpose: e.target.value })}
-              placeholder="What is this charge for?"
-              className="w-full h-7 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-teal-400"
-            />
-          </label>
-        )}
+        <label className="block">
+          <span className="block text-[10px] font-bold text-slate-500 mb-0.5">Work description</span>
+          <input
+            value={purpose}
+            onChange={(e) => onChange({ purpose: e.target.value })}
+            placeholder="What is this charge for?"
+            className="w-full h-7 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-teal-400"
+          />
+        </label>
       </div>
       <div className="w-20 shrink-0">
-        {fixed ? (
-          <span className="block leading-7 text-xs font-black text-teal-700 text-right pr-1">₹{amount}</span>
-        ) : (
-          <label className="block">
-            <span className="block text-[10px] font-bold text-slate-500 mb-0.5 text-right">Amount</span>
-            <input
-              type="number"
-              min="0"
-              value={amount}
-              onChange={(e) => onChange({ amount: e.target.value })}
-              placeholder="₹"
-              className="w-full h-7 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 text-right outline-none focus:border-teal-400"
-            />
-          </label>
-        )}
+        <label className="block">
+          <span className="block text-[10px] font-bold text-slate-500 mb-0.5 text-right">Amount</span>
+          <input
+            type="number"
+            min="0"
+            value={amount}
+            onChange={(e) => onChange({ amount: e.target.value })}
+            placeholder="₹"
+            className="w-full h-7 bg-slate-50 border border-slate-200 rounded-lg px-2.5 text-xs font-bold text-slate-800 text-right outline-none focus:border-teal-400"
+          />
+        </label>
       </div>
-      {!feeLocked && onRemove && (
+      {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
@@ -263,8 +251,9 @@ function QuoteRow({ purpose, amount, fixed, feeLocked, onChange, onRemove }) {
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+      ) : (
+        <span className="shrink-0 w-7 h-7" />
       )}
-      {!feeLocked && !onRemove && <span className="shrink-0 w-7 h-7" />}
     </div>
   );
 }

@@ -23,9 +23,11 @@ const FeatureFlagsContext = createContext(DEFAULT_FLAGS);
 export const FeatureFlagsProvider = ({ children }) => {
   const [flags, setFlags] = useState(DEFAULT_FLAGS);
 
-  // Backend config cache TTL is ~30s; a 60s poll keeps admin toggles applying
-  // to open apps without a full page reload (rule 14).
-  const FLAGS_POLL_MS = 60000;
+  // Backend config cache TTL is ~30s. Flags change rarely (admin toggles for
+  // live-tracking), so a 5-minute poll keeps admin toggles applying to open
+  // apps within a few minutes without a full page reload — any reload still
+  // picks the latest value instantly (rule 14).
+  const FLAGS_POLL_MS = 300000;
 
   const loadFlags = useCallback(() => {
     apiClient

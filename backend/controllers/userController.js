@@ -138,11 +138,7 @@ export const UserController = {
             status: true,
             address: true,
             pincode: true,
-            referralCode: true,
-            referredBy: true,
-            referralsCount: true,
-            referralDiscountBalance: true,
-            referralBonusEarned: true, profileComplete: true,
+            profileComplete: true,
             providerId: true,
             customerNumber: true,
             providerNumber: true,
@@ -248,7 +244,6 @@ export const UserController = {
       }
 
       const hashedPassword = await bcrypt.hash(password, 12);
-      const referralCode = `SERVEGO-${role === 'provider' ? 'PRO' : 'CUST'}-${name.substring(0, 3).toUpperCase().replace(/\s/g, 'X')}${Math.floor(10 + Math.random() * 90)}`;
       const avatar = (imageUrl && String(imageUrl).trim())
         ? String(imageUrl).trim()
         : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0F172A&color=fff&size=150`;
@@ -278,11 +273,8 @@ export const UserController = {
               pincode: pincode ? String(pincode).trim() : null,
               latitude: latitude != null && !Number.isNaN(Number(latitude)) ? Number(latitude) : null,
               longitude: longitude != null && !Number.isNaN(Number(longitude)) ? Number(longitude) : null,
-              referralCode,
               customerNumber,
-              providerNumber,
-              referralsCount: 0,
-              referralDiscountBalance: 0
+              providerNumber
             }
           });
         } catch (err) {
@@ -398,10 +390,6 @@ export const UserController = {
         providerNumber: newUser.providerNumber,
         customerProfile: customerProfile,
         providerProfile: providerProfile,
-        referralCode: newUser.referralCode,
-        referredBy: newUser.referredBy,
-        referralsCount: newUser.referralsCount,
-        referralDiscountBalance: newUser.referralDiscountBalance,
         createdAt: newUser.createdAt,
         updatedAt: newUser.updatedAt
       };
@@ -530,8 +518,6 @@ export const UserController = {
         select: {
           id: true, name: true, email: true, phone: true, role: true,
           avatar: true, status: true, profileComplete: true, address: true, pincode: true,
-          referralCode: true, referredBy: true, referralsCount: true,
-          referralDiscountBalance: true, referralBonusEarned: true,
           providerId: true, createdAt: true, updatedAt: true,
           customerProfile: true,
           customerAddresses: {

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, useData } from '../context/AppContext';
+import { api as apiClient } from '../utils/apiClient';
 import { isOpenTicket } from '../utils/normalizeAdminData';
 
 
@@ -17,7 +18,7 @@ export function useAdminPanelController() {
     users,
     services,
     adminServices,
-    fetchAdminServices,
+    servicesLoading,
     createService,
     updateService,
     deleteService,
@@ -30,14 +31,35 @@ export function useAdminPanelController() {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  // Admin ops console shows every category, including hidden ones. The public
-  // catalog (services) never returns hidden rows, so we fetch the admin list on
-  // mount and fall back to the catalog while it loads. The data context also
-  // refreshes it after every create/update/hide/delete.
+  // Self-contained admin commission fetch — the shared DataContext stays
+  // untouched. `GET /admin/dashboard` is admin-only and already returns
+  // `aggregates.platformEarnings` (sum of customer + provider platform charges
+  // over non-cancelled bookings = what the platform actually earns).
+  const [adminSummary, setAdminSummary] = useState(null);
+  const [adminSummaryLoading, setAdminSummaryLoading] = useState(isAdmin);
+  // Guard so React StrictMode's dev double-mount does not fire the same request
+  // twice (real panel re-mounts get a fresh ref).
+  const dashboardFetchedRef = useRef(false);
   useEffect(() => {
-    fetchAdminServices();
-  }, [fetchAdminServices]);
+    if (!isAdmin) {
+      setAdminSummary(null);
+      setAdminSummaryLoading(false);
+      return undefined;
+    }
+    if (dashboardFetchedRef.current) return undefined;
+    dashboardFetchedRef.current = true;
+    setAdminSummaryLoading(true);
+    apiClient.get('/admin/dashboard')
+      .then((res) => { setAdminSummary(res.ok ? res.data : null); })
+      .catch(() => { setAdminSummary(null); })
+      .finally(() => setAdminSummaryLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
+  // Admin ops console shows every category, including hidden ones. The public
+  // catalog (services) never returns hidden rows, so the Services tab fetches
+  // the admin list itself on first mount (see AdminServicesTab) and the data
+  // context refreshes it after every create/update/hide/delete.
   const serviceList = Array.isArray(adminServices) && adminServices.length
     ? adminServices
     : services;
@@ -54,14 +76,12 @@ export function useAdminPanelController() {
   const [newServiceForm, setNewServiceForm] = useState({
     name: '',
     description: '',
-    popularIssuesText: '',
     imageUrl: '',
   });
 
   const [editServiceForm, setEditServiceForm] = useState({
     name: '',
     description: '',
-    popularIssuesText: '',
     imageUrl: '',
   });
 
@@ -79,10 +99,11 @@ export function useAdminPanelController() {
     return providers || [];
   }, [providers]);
 
-  const totalVolume = useMemo(() => {
-    const bookingList = Array.isArray(bookings) ? bookings : [];
-    return bookingList.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
-  }, [bookings]);
+  // Admin commission = platform earnings from the dedicated dashboard endpoint.
+  // Falls back to 0 while the summary loads or on error.
+  const adminCommission = useMemo(() => {
+    return Number(adminSummary?.aggregates?.platformEarnings) || 0;
+  }, [adminSummary]);
 
   const pendingPartnersCount = useMemo(() => {
     return (Array.isArray(providerServiceRequests) ? providerServiceRequests : []).filter(r => r.status === 'PENDING').length;
@@ -118,7 +139,7 @@ export function useAdminPanelController() {
     setIsSubmittingService(false);
     setServiceAddError('');
     setServiceAddSuccess('');
-    setNewServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
+    setNewServiceForm({ name: '', description: '', imageUrl: '' });
     setIsAddingService(true);
   };
 
@@ -137,7 +158,6 @@ export function useAdminPanelController() {
     setEditServiceForm({
       name: cat.name || '',
       description: cat.description || '',
-      popularIssuesText: Array.isArray(cat.popularIssues) ? cat.popularIssues.join(', ') : '',
       imageUrl: cat.image || '',
     });
     setIsEditingService(true);
@@ -149,7 +169,7 @@ export function useAdminPanelController() {
     setEditServiceId(null);
     setServiceEditError('');
     setServiceEditSuccess('');
-    setEditServiceForm({ name: '', description: '', popularIssuesText: '', imageUrl: '' });
+    setEditServiceForm({ name: '', description: '', imageUrl: '' });
   };
 
   const submitNewService = async (e) => {
@@ -157,10 +177,14 @@ export function useAdminPanelController() {
     setServiceAddError('');
     setServiceAddSuccess('');
 
-    const { name, description, popularIssuesText, imageUrl } = newServiceForm;
+    const { name, description, imageUrl } = newServiceForm;
 
     if (!name.trim()) {
       setServiceAddError('Service name is required.');
+      return;
+    }
+    if (!description.trim()) {
+      setServiceAddError('Service description is required.');
       return;
     }
     if (!imageUrl.trim()) {
@@ -168,16 +192,10 @@ export function useAdminPanelController() {
       return;
     }
 
-    const popularIssues = popularIssuesText
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-
     const payload = {
       role: 'admin',
       name: name.trim(),
       description: (description || '').trim(),
-      popularIssues,
       image: imageUrl.trim(),
     };
 
@@ -191,7 +209,6 @@ export function useAdminPanelController() {
     }
 
     closeAddService();
-    fetchAdminServices();
   };
 
   const submitEditService = async (e) => {
@@ -199,22 +216,20 @@ export function useAdminPanelController() {
     setServiceEditError('');
     setServiceEditSuccess('');
 
-    const { name, description, popularIssuesText, imageUrl } = editServiceForm;
+    const { name, description, imageUrl } = editServiceForm;
     if (!name.trim()) {
       setServiceEditError('Service name is required.');
       return;
     }
-
-    const popularIssues = popularIssuesText
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
+    if (!description.trim()) {
+      setServiceEditError('Service description is required.');
+      return;
+    }
 
     const payload = {
       role: 'admin',
       name: name.trim(),
       description: (description || '').trim(),
-      popularIssues,
     };
     if (imageUrl.trim()) payload.image = imageUrl.trim();
 
@@ -229,7 +244,6 @@ export function useAdminPanelController() {
     }
 
     closeEditService();
-    fetchAdminServices();
   };
 
   return {
@@ -245,7 +259,8 @@ export function useAdminPanelController() {
     customersList,
 
     // dashboard stats
-    totalVolume,
+    adminCommission,
+    adminSummaryLoading,
     pendingPartnersCount,
     activeTicketsCount,
 
@@ -263,6 +278,7 @@ export function useAdminPanelController() {
     isAddingService,
     isEditingService,
     isSubmittingService,
+    servicesLoading,
     editServiceId,
 
     newServiceForm,

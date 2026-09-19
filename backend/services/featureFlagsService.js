@@ -4,7 +4,6 @@
  * changes apply within ~30s without a redeploy.
  *
  * Flags:
- *   - referralBonusAmount: the referral payout amount, applied to every user.
  *   - newFeatureEnabled / newFeatureAudience / newFeatureText / newFeatureValidUntil:
  *     the "what's new" announcement headline, shown to either customers or
  *     providers (one audience at a time). The headline auto-expires 24 hours
@@ -34,17 +33,6 @@ export const ANNOUNCEMENT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** @type {Record<string, FlagDefinition>} */
 export const FEATURE_FLAGS = {
-  referralBonusAmount: {
-    key: 'referralBonusAmount',
-    label: 'Referral Bonus Amount (₹)',
-    description: 'Bonus credited to a new user when they apply a referral code. Applies to every referral.',
-    category: 'Growth',
-    valueType: 'number',
-    default: 250,
-    min: 0,
-    max: 10000,
-    public: false
-  },
   newFeatureEnabled: {
     key: 'newFeatureEnabled',
     label: 'New Feature Announcement',

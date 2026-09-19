@@ -9,8 +9,7 @@ test('feature flag registry contains exactly the intended flags', () => {
     'newFeatureAudience',
     'newFeatureEnabled',
     'newFeatureText',
-    'newFeatureValidUntil',
-    'referralBonusAmount'
+    'newFeatureValidUntil'
   ]);
 });
 
@@ -24,14 +23,6 @@ test('every flag has a declared value type and default', () => {
     assert.ok(['boolean', 'number', 'string'].includes(def.valueType), `${key} valueType`);
     assert.ok(def.default !== undefined, `${key} default`);
   }
-});
-
-test('number flags coerce and validate their bounds', () => {
-  assert.equal(validateFeatureFlagValue('referralBonusAmount', '500'), 500);
-  assert.equal(validateFeatureFlagValue('referralBonusAmount', 0), 0);
-  assert.throws(() => validateFeatureFlagValue('referralBonusAmount', -5), /at least/);
-  assert.throws(() => validateFeatureFlagValue('referralBonusAmount', 999999), /at most/);
-  assert.throws(() => validateFeatureFlagValue('referralBonusAmount', 'abc'), /expects a number/);
 });
 
 test('boolean flags coerce truthy/falsy inputs', () => {

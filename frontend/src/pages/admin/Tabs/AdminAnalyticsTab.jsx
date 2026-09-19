@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Users, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { api as apiClient } from '../../../utils/apiClient';
 import { exportAllPages } from '../../../utils/exportExcel';
@@ -25,20 +25,22 @@ export default function AdminAnalyticsTab() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
 
+  // Guard so React StrictMode's dev double-mount does not fire the same request
+  // twice (real tab re-mounts get a fresh ref). StrictMode's mount→cleanup→mount
+  // leaves the guard set on the first run, so the single in-flight request is
+  // the only one; no stale-result flag is needed.
+  const fetchedOnceRef = useRef(false);
   useEffect(() => {
-    let active = true;
+    if (fetchedOnceRef.current) return;
+    fetchedOnceRef.current = true;
     setAnalyticsLoading(true);
     apiClient.get('/admin/analytics?period=all').then((res) => {
-      if (!active) return;
       setAnalytics(res.ok ? res.data : null);
       setAnalyticsLoading(false);
     }).catch(() => {
-      if (active) {
-        setAnalytics(null);
-        setAnalyticsLoading(false);
-      }
+      setAnalytics(null);
+      setAnalyticsLoading(false);
     });
-    return () => { active = false; };
   }, []);
 
   const statusCounts = STATUS_ORDER

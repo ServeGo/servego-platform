@@ -1,6 +1,7 @@
 import prisma from '../prisma/client.js';
 import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { invalidateServiceStatsCaches } from '../services/serviceCacheService.js';
 
 const VALID_STATUSES = ['ACTIVE', 'ON_HOLD', 'BLOCKED'];
 
@@ -29,6 +30,7 @@ export const AdminProviderStatusController = {
       }
 
       await prisma.provider.update({ where: { id }, data: { accountStatus: status } });
+      invalidateServiceStatsCaches();
 
       // Notify the provider's user
       const statusLabel = { ACTIVE: 'reactivated', ON_HOLD: 'placed on hold', BLOCKED: 'blocked' }[status];

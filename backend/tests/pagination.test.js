@@ -71,7 +71,6 @@ const purge = async () => {
     await prisma.availabilitySlot.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.promotionHistory.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.providerLevelHistory.deleteMany({ where: { provider: { userId: user.id } } });
-    await prisma.rankingMetrics.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.providerPerformance.deleteMany({ where: { provider: { userId: user.id } } });
     await prisma.notification.deleteMany({ where: { userId: user.id } });
     await prisma.ticket.deleteMany({ where: { OR: [{ userId: user.id }, { requesterEmail: email }] } });

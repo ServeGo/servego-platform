@@ -1,4 +1,5 @@
 import prisma from '../prisma/client.js';
+import { invalidateServiceStatsCaches } from './serviceCacheService.js';
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
@@ -167,6 +168,8 @@ export async function refreshProviderReputation(providerId, client = prisma) {
       }
     });
   }
+
+  invalidateServiceStatsCaches();
 
   return updatedProvider;
 }
