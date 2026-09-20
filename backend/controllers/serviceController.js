@@ -1,17 +1,21 @@
 import prisma from '../prisma/client.js';
 import { Prisma } from '@prisma/client';
-import { rankedServiceMatches } from '../services/searchService.js';
+import { rankedServiceRows } from '../services/searchService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { parsePagination, offsetMeta } from '../utils/pagination.js';
 import { nextBusinessNumber } from '../utils/businessNumber.js';
 import {
   getCachedAdminServiceList,
   getCachedCatalog,
+  getCachedSearchResults,
   getCachedServiceStats,
+  getCachedTopRated,
   invalidateServiceListCaches,
   setCachedAdminServiceList,
   setCachedCatalog,
-  setCachedServiceStats
+  setCachedSearchResults,
+  setCachedServiceStats,
+  setCachedTopRated
 } from '../services/serviceCacheService.js';
 
 const normalize = (s) => (s || '').toString().trim().toLowerCase();
@@ -76,7 +80,9 @@ export const ServiceController = {
           skip,
           take
         }),
-        prisma.providerService.count({ where })
+        // Global (non-location) page: the count is exactly the cached provider
+        // stats aggregation for this service — one less round-trip per view.
+        location ? prisma.providerService.count({ where }) : getServiceStats().then((m) => m[category.id]?.count || 0)
       ]);
       const providers = providerLinks.map(({ provider, description }) => ({ ...provider, serviceDescription: description }));
       return sendApiSuccess(res, 200, { category, activeSpecialistCount, providers, pagination: offsetMeta(activeSpecialistCount, page, limit) });
@@ -163,12 +169,23 @@ export const ServiceController = {
       const trimmed = String(q).trim();
       const categoryId = String(category).trim();
 
+      // The client fires the same search repeatedly (category tabs, filter
+      // chips, page revisits). Cache the serialized result for 30s under the
+      // exact (query, location, category) triple; every catalog/provider write
+      // already clears it via invalidateServiceListCaches/Caches.
+      const cacheKey = JSON.stringify([trimmed, String(location).trim(), categoryId]);
+      const cached = getCachedSearchResults(cacheKey);
+      if (cached !== undefined) return sendApiSuccess(res, 200, cached);
+
       // Ranked, typo-tolerant id order from pg_trgm (see services/searchService.js).
       // Kept null when there is no query so the catalog falls back to popularity.
       let order = [];
       let serviceIds = null;
+      let rankedRows = null;
       if (trimmed) {
-        const ranked = await rankedServiceMatches(trimmed, { limit: 100 });
+        // Fused rank + fetch (+ category filter) in one SQL statement (rule 12).
+        const ranked = await rankedServiceRows(trimmed, { limit: 100, categoryId: categoryId || null });
+        rankedRows = ranked;
         order = ranked.map((r) => r.id);
         serviceIds = order;
       }
@@ -177,7 +194,7 @@ export const ServiceController = {
       if (serviceIds !== null) {
         where.id = { in: serviceIds };
       }
-      if (categoryId) {
+      if (categoryId && !trimmed) {
         where.AND = [{
           OR: [
             { id: categoryId },
@@ -187,7 +204,7 @@ export const ServiceController = {
         }];
       }
 
-      const services = await prisma.service.findMany({ where });
+      const services = rankedRows || await prisma.service.findMany({ where });
 
       const statsMap = await getServiceStats({ location: location || null });
 
@@ -197,8 +214,9 @@ export const ServiceController = {
       const result = services
         .map((s) => {
           const st = statsMap[s.id];
+          const { score: _score, ...svc } = s;
           return {
-            ...s,
+            ...svc,
             activeSpecialistCount: st?.count || 0,
             avgRating: st?.ratedCount ? Number((st.ratingSum / st.ratedCount).toFixed(1)) : 0
           };
@@ -213,6 +231,8 @@ export const ServiceController = {
           }
           return String(a.name).localeCompare(String(b.name));
         });
+
+      setCachedSearchResults(cacheKey, result);
       return sendApiSuccess(res, 200, result);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to search services', err.message);
@@ -339,6 +359,10 @@ export const ServiceController = {
   getTopRated: async (req, res) => {
     try {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+      const cacheKey = `top:${limit}`;
+      const cached = getCachedTopRated(cacheKey);
+      if (cached !== undefined) return sendApiSuccess(res, 200, cached);
+
       const statsMap = await getServiceStats();
 
       const services = await prisma.service.findMany({ where: { isHidden: false } });
@@ -357,6 +381,7 @@ export const ServiceController = {
         .sort((a, b) => b.avgRating - a.avgRating || b.activeSpecialistCount - a.activeSpecialistCount)
         .slice(0, limit);
 
+      setCachedTopRated(cacheKey, ranked);
       return sendApiSuccess(res, 200, ranked);
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch top-rated services', err.message);

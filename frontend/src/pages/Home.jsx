@@ -198,6 +198,7 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
           providers={providers}
           onCategoryClick={handleCategoryClick}
           onSeeAll={handleSeeAll}
+          loading={servicesLoading}
         />
       )}
 

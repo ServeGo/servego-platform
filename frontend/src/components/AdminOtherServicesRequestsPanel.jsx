@@ -121,7 +121,7 @@ export default function AdminOtherServicesRequestsPanel() {
   const [processingAction, setProcessingAction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(providerServiceItemsPagination.page || 1);
-  const [statusFilter, setStatusFilter] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('PENDING');
 
   const allItems = Array.isArray(providerServiceItems) ? providerServiceItems : [];
   const { total = allItems.length, pages = 1 } = providerServiceItemsPagination;
@@ -132,7 +132,6 @@ export default function AdminOtherServicesRequestsPanel() {
 
   const counts = providerServiceItemsCounts || {};
   const filterTabs = [
-    { key: null, label: 'All', count: counts.TOTAL ?? 0 },
     { key: 'PENDING', label: 'Pending', count: counts.PENDING ?? 0 },
     { key: 'APPROVED', label: 'Approved', count: counts.APPROVED ?? 0 },
     { key: 'DENIED', label: 'Denied', count: counts.DENIED ?? 0 },
@@ -147,7 +146,7 @@ export default function AdminOtherServicesRequestsPanel() {
   useEffect(() => {
     if (mountedOnceRef.current) return;
     mountedOnceRef.current = true;
-    loadNow(1, null);
+    loadNow(1, 'PENDING');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

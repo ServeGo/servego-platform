@@ -2,17 +2,17 @@ import bcrypt from 'bcryptjs';
 import prisma from './client.js';
 
 async function main() {
-  const existing = await prisma.user.findUnique({ where: { email: 'servego@gmail.com' } });
+  const existing = await prisma.user.findUnique({ where: { email: 'servego24@gmail.com' } });
   if (existing) {
     console.log('✅ Admin already exists — skipping.');
     return;
   }
 
-  const password = await bcrypt.hash('servego@123', 10);
+  const password = await bcrypt.hash('servego24@123', 10);
   await prisma.user.create({
     data: {
       name: 'ServeGo Admin',
-      email: 'servego@gmail.com',
+      email: 'servego24@gmail.com',
       phone: '18004198899',
       role: 'admin',
       password,
@@ -21,7 +21,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Admin created: servego@gmail.com / servego@123');
+  console.log('✅ Admin created: servego24@gmail.com / servego24@123');
 }
 
 main()

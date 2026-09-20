@@ -1,11 +1,11 @@
 import prisma from '../prisma/client.js';
 
 export const PROVIDER_LEVEL_DEFAULTS = [
-  { level: 'BRONZE', minJobs: 0, incentivePercent: 0, description: 'Every verified provider starts at Bronze. Levels reset at the start of each month.' },
-  { level: 'SILVER', minJobs: 5, incentivePercent: 5, description: 'Reach Silver after 5 completed jobs this month — 5% of those jobs\' commission is credited to your wallet.' },
-  { level: 'GOLD', minJobs: 15, incentivePercent: 10, description: 'Reach Gold after 15 completed jobs this month — 10% of the jobs in this band\'s commission is credited to your wallet.' },
-  { level: 'PLATINUM', minJobs: 45, incentivePercent: 15, description: 'Reach Platinum after 45 completed jobs this month — 15% of the jobs in this band\'s commission is credited to your wallet.' },
-  { level: 'DIAMOND', minJobs: 60, incentivePercent: 20, description: 'Reach Diamond after 60 completed jobs this month — 20% of the jobs in this band\'s commission is credited to your wallet.' }
+  { level: 'BRONZE', minJobs: 0, incentivePercent: 2.5, description: 'Every verified provider starts at Bronze with a 2.5% monthly level incentive. Levels reset at the start of each month.' },
+  { level: 'SILVER', minJobs: 5, incentivePercent: 5, description: 'Reach Silver after 5 completed jobs this month — 5% of the commission on those jobs is credited to your wallet.' },
+  { level: 'GOLD', minJobs: 15, incentivePercent: 7.5, description: 'Reach Gold after 15 completed jobs this month — 7.5% of the commission on the jobs in this band is credited to your wallet.' },
+  { level: 'PLATINUM', minJobs: 45, incentivePercent: 10, description: 'Reach Platinum after 45 completed jobs this month — 10% of the commission on the jobs in this band is credited to your wallet.' },
+  { level: 'DIAMOND', minJobs: 60, incentivePercent: 12.5, description: 'Reach Diamond after 60 completed jobs this month — 12.5% of the commission on the jobs in this band is credited to your wallet.' }
 ];
 
 export const ADMIN_CONFIG_DEFAULTS = [

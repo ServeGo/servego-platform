@@ -1,2 +1,0 @@
--- ALTER TABLE
-ALTER TABLE "Job" ADD COLUMN "result" JSONB;

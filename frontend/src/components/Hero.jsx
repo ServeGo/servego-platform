@@ -20,7 +20,7 @@ export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearc
   }, []);
 
   return (
-    <section className="relative isolate flex min-h-[90svh] w-full flex-col overflow-hidden bg-slate-950 text-white md:min-h-[calc(100vh-72px)] md:flex-row md:justify-center">
+    <section className="relative isolate flex min-h-[93svh] w-full flex-col overflow-hidden bg-slate-950 text-white md:min-h-[calc(100vh-72px)] md:flex-row md:justify-center">
 
       {/* Background image */}
       <div className="absolute inset-0">

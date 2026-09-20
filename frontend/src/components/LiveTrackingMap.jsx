@@ -252,7 +252,7 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
         </div>
       )}
 
-      {!hasLocation ? (
+      {!hasLocation && !hasDestination ? (
         <div className="h-56 flex flex-col items-center justify-center gap-3 text-center px-6">
           <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
             <Truck className="w-6 h-6 text-slate-500" />
@@ -269,6 +269,13 @@ export const LiveTrackingMap = ({ booking, liveLocation }) => {
           {/* Free tile map (Leaflet + OpenStreetMap + OSRM route) */}
           <div className="relative isolate h-56 border-b border-slate-800 overflow-hidden">
             <div ref={containerRef} className="sg-live-leaflet absolute inset-0 z-0 w-full h-full" />
+
+            {!hasLocation && (
+              <div className="absolute left-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1 pointer-events-none">
+                <Radio className="w-3 h-3 text-amber-400" />
+                Waiting for your location… showing destination
+              </div>
+            )}
 
             <div className="absolute right-3 top-2 z-10 bg-slate-900/90 border border-slate-700 rounded px-2 py-0.5 text-[9px] text-slate-300 font-bold flex items-center gap-1 pointer-events-none">
               {booking.providerAvatar ? (

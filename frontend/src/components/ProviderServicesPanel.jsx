@@ -30,7 +30,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const [servicesError, setServicesError] = useState('');
   const [loadingMyServices, setLoadingMyServices] = useState(false);
 
-  const [servicesFilter, setServicesFilter] = useState('ALL'); // ALL | APPROVED | PENDING | DENIED
+  const [servicesFilter, setServicesFilter] = useState('APPROVED'); // APPROVED | PENDING | DENIED
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [serviceInterestedOption, setServiceInterestedOption] = useState('');
@@ -57,9 +57,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
   const filteredServices = useMemo(() => {
     if (!Array.isArray(myServices)) return [];
 
-    let arr = myServices;
-
-    if (servicesFilter !== 'ALL') arr = arr.filter(sv => sv.approvalStatus === servicesFilter);
+    const arr = myServices.filter(sv => sv.approvalStatus === servicesFilter);
 
     return arr;
   }, [myServices, servicesFilter]);
@@ -212,7 +210,6 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
         {/* Filter buttons */}
         <div className="flex flex-col gap-3">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar flex-nowrap -mx-1 px-1">
-            <FilterButton label="All services" count={counts.all} active={servicesFilter === 'ALL'} onClick={() => setServicesFilter('ALL')} />
             <FilterButton label="Approved" count={counts.approved} active={servicesFilter === 'APPROVED'} onClick={() => setServicesFilter('APPROVED')} />
             <FilterButton label="Pending" count={counts.pending} active={servicesFilter === 'PENDING'} onClick={() => setServicesFilter('PENDING')} />
             <FilterButton label="Denied" count={counts.denied} active={servicesFilter === 'DENIED'} onClick={() => setServicesFilter('DENIED')} />
@@ -244,7 +241,7 @@ export default function ProviderServicesPanel({ provider, initialServices = [], 
               {`No ${servicesFilter === 'APPROVED' ? 'approved' : servicesFilter === 'PENDING' ? 'pending' : servicesFilter === 'DENIED' ? 'denied' : ''} services yet.`}
             </div>
             <div className="text-slate-400 text-[11px] mt-2 font-medium">Click Register to add your service.</div>
-            {servicesFilter === 'ALL' && counts.all === 0 && (
+            {counts.all === 0 && (
               <button
                 type="button"
                 onClick={openRegister}

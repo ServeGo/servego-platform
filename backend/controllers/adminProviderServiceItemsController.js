@@ -24,7 +24,9 @@ const BUCKETS = [
   { key: 'APPROVED', table: 'link' }
 ];
 
-const mapItem = (type, approvalStatus, extra) => (r) => ({
+// `type` doubles as the approval status (PENDING / DENIED / APPROVED) for the
+// bucket these rows came from, so the frontend can gate Approve/Deny on it.
+const mapItem = (type) => (r) => ({
   type,
   id: type === 'APPROVED' ? `APP-${r.id}` : r.id,
   provider: r.provider,
@@ -32,7 +34,7 @@ const mapItem = (type, approvalStatus, extra) => (r) => ({
   description: r.description || r.service?.description || '-',
   experienceYears: r.experienceYears ?? r.provider?.experienceYears ?? null,
   createdAt: r.createdAt,
-  approvalStatus,
+  approvalStatus: type,
   ...(type === 'DENIED' ? { denialReason: r.denialReason || null } : {})
 });
 
