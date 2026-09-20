@@ -9,7 +9,7 @@
 1. [High-level architecture](#1-high-level-architecture)
 2. [Repository layout](#2-repository-layout)
 3. [Backend stack & request lifecycle](#3-backend-stack--request-lifecycle)
-4. [API surface (142 routes)](#4-api-surface-142-routes)
+4. [API surface (140 routes)](#4-api-surface-140-routes)
 5. [Security, validation & middleware](#5-security-validation--middleware)
 6. [Auth & token model](#6-auth--token-model)
 7. [Data layer (Prisma)](#7-data-layer-prisma)
@@ -28,6 +28,7 @@
 20. [Engineering rules conformance](#20-engineering-rules-conformance)
 21. [Project metrics](#21-project-metrics)
 22. [Known gaps & next steps](#22-known-gaps--next-steps)
+23. [Cloudinary & image handling](#23-cloudinary--image-handling)
 
 ---
 
@@ -55,18 +56,18 @@ servego-platform/
 ├── package.json               # root orchestration (dev: all, build: frontend)
 ├── package-lock.json
 ├── AGENTS.md                  # permanent engineering rules (authored separately)
-├── API_LIST_GET_POST_GROUPED.md  # generated API reference (142 routes)
+├── API_LIST_GET_POST_GROUPED.md  # generated API reference (140 routes)
 ├── PROJ_ARCHITECTURE_REPORT.md   # this document
 ├── backend/
 │   ├── server.js              # bootstrap: express, socket.io, queue, timers
-│   ├── routes/api.js          # all 142 REST routes
+│   ├── routes/api.js          # all 140 REST routes
 │   ├── controllers/           # 26 controllers (HTTP layer)
 │   ├── middleware/            # 4 middleware modules
-│   ├── services/              # 23 service modules (19 top-level + 4 queue/)
-│   ├── utils/                 # 12 shared utilities
+│   ├── services/              # 24 service modules (20 top-level + 4 queue/)
+│   ├── utils/                 # 15 shared utilities (12 core + 3 telemetry)
 │   ├── prisma/
 │   │   ├── schema.prisma      # 37 models + 22 enums
-│   │   ├── migrations/        # 56 migrations
+│   │   ├── migrations/        # 1 squashed baseline (20260919000000_init)
 │   │   └── seed.js            # dev seed
 │   ├── seeders/               # servicesSeed + businessModelSeed (idempotent)
 │   ├── scripts/               # photo migration script
@@ -75,8 +76,8 @@ servego-platform/
     ├── src/
     │   ├── main.jsx, App.jsx  # router + role-based layout
     │   ├── context/           # Auth, Data, Realtime, UI, Toast, FeatureFlags, App
-    │   ├── pages/             # 14 entry pages + admin/ (tab router + 14 lazy tabs)
-    │   ├── components/        # shared + admin + provider components (54 files)
+    │   ├── pages/             # 16 entry pages + admin/ (tab router + 15 lazy tabs)
+    │   ├── components/        # shared + admin + home components (56 files)
     │   └── utils/             # apiClient, serializers, watermarks, etc. (8 files)
     └── package.json           # Vite 6 + React 19 + Tailwind 4
 ```
@@ -95,7 +96,7 @@ helmet → hpp → cors (getCorsConfig) → general rate limiter
 → trailing-slash 301 normalization
 → GET /api/health (DB liveness; 503 when DB unreachable)
 → GET /api/versions (uncached version registry)
-→ /api/v1/* via apiRouter (142 routes)
+→ /api/v1/* via apiRouter (140 routes)
 → 404 JSON { success:false, code:'NOT_FOUND', ... }
 → global errorHandler (last)
 ```
@@ -106,7 +107,7 @@ workers. No auto-seeding happens on boot — the service catalog, configs and le
 rules are only ever created by the explicit seed scripts (`prisma/seed.js`,
 `seeders/*`). Graceful shutdown drains the queue and disconnects Prisma.
 
-## 4) API surface (142 routes)
+## 4) API surface (140 routes)
 
 100 % of routes live in `backend/routes/api.js` and are exposed under `/api/v1`. The
 grouped reference (methods, paths, access roles, validation) is generated from that
@@ -115,23 +116,22 @@ file into `API_LIST_GET_POST_GROUPED.md`. Domain summary:
 | Domain | Key routes |
 |--------|-----------|
 | Auth & users | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `GET /auth/me`, `PATCH /users/:id/profile`, `GET /users` (admin) |
-| Providers | `GET /providers`, `GET /providers/:id`, `GET /providers/me/summary`, `PUT/PATCH /providers/me/availability`, `PATCH /providers/me/location`, `PATCH /providers/me/availability-status`, `GET /providers/me/route-plan`, `POST /provider-services` (own), `POST /providers/:id/services/register` |
+| Providers | `GET /providers`, `GET /providers/by-approved-service` (public, eligibility-gated), `GET /providers/:id`, `GET /providers/me/summary`, `PUT/PATCH /providers/me/availability`, `PATCH /providers/me/location`, `PATCH /providers/me/availability-status`, `GET /providers/me/route-plan`, `POST /provider-services` (own), `POST /providers/:id/services/register`, admin `GET /admin/providers/by-approved-service` (all providers, tagged eligible/statusLabel — manual `NO_PROVIDER` assignment), admin `GET /admin/providers/:id/wallet` |
 | Bookings | `POST /bookings`, `GET /bookings`, `GET /bookings/:id`, `PATCH /bookings/:id/{accept,decline,cancel,complete,status}`, `POST /bookings/:id/{on-the-way,arrived}`, `PATCH /bookings/:id/location`, messages, tracking, timeline |
-| Quotations | `POST /bookings/:id/quotation`, `GET/POST .../confirm`, `POST .../cancel` |
+| Quotations | `POST /bookings/:id/quotation`, `GET/POST .../confirm`, `POST .../cancel` — see rule 25 for the fee model (§9, §15) |
 | Notifications | `GET/POST /notifications`, `PATCH .../read`, `PATCH /read-all`, `DELETE /notifications` |
 | Alerts | `GET /alerts`, `DELETE /alerts/:id`, `DELETE /alerts` (temporary, deleted once reviewed) |
 | Tickets | `GET/POST /tickets`, `POST /support-tickets` (optional auth), admin resolve/status |
 | Reviews | `POST /reviews`, `GET /providers/:id/reviews`, `GET /bookings/:id/review` (view a review for one booking), admin list/delete |
-| Referrals | `POST /referrals/apply`, `GET /referrals/me`, `POST /referrals/generate` |
 | Services | `GET /services` (catalog + active counts), `GET /services/search`, `GET /services/top-rated` (max 5 best-rated services — used for "popular issues" chips), `GET /categories/:slug`, admin CRUD, `GET /admin/services` (ops list incl. hidden) |
 | Leads | `GET /leads`, `GET /leads/:id`, `PATCH /leads/:id/{view,accept,reject}` |
-| Permanent requests | `POST /permanent-service-requests`, `GET .../mine`, admin list/update, `POST .../cancel` |
-| Wallet | `GET /wallet`, `GET /wallet/ledger`, `POST /wallet/withdrawals`, `GET /wallet/withdrawals`, `GET /wallet/withdrawal/config`, admin wallet/withdrawals/credit/process |
+| Permanent requests | `POST /permanent-service-requests`, `GET .../mine`, admin list/update, `POST .../cancel` — request types `PERMANENT` / `CUSTOM` / `NO_PROVIDER`; the `NO_PROVIDER` flow lets the admin manually assign a provider, which creates a `CONFIRMED` booking + `ACCEPTED` lead (rule 24) |
+| Wallet | `GET /wallet`, `GET /wallet/ledger`, `POST /wallet/withdrawals`, `GET /wallet/withdrawals`, `GET /wallet/withdrawal/config`, admin wallet/withdrawals/credit/process, `GET /admin/providers/:id/wallet` |
 | Customer addresses | `GET/POST /customer-addresses`, `PATCH/DELETE /customer-addresses/:id`, `POST /customer-addresses/:id/default` |
 | Provider business | `GET /level-rules`, `GET /provider-performance/me`, `GET /promotions/me`, `POST /promotions/:id/acknowledge`, `GET /provider-level-history/me` |
-| Admin | dashboard, analytics, audit-logs, configs, level-rules, providers/status, provider-service-requests approve/deny, service items, reputation refresh, queue stats/requeue, feature flags, leads, wallet |
+| Admin | dashboard, analytics, audit-logs, configs, level-rules, providers/status, provider-service-requests approve/deny (incl. `GET /admin/providers/by-approved-service` for manual assignment), service items, reputation refresh, queue stats/requeue, feature flags, leads, wallet |
 | Feature flags | `GET /feature-flags/public` (public), `GET /feature-flags`, `PUT /feature-flags/:key` (admin) |
-| Misc | `POST /images/upload` (optional auth, multer → Cloudinary) |
+| Misc | `POST /images/upload` (optional auth, multer → Cloudinary; folder allowed-list `servego`, `servego/customers`, `servego/providers`, `servego/services`) |
 
 Customer addresses enforce exactly three labels (`HOME`/`OFFICE`/`OTHER`): `create`
 upserts by label (never a fourth row), an `update` that collides with another label
@@ -184,12 +184,14 @@ Validation is explicit per route; `body(...).optional()` keeps customer-specific
 
 ## 7) Data layer (Prisma)
 
-37 models, 22 enums, 56 migrations, all indexes defined as `@@index` in
+37 models, 22 enums, one squashed baseline migration
+(`20260919000000_init` — the full migration history from earlier environments was
+collapsed into it), all indexes defined as `@@index` in
 `schema.prisma` and mirrored by migration SQL (naming `Table_col1_col2_idx`).
 
 Key models:
 
-- `User` (role, referral fields, avatar) → `Customer` / `Provider` (1:1).
+- `User` (role, avatar) → `Customer` / `Provider` (1:1).
 - `Provider` — `category`, `sector` (`ProviderSector`, default `GENERAL`), `isOnline`,
   `acceptingBookings`, `maxRadiusKm`, `profileComplete`, `isVerified`, `accountStatus`,
   `serviceAreas`, `specialties`, `rating`, `reviewCount`,
@@ -263,13 +265,25 @@ PENDING → CONFIRMED → ONGOING → COMPLETED
   re-notification/regression on repeat calls) and the frontend collapses consecutive
   same-status timeline entries (`dedupeConsecutive`). A cancelled booking renders its
   cancellation reason + refuted status in the timeline instead of a dead card.
+- **Live tracking + auto-arrival** (`services/trackingService.js`): provider pings
+  become `BookingLocationUpdate` rows. When a GPS ping lands within the
+  admin-configurable `arrivalRadiusMeters` (default 150 m) of the booking's service
+  coordinates, `ARRIVED` is signalled automatically with `source: 'gps'`; the radius
+  gate re-checks the exact live ping, and an already-`ARRIVED` booking is a no-op
+  (idempotent). The manual "Arrive" button sends `source: 'manual'`, which bypasses
+  the radius gate, so the provider can always close the trip if GPS is unavailable.
 - Booking-tracked location history is purged when a trip is over: decline-without-
   replacement, last-provider decline, and completion all call
   `clearLocationHistory` (from `services/trackingService.js`) inside the same
   transaction that settles the booking, so stale pings/live fixes never survive with
   the booking row. Every page of `BookingLocationUpdate` is deleted.
-- Accepted-quotation billing uses `debitWalletAllowNegative` (tab-style); completion
-  emits analytics + invoice via the queue.
+- Accepted-quotation billing follows rule 25: a quotation carries **only** the
+  provider's payable line items (`serviceFee: 0`, `totalAmount = sum(items)`), and
+  confirming it charges no service fee. Settlement is ledger-only — the customer
+  pays the provider directly/or external, so the platform's commission is a
+  `COMMISSION` debit to the **provider's wallet** (may run negative) while the
+  gross amount is tracked as lifetime earnings (`recordWalletEarning`). Completion
+  emits analytics + invoice via the queue. See §11 and §15.
 
 ## 10) Lead generation & matching engine
 
@@ -327,11 +341,24 @@ providers only see customer contact data once accepted.
 `services/walletService.js`: every mutation runs in a serializable transaction with
 retry on serialization failure (retries bump the balance exactly once). `creditWallet` /
 `debitWallet` enforce non-negative balance; `debitWalletAllowNegative` bills without a
-check (tab-style debts, e.g. declined-quotation fee or accepted quotation at completion).
-Every mutation writes a `WalletTransaction` row with `balanceAfter` — the ledger is
-append-only and the balance is derived state.
+check (tab-style debts). Every mutation writes a `WalletTransaction` row with
+`balanceAfter` — the ledger is append-only and the balance is derived state.
 
-- Earnings: `BOOKING_EARNING` credits on completion; service fees debit at lead start.
+Settlement is **ledger-only** (rule 25): customers pay providers directly, off-platform,
+so the wallet records state rather than moving real money.
+
+- Earnings: `recordWalletEarning` tracks the gross quotation total as a lifecycle
+  `BOOKING_EARNING` entry (increments `totalEarned`) — a display ledger, never a gated
+  balance. The platform commission on that total is a `debitWalletAllowNegative`
+  `COMMISSION` debit to the **provider** wallet on completion; a negative balance keeps
+  the provider out of new leads until cleared.
+- Declined quotation (customer cancels after reviewing): the fixed service fee
+  (`serviceFeeDefault`, default ₹249) is **not** charged to the customer — instead the
+  commission on it is mandatorily debited from the **provider** wallet (`COMMISSION`),
+  the provider keeps the gross fee as lifetime earnings, and the customer ledger gets a
+  display-only `SERVICE_FEE` entry ("Cancellation Fee"). Quotation CAS
+  (`where: { id, status: 'SUBMITTED' }`) makes the settlement run exactly once; retries
+  return `feeDebited: false`.
 - Withdrawals: `withdrawal/config` exposes thresholds (minimum/maximum, admin-configurable);
   `requestWithdrawal` creates a `WalletWithdrawalRequest` (PENDING); admin
   `processWithdrawal` transitions with idempotent guards and only releases funds after
@@ -402,8 +429,12 @@ Admin-configurable marketplace (`AdminConfig`, `ProviderLevelRule`):
 - Lead pricing/fees and withdrawal limits are config keys, not code.
 - Platform commission is a **flat 10%** default (`commissionTiers` config key still
   accepts `{ min, max, rate }` buckets; default is one `0 – ∞ → 10%` bucket). The
-  fixed service fee charged to customers on declined quotations is ₹249 default
-  (`serviceFeeDefault`). Both are AdminConfig overrides, not code.
+  fixed service fee is ₹249 default (`serviceFeeDefault`) and — per rule 25 — is
+  settled **only on a customer cancel after a quotation**: the commission on it is
+  debited from the provider's wallet, the provider keeps the gross fee as lifetime
+  earnings, and the customer ledger shows a display-only "Cancellation Fee" entry
+  (never a real charge). Quotation confirmation itself charges no service fee.
+  Both are AdminConfig overrides, not code.
 - The business-model seed (`seeders/businessModelSeed.js`) creates config + level-row
   defaults — it must be run explicitly (not on boot). There is no subscription or
   premium-SECTOR plan anymore — every provider is `GENERAL` and all approved services
@@ -475,17 +506,36 @@ custom state-based switch in `App.jsx` (`currentPage`), no react-router dependen
 - **Live tracking gating (feature flags):** `BookingCard` renders the customer-side
   `LiveTrackingMap` only when `liveTrackingCustomers` is on AND the booking is in an
   active phase (ON_THE_WAY/ARRIVED/started); `ProviderLeadsInbox` renders the same full
-  map in the Active Duty card when `liveTrackingProviders` is on. When off, the card
-  shows the service address as before. Address-editor saves are gated on the map pin
-  being explicitly confirmed (`LocationPicker.onConfirmState`) so a dragged-but-
-  unconfirmed pin never commits a stale location.
+  map in the Active Duty card for the whole duty window (`activeDuty && !arrived`,
+  CONFIRMED/ONGOING until ARRIVED) so the provider can navigate to the customer; once
+  ARRIVED the card swaps to the service address and stops location sharing. The
+  live-tracking `liveTrackingProviders` flag gates the customer-facing map but the
+  provider's own duty map is always available. When off, the card shows the service
+  address as before. `LiveTrackingMap` renders a tile map whenever a destination exists,
+  even before any GPS fix (chip: "Waiting for your location… showing destination").
+  Address-editor saves are gated on the map pin being explicitly confirmed
+  (`LocationPicker.onConfirmState`) so a dragged-but-unconfirmed pin never commits a
+  stale location.
 - Dashboard/admin tabs are URL-backed (tab state in the URL hash) so refresh/navigation
   keeps the active tab; the cancelled-booking card shows the cancellation reason + a
   neutral "Cancelled" paywall rather than a dead row.
 - Loading UX (rule 15): `SkeletonLoader`, skeleton/empty states per screen, inline
   "Processing…" for long-running flows, lazy-chunk fallbacks above; optimistic UI only
   for trivial reversible toggles (favourites) — payments, cancellations and withdrawals
-  wait for the server.
+  wait for the server. The home category grid (`CategoryGrid`) takes the catalog
+  `loading` flag, renders skeletons while loading, and shows a "No services available
+  yet" empty state once loading finishes with no data; `Services` only clears
+  `isLoading` on the latest request settle (stale, out-of-order responses can no longer
+  flash the list).
+- **Cloudinary images:** profile photos and service images upload straight to
+  Cloudinary via `POST /images/upload` with a role-scoped folder —
+  `ProfilePhotoPicker`/`ProfileView` choose `servego/providers` vs `servego/customers`
+  by the user's role, `ServiceFormModal` always sends `servego/services` — and the
+  returned Cloudinary URL is stored on the model (`user.avatar`, `provider.photo`,
+  `service.image`). Static website images (hero desktop/mobile, tracking showcase, SEO)
+  are centralised in `data/websiteImages.js`, built from the
+  `import.meta.env.VITE_PUBLIC_IMAGES_CLOUD` value (default `dal84gvkm`) so testing and
+  backup/production builds serve identical relative paths from different accounts (§23).
 
 ## 18) Config, feature flags & runtime
 
@@ -494,16 +544,19 @@ custom state-based switch in `App.jsx` (`currentPage`), no react-router dependen
 - `services/featureFlagsService.js` — runtime toggles + announcement banner, exposed
   publicly (`/feature-flags/public`) and editable by admin. Live-tracking flags:
   `liveTrackingCustomers` (default `true`) and `liveTrackingProviders` (default
-  `false`) — both public, `Tracking` category — gate whether the customer booking
-  card and the provider Active Duty card render the live map instead of the service
-  address. The frontend mirrors them via `FeatureFlagsContext`.
+  `false`) — both public, `Tracking` category. `liveTrackingCustomers` gates the
+  customer booking card's live map; the provider's **own** Active Duty card always
+  renders the duty map (`activeDuty && !arrived`, §17) regardless of its flag. The
+  frontend mirrors them via `FeatureFlagsContext`.
 - `AdminConfig` keys — business config (withdrawal limits, lead fees, radius default,
   timers). Read caches are invalidated on write.
 - `.env` variables used: `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
   `JWT_EXPIRY`, `JWT_REFRESH_EXPIRY`, `PORT`, `NODE_ENV`, `FRONTEND_URL`/CORS list,
   `EMAIL_*` (nodemailer), `CLOUDINARY_*`, `GOOGLE_MAPS_API_KEY` (optional, haversine
   fallback), `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` (payouts/credits where wired),
-  `GEMINI_API_KEY` (`@google/genai` dependency, optional).
+  `GEMINI_API_KEY` (`@google/genai` dependency, optional). Frontend build env:
+  `VITE_API_URL`, `VITE_SOCKET_URL` and `VITE_PUBLIC_IMAGES_CLOUD` (which Cloudinary
+  account serves the static website images; see §23).
 
 ## 19) Scripts, tests & operations
 
@@ -532,7 +585,7 @@ Graceful shutdown drains queue workers and disconnects Prisma on SIGTERM/SIGINT.
 
 ## 20) Engineering rules conformance
 
-The permanent rules in `AGENTS.md` (12–23) are reflected in code:
+The permanent rules in `AGENTS.md` (12–26) are reflected in code:
 
 - **12 (queries):** list endpoints paginated (`offsetMeta`/cursor); `select`-trimmed
   lists; no child-row `include` where scalars suffice; aggregations via `groupBy`/
@@ -559,17 +612,33 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
 - **20 (async side effects):** email/invoice/analytics/performance enqueued only.
 - **23 (realtime recovery):** socket is fast-path; watermarked resync + stale
   indicators on reconnect.
+- **24 (no-provider manual booking):** `NO_PROVIDER` request type + admin manual
+  assignment (`PATCH /permanent-service-requests/:id`, `/admin/providers/by-approved-service`
+  listing every provider tagged `eligible`/`statusLabel`); the backend applies the choice
+  unconditionally and `leadService.createManuallyAssignedBookingWithLead()` creates a
+  `CONFIRMED` booking + `ACCEPTED` lead + `ADMIN_MANUAL_ASSIGNMENT` history and emits
+  realtime `booking:created` / `lead:new`.
+- **25 (quotation fees):** quotations carry only provider line items (`serviceFee: 0`);
+  the fixed service fee is settled only on a customer cancel after review — commission
+  mandatorily debited from the provider wallet, provider keeps the gross fee as lifetime
+  earnings, customer ledger gets a display-only `SERVICE_FEE` ("Cancellation Fee");
+  CAS `where: { id, status: 'SUBMITTED' }` guarantees exactly-once settlement.
+- **26 (cloudinary images):** `/images/upload` allow-lists per-context folders
+  (`servego`, `servego/customers`, `servego/providers`, `servego/services`); the profile
+  picker picks by role; static website images are env-configurable
+  (`VITE_PUBLIC_IMAGES_CLOUD`) with identical relative paths on testing and
+  backup/production accounts.
 
 ## 21) Project metrics
 
-- 26 controllers, 23 service modules (19 top-level + 4 queue), 11 utils,
-  4 middleware modules.
-- 37 Prisma models, 22 enums, 56 migrations.
-- 142 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
-- 19 test files (18 unit/e2e-mock + 1 DB-backed), incl. `bookingFlow.test.js` (24 cases)
-  and the newer `locationCleanup` / `providerLevelIncentive` suites.
-- Frontend: 29 page files (14 entry pages + admin tab router + 14 lazy tab chunks),
-  54 components, 7 contexts, 8 utils.
+- 26 controllers, 24 service modules (20 top-level + 4 queue), 15 utils
+  (12 core + 3 telemetry), 4 middleware modules.
+- 37 Prisma models, 22 enums, 1 squashed baseline migration (`20260919000000_init`).
+- 140 REST routes, all under `/api/v1`, documented in `API_LIST_GET_POST_GROUPED.md`.
+- 19 test files (18 unit/e2e-mock + 1 DB-backed), 165 tests all passing; the
+  booking-flow suites (56 tests) cover the full lead → quotation pipeline.
+- Frontend: 32 page modules (16 entry pages + admin tab router + 15 lazy tab chunks),
+  56 components, 7 contexts, 8 utils.
 - Frontend bundles: entry chunk ~352 kB (gzip ~103 kB); everything else is on demand —
   `maplibre-gl` shared chunk ~952 kB (gzip ~249 kB, fetched only when a LocationPicker
   renders), Leaflet runs entirely off a CDN tag, `exportExcel` ~285 kB,
@@ -600,3 +669,32 @@ The permanent rules in `AGENTS.md` (12–23) are reflected in code:
   not forget the purge, or stale pings linger behind a re-used booking.
 - Frontend map identity is split (MapLibre for the picker vs Leaflet CDN for
   tracking) — a future move to a single engine should preserve the zero-API-key cost.
+
+## 23) Cloudinary & image handling
+
+Every image on the platform is served from Cloudinary (`res.cloudinary.com`); nothing
+image-like is stored locally. There is one Cloudinary account **per environment**:
+`dal84gvkm` (testing, the default) and `qbnpjuua` (backup + production), driven by each
+environment's `CLOUDINARY_*` backend variables and, for static images, the frontend
+build variable `VITE_PUBLIC_IMAGES_CLOUD`.
+
+**Folders are auto-created on first upload** — Cloudinary creates the folder implicitly
+when an upload includes the `folder` option and persists it; no manual folder-creation
+step exists. The agreed folder layout:
+
+| Context | Folder | Source in code |
+|---------|--------|----------------|
+| Customer profile photo | `servego/customers` | `ProfilePhotoPicker` / customer `Signup` |
+| Provider profile photo | `servego/providers` | provider `Signup`; `ProfileView` picks by role |
+| Service photo (admin) | `servego/services` | `ServiceFormModal` |
+| Fallback / default | `servego` | `imageController` when folder not allow-listed |
+| Static website images (hero desktop/mobile, tracking showcase, SEO) | `servego/public` (and root `img1_m1lbe8`) | `frontend/src/data/websiteImages.js` |
+
+`POST /images/upload` (`imageController.js`) allow-lists the four upload folders and
+uploads via `services/cloudinaryService.js` (800×800 limit transform, quality auto,
+timestamp-random `public_id`). The returned `secure_url` is persisted on the owning row
+(`user.avatar`, `provider.photo`, `service.image`), so avatars and service cards render
+directly from Cloudinary. The cloudinary SDK is v2.10.x — its `upload(file, callback, options)`
+signature must be respected (the `folder`/`public_id` options sit in the third position);
+the same relative, version-less paths resolve on any account, so the backup/production
+builds only need `VITE_PUBLIC_IMAGES_CLOUD=qbnpjuua`.

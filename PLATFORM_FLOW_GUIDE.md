@@ -47,20 +47,21 @@ There are **3 types of people** on the platform:
 ### 6. Service Happens
 - Provider marks "On the Way" → customer gets notified
 - Provider marks "Arrived" → customer gets notified
+  - If the provider's live location enters the arrival zone (radius set by admins, default 150 m), "Arrived" happens **automatically**
 - Work is done
 
 ### 7. Payment & Completion
-- Provider marks the job as "Completed"
-- If the final price is different from the estimate, provider sends a **quotation**
-- Customer reviews and confirms the quotation
-- Payment is processed
+- After the work, the provider sends a **quotation** (their price with line items)
+- Customer reviews and **confirms** the quotation → work is recorded as complete
+- **No service fee is charged when you confirm a quotation** — you pay the provider's price directly. ServeGo only records the payment; actual money changes hands off-platform (cash/UPI)
+- If the customer **cancels after seeing the quotation**, a fixed Cancellation Fee (default ₹249) shows in their wallet as record only, and the provider is compensated (see Money Flow below)
 - Customer can leave a **review and rating**
 
 ### 8. Other Customer Features
 - **Saved Addresses** — save up to 3 addresses (Home, Office, Other)
 - **Booking History** — see all past and current bookings
+- **No-Provider Requests** — if no provider is available for a service, submit a manual request and admin assigns one (see below)
 - **Support Tickets** — raise a complaint if something goes wrong
-- **Referral Code** — share with friends, earn discount credits
 - **Forgot Password** — reset via email link
 - **Permanent/Contract Requests** — for recurring services (e.g. monthly AC maintenance)
 
@@ -104,16 +105,19 @@ There are **3 types of people** on the platform:
 
 ### 6. Doing the Job
 - After accepting, provider sees full customer details and address
+- The Active Duty card shows the live map the whole trip (until arrival)
 - Provider marks "On the Way" when leaving
-- Provider marks "Arrived" when at customer's location
+- Provider is marked "Arrived" automatically when within ~150 m of the address (falls back to the manual **Arrive** button if GPS is unavailable)
 - Does the work
-- If price changes, sends a **quotation** to customer for approval
-- Marks job as "Completed"
+- Sends a **quotation** with their line items for the customer to approve
+- The job is completed once the customer **confirms** the quotation
 
 ### 7. Earnings
-- Earnings are credited to provider's **wallet** after job completion
-- Platform takes a **10% commission** from each job
-- Provider can request **withdrawal** of their wallet balance
+- After completion, the full quotation amount is recorded in the provider's **earnings ledger** (lifetime earnings). Customers pay the provider directly off-platform — ServeGo only records the exchange
+- Platform takes a **10% commission** on the quotation total, debited from the provider's **wallet** (may run negative until cleared)
+- If a customer cancels after a quotation, the commission on the fee is still debited from the provider's wallet and the provider **keeps the fixed service fee (default ₹249)** as compensation
+- Providers with a negative wallet balance stop receiving new leads until it is cleared
+- Provider can request a **withdrawal** of their positive wallet balance
 - Admin processes the withdrawal
 
 ### 8. Provider Levels & Rewards
@@ -167,7 +171,13 @@ Customer is notified once a provider accepts
 
 ### What if no provider is available?
 - If no eligible provider is found, customer is informed
-- Common reasons a provider might not show up in the list:
+- The customer can then submit a **No-Provider request**: pick the service, enter the
+  location and a short message. It lands in the admin queue (`PENDING`), and the admin
+  picks a provider from every provider approved for that service (tagged with their
+  status, e.g. blocked/on-hold/unverified) and **assigns** them. The booking is created
+  as confirmed and the provider gets a lead/provides accepted — the admin's choice is
+  applied as-is
+- Common reasons a provider might not show up in the list automatically:
   - They haven't set their location on the map
   - Customer is outside their service radius
   - Their profile is incomplete or not verified
@@ -247,35 +257,46 @@ Admin is the ServeGo24 operations team. They have a full dashboard to manage eve
 ## MONEY FLOW
 
 ```
-Customer pays ₹1000 for AC Repair
+Customer agrees the quotation of ₹1000 for AC Repair
         ↓
-Platform takes 10% = ₹100 (commission)
+Customer pays the provider directly (cash / UPI — off-platform)
         ↓
-Provider earns ₹900 → credited to wallet
+Platform commission 10% = ₹100 → debited from the PROVIDER's wallet
         ↓
-Provider requests withdrawal
+Provider's ledger records lifetime earnings ₹1000
+        ↓
+Provider requests withdrawal of their wallet balance
         ↓
 Admin approves → money transferred to provider's bank
 ```
 
----
-
-## REFERRAL SYSTEM
-
-- Every customer gets a unique referral code (e.g. `SERVEGO-CUST-RAM45`)
-- Share with a friend → friend signs up using the code
-- Both get discount credits on their next booking
-- Customer can see their referral count and total bonus earned
+Two important rules:
+- **Confirming a quotation charges no service fee** — the quotation's total is just the
+  provider's price. The platform's 10% commission is a wallet debit against the provider,
+  not a charge to the customer.
+- **Cancelling after a quotation** (customer side) settles differently: the platform
+  commission on the fixed fee (₹249 default) is debited from the provider's wallet, the
+  provider keeps the ₹249 as compensation, and the customer wallet shows a display-only
+  "Cancellation Fee" record (it is not a real charge — money never actually moves for it).
 
 ---
 
 ## PERMANENT / CONTRACT SERVICE REQUESTS
 
-For customers who need **recurring services** (e.g. monthly AC maintenance, weekly cleaning):
-- Customer submits a "Permanent Service Request"
-- Admin reviews and assigns a dedicated provider
-- Provider handles the customer on a contract basis
-- Admin manages the entire contract lifecycle
+Customers can submit service requests that aren't a quick "book now" booking. Three
+request types:
+
+- **PERMANENT (recurring contract)** — for recurring services (e.g. monthly AC
+  maintenance, weekly cleaning). Customer submits the contract details (engagement type,
+  start date, monthly budget, etc.) and admin assigns a dedicated provider.
+- **CUSTOM** — a one-off custom request with just a service name + description.
+- **NO_PROVIDER** — the customer couldn't find a provider for a service. It requires only
+  the service category, location and a short note; admin manually assigns a provider (see
+  "What if no provider is available?" above).
+
+Admin reviews everything in the **Permanent Service Requests** and **Manual Booking
+Requests** tabs, approves/rejects with a note, and the customer gets notified once status
+changes. A permanent request can also be cancelled by the customer.
 
 ---
 

@@ -98,7 +98,7 @@ export default function ProfileView({ user, onSave }) {
         <form onSubmit={handleSubmit} className="space-y-5 text-xs font-bold text-slate-700">
           <ProfilePhotoPicker
             src={photoUrl || user?.avatar}
-            folder="servego/customers"
+            folder={user?.role === 'provider' ? 'servego/providers' : 'servego/customers'}
             onChange={(url) => {
               setPhotoUrl(url);
               setPhotoChanged(true);

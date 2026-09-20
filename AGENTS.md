@@ -350,3 +350,33 @@ charged **only when the customer cancels after reviewing the quotation**
 - Settled returns include `feeDebited: true`, `commission`,
   `providerCompensation`.
 
+## 26. Cloudinary images — per-context folders, one account per environment
+
+Every image on the platform is served from Cloudinary (`res.cloudinary.com`).
+Each environment uses its own account (testing `dal84gvkm`, backup/production
+`qbnpjuua`) via `CLOUDINARY_*` backend vars and, for the static website images,
+the frontend build var `VITE_PUBLIC_IMAGES_CLOUD`.
+
+Rules:
+
+- Uploads go through `POST /images/upload` only; `imageController.js` allow-lists
+  exactly `servego`, `servego/customers`, `servego/providers`, `servego/services` —
+  anything else falls back to `servego`. The frontend sends the right role folder:
+  `servego/providers` for providers (both signup and profile edit), `servego/customers`
+  for customers, `servego/services` for service photos (`ServiceFormModal`).
+- Cloudinary **auto-creates the folder on first upload** (the `folder` option) and
+  persists it — never call a folder-creation API, and never hardcode host-specific
+  public IDs in the app.
+- Model names map to folders: `user.avatar` / `provider.photo` (role folder),
+  `service.image` (`servego/services`). The returned `secure_url` is persisted; the UI
+  renders it directly.
+- Static website images (hero desktop/mobile, tracking showcase, SEO) live in
+  `frontend/src/data/websiteImages.js` and resolve their cloud name from
+  `import.meta.env.VITE_PUBLIC_IMAGES_CLOUD || 'dal84gvkm'`. Keep the same relative
+  (version-less) paths on every account so testing and backup/production builds are
+  byte-identical; backup/production set `VITE_PUBLIC_IMAGES_CLOUD=qbnpjuua` at build time.
+- Cloudinary SDK is v2.10.x: signature is `upload(file, callback, options)` (options are
+  the **third** argument). Passing options as the second argument silently drops
+  `folder`/`public_id` and uploads with a random public ID — always pass options third
+  (or `upload(file, undefined, options)` for promise style).
+
