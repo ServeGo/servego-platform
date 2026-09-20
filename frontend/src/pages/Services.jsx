@@ -97,7 +97,6 @@ export const Services = ({ onNavigate }) => {
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
   const [contactPhone, setContactPhone] = useState('');
-  const [instructions, setInstructions] = useState('');
   const [errorText, setErrorText] = useState('');
   const [confirmedBookingDetails, setConfirmedBookingDetails] = useState(null);
   const [showManualRequestSuccess, setShowManualRequestSuccess] = useState(false);
@@ -190,11 +189,14 @@ export const Services = ({ onNavigate }) => {
       setIsLoading(true);
       searchServices(searchQuery, '', controller.signal).then((data) => {
         // `data` is null for aborted requests; the seq guard also rejects any
-        // response that raced past the abort.
-        if (seq === searchSeqRef.current && data) {
+        // response that raced past the abort. Always flip loading off once the
+        // settled request is the latest so an empty result set falls through to
+        // the empty state instead of spinning forever.
+        if (seq !== searchSeqRef.current) return;
+        setIsLoading(false);
+        if (data) {
           setResults(data);
           setPage(1);
-          setIsLoading(false);
         }
       });
     }, SEARCH_DEBOUNCE_MS);
@@ -227,7 +229,6 @@ export const Services = ({ onNavigate }) => {
       setLatitude(null);
       setLongitude(null);
       setContactPhone(currentUser?.phone || '');
-      setInstructions('');
       setErrorText('');
       setBookingStep(1);
       loadSavedAddresses();
@@ -310,8 +311,7 @@ export const Services = ({ onNavigate }) => {
         serviceLatitude: latitude,
         serviceLongitude: longitude,
         city: 'Hyderabad',
-        contactPhone,
-        instructions
+        contactPhone
       });
 
       if (!created || created.error) {
@@ -319,7 +319,6 @@ export const Services = ({ onNavigate }) => {
           const request = await apiClient.post('/permanent-service-requests', {
             requestType: 'NO_PROVIDER',
             serviceCategory: bookingServiceName,
-            additionalInfo: instructions.trim(),
             locationAddress: address,
             serviceLatitude: latitude,
             serviceLongitude: longitude
@@ -474,7 +473,6 @@ export const Services = ({ onNavigate }) => {
             latitude={latitude} longitude={longitude}
             setLatitude={setLatitude} setLongitude={setLongitude}
             contactPhone={contactPhone} setContactPhone={setContactPhone}
-            instructions={instructions} setInstructions={setInstructions}
             onSubmit={handleCompleteCheckout}
             savedAddresses={savedAddresses}
             onPickSaved={handlePickSaved}

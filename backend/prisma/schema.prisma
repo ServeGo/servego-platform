@@ -425,13 +425,14 @@ model Quotation {
   @@index([providerId, createdAt])
 }
 
-// Bounded history of provider location pings for a booking, recorded while the
-// trip is CONFIRMED/ONGOING for live ETA + telemetry. The moment a booking
-// closes (COMPLETED/CANCELLED) every ping is deleted and the Booking live fix
-// is nulled — inline at the transition, with a background sweep as fail-safe.
+// One live location row per booking, updated in place while the trip is
+// CONFIRMED/ONGOING for live ETA + telemetry. Both the customer and provider
+// views read this same row. The moment a booking closes (COMPLETED/CANCELLED)
+// the row is deleted and the Booking live fix is nulled — inline at the
+// transition, with a background sweep as fail-safe.
 model BookingLocationUpdate {
   id         String   @id @default(cuid())
-  bookingId  String
+  bookingId  String   @unique
   providerId String
   latitude   Float
   longitude  Float
@@ -440,9 +441,7 @@ model BookingLocationUpdate {
   booking  Booking  @relation(fields: [bookingId], references: [id])
   provider Provider @relation(fields: [providerId], references: [id])
 
-  @@index([bookingId])
   @@index([providerId])
-  @@index([recordedAt])
 }
 
 model BookingEvent {

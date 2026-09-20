@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import prisma from '../prisma/client.js';
 import { setQueueEnabled } from '../services/queue/queueService.js';
-import { markProviderOnTheWay, markProviderArrived } from '../services/trackingService.js';
+import { markProviderOnTheWay, markProviderArrived, updateProviderLocation } from '../services/trackingService.js';
 
 // Persist notifications inline (no worker process is running in tests).
 setQueueEnabled(false);
@@ -134,13 +134,16 @@ test('markProviderOnTheWay never regresses a booking that already arrived', asyn
 
 const purge = async () => {
   if (!dbReady) return;
-  await prisma.job.deleteMany({ where: { type: 'notification', payload: { path: ['userId'], equals: 'tracking-test-customer' } } });
-  await prisma.notification.deleteMany({ where: { userId: 'tracking-test-customer' } });
-  // Dependent rows must go first (RESTRICT FK from BookingEvent on Booking, etc.).
-  await prisma.bookingEvent.deleteMany({ where: { booking: { customerId: 'tracking-test-customer' } } });
-  await prisma.booking.deleteMany({ where: { customerId: 'tracking-test-customer' } });
-  await prisma.provider.deleteMany({ where: { userId: 'tracking-test-provider' } });
-  await prisma.user.deleteMany({ where: { id: { in: ['tracking-test-customer', 'tracking-test-provider'] } } });
+  for (const customerId of ['tracking-test-customer', 'autoarrive-customer']) {
+    await prisma.job.deleteMany({ where: { type: 'notification', payload: { path: ['userId'], equals: customerId } } });
+    await prisma.notification.deleteMany({ where: { userId: customerId } });
+    // Dependent rows must go first (RESTRICT FK from BookingEvent on Booking, etc.).
+    await prisma.bookingLocationUpdate.deleteMany({ where: { booking: { customerId } } });
+    await prisma.bookingEvent.deleteMany({ where: { booking: { customerId } } });
+    await prisma.booking.deleteMany({ where: { customerId } });
+  }
+  await prisma.provider.deleteMany({ where: { userId: { in: ['tracking-test-provider', 'autoarrive-provider'] } } });
+  await prisma.user.deleteMany({ where: { id: { in: ['tracking-test-customer', 'tracking-test-provider', 'autoarrive-customer', 'autoarrive-provider'] } } });
 };
 test.before(purge);
 test.after(purge);
@@ -190,4 +193,55 @@ dbTest('markProviderOnTheWay persists the phase and notifies the customer', asyn
   assert.equal(arrived.payload.providerPhase, 'ARRIVED');
   const storedAfter = await prisma.booking.findUnique({ where: { id: booking.id }, select: { providerPhase: true } });
   assert.equal(storedAfter.providerPhase, 'ARRIVED');
+});
+
+dbTest('updateProviderLocation auto-arrives when the provider is within the arrival radius', async () => {
+  await prisma.user.create({
+    data: { id: 'autoarrive-customer', name: 'Auto Arrive Customer', email: 'autoarrive-customer@example.com', phone: '3333333333', role: 'customer', password: 'x' }
+  });
+  await prisma.user.create({
+    data: { id: 'autoarrive-provider', name: 'Auto Arrive Provider', email: 'autoarrive-provider@example.com', phone: '4444444444', role: 'provider', password: 'x' }
+  });
+  const provider = await prisma.provider.create({
+    data: { userId: 'autoarrive-provider', category: 'test-track', maxRadiusKm: 10, isOnline: true, acceptingBookings: true }
+  });
+  const booking = await prisma.booking.create({
+    data: {
+      customerId: 'autoarrive-customer',
+      providerId: provider.id,
+      serviceCategory: 'test-track',
+      locationAddress: 'Auto Arrive Address',
+      city: 'Test City',
+      status: 'CONFIRMED',
+      serviceLatitude: 19.1,
+      serviceLongitude: 72.85,
+      endLocation: { latitude: 19.1, longitude: 72.85 }
+    }
+  });
+
+  const events = [];
+  const io = { to: (room) => ({ emit: (event, data) => events.push({ room, event, data }) }) };
+
+  // Far from the service location — nothing happens, phase stays null.
+  await updateProviderLocation({ bookingId: booking.id, providerUserId: 'autoarrive-provider', latitude: 19.2, longitude: 72.9, io });
+  let stored = await prisma.booking.findUnique({ where: { id: booking.id }, select: { providerPhase: true, arrivedSource: true } });
+  assert.equal(stored.providerPhase, null);
+
+  // ~11 m from the service location — ARRIVED is signalled automatically.
+  const result = await updateProviderLocation({ bookingId: booking.id, providerUserId: 'autoarrive-provider', latitude: 19.1001, longitude: 72.85, io });
+  assert.equal(result.payload.providerPhase, 'ARRIVED');
+  assert.equal(result.payload.arrivedSource, 'gps');
+  stored = await prisma.booking.findUnique({ where: { id: booking.id }, select: { providerPhase: true, arrivedSource: true } });
+  assert.equal(stored.providerPhase, 'ARRIVED');
+  assert.equal(stored.arrivedSource, 'gps');
+
+  assert.ok(
+    events.some((e) => e.event === 'provider:arrived' && e.data.providerPhase === 'ARRIVED'),
+    'the customer room receives the auto-arrival event'
+  );
+
+  await prisma.bookingLocationUpdate.deleteMany({ where: { bookingId: booking.id } });
+  await prisma.bookingEvent.deleteMany({ where: { bookingId: booking.id } });
+  await prisma.booking.deleteMany({ where: { id: booking.id } });
+  await prisma.provider.deleteMany({ where: { id: provider.id } });
 });

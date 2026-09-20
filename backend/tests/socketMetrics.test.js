@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import prisma from '../prisma/client.js';
 import { socketMetrics } from '../services/socketMetrics.js';
-import { updateProviderLocation } from '../services/trackingService.js';
+import { updateProviderLocation, resetProviderPhase } from '../services/trackingService.js';
 import { setConfig, invalidateConfig } from '../services/adminConfigService.js';
 
 // Pure unit tests — always run, no DB needed.
@@ -60,7 +60,7 @@ const dbTest = dbReady ? test : test.skip;
 
 // Each DB test seeds its own rows so tests never collide on unique keys; the
 // purge strips every seed's rows before/after the whole file.
-const SUFFIXES = ['persist', 'subcadence', 'invalid'];
+const SUFFIXES = ['persist', 'subcadence', 'invalid', 'single'];
 
 async function purgeAll() {
   if (!dbReady) return;
@@ -138,6 +138,25 @@ dbTest('updateProviderLocation persists when the cadence has elapsed', async () 
   assert.equal(result.payload.latitude, 19.11);
   const history = await prisma.bookingLocationUpdate.count({ where: { bookingId: booking.id } });
   assert.equal(history, 1, 'an elapsed cadence writes exactly one history row');
+});
+
+dbTest('updateProviderLocation updates the single row per booking instead of appending', async () => {
+  const { providerUserId } = await seed('single', { providerLocationUpdatedAt: new Date(Date.now() - 2 * 3600_000) });
+  const booking = await prisma.booking.findUnique({ where: { id: 'socket-metrics-booking-single' } });
+
+  await updateProviderLocation({ bookingId: booking.id, providerUserId, latitude: 19.11, longitude: 72.86 });
+  assert.equal(await prisma.bookingLocationUpdate.count({ where: { bookingId: booking.id } }), 1);
+
+  // Force the next ping past the cadence gate and drop the in-memory fix so it
+  // re-reads the DB watermark, then persist again.
+  await prisma.booking.update({ where: { id: booking.id }, data: { providerLocationUpdatedAt: new Date(Date.now() - 2 * 3600_000) } });
+  await resetProviderPhase(booking.id);
+
+  await updateProviderLocation({ bookingId: booking.id, providerUserId, latitude: 19.22, longitude: 72.87 });
+
+  const rows = await prisma.bookingLocationUpdate.findMany({ where: { bookingId: booking.id } });
+  assert.equal(rows.length, 1, 'a booking keeps exactly one location row');
+  assert.equal(rows[0].latitude, 19.22, 'the row is updated in place');
 });
 
 dbTest('updateProviderLocation skips PostgreSQL writes on a sub-cadence ping', async () => {

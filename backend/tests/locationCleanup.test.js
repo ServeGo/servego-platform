@@ -59,25 +59,23 @@ async function seed(suffix, { status, withLiveFix = false }) {
       ...(withLiveFix ? { providerLatitude: 19.11, providerLongitude: 72.86, providerLocationUpdatedAt: new Date() } : {})
     }
   });
-  for (let i = 0; i < 2; i++) {
-    await prisma.bookingLocationUpdate.create({
-      data: { bookingId: booking.id, providerId: booking.providerId, latitude: 19.11 + i / 100, longitude: 72.86, recordedAt: new Date(Date.now() - i * 1000) }
-    });
-  }
+  await prisma.bookingLocationUpdate.create({
+    data: { bookingId: booking.id, providerId: booking.providerId, latitude: 19.11, longitude: 72.86 }
+  });
   return booking;
 }
 
 test.before(async () => { await purgeAll(); });
 test.after(async () => { await purgeAll(); });
 
-dbTest('clearLocationHistory deletes every ping and the live fix, and is idempotent', async () => {
+dbTest('clearLocationHistory deletes the location row and the live fix, and is idempotent', async () => {
   await purgeAll();
   const booking = await seed(SUFFIX, { status: 'ONGOING', withLiveFix: true });
   const before = await prisma.bookingLocationUpdate.count({ where: { bookingId: booking.id } });
-  assert.equal(before, 2);
+  assert.equal(before, 1);
 
   const result = await clearLocationHistory({ bookingId: booking.id });
-  assert.equal(result.cleared, 2);
+  assert.equal(result.cleared, 1);
   assert.equal(await prisma.bookingLocationUpdate.count({ where: { bookingId: booking.id } }), 0);
 
   const row = await prisma.booking.findUnique({ where: { id: booking.id }, select: { providerLatitude: true, providerLongitude: true, providerLocationUpdatedAt: true } });
@@ -95,11 +93,11 @@ dbTest('sweepClosedLocationHistory clears closed bookings but leaves open ones u
   const open = await seed(`${SUFFIX}-open`, { status: 'PENDING' });
 
   const result = await sweepClosedLocationHistory();
-  assert.ok(result.cleared >= 2, 'the closed booking pings are removed');
+  assert.ok(result.cleared >= 1, 'the closed booking location row is removed');
   assert.ok(result.liveFixesCleared >= 1, 'the closed booking live fix is nulled');
 
   assert.equal(await prisma.bookingLocationUpdate.count({ where: { bookingId: closed.id } }), 0);
-  assert.equal(await prisma.bookingLocationUpdate.count({ where: { bookingId: open.id } }), 2);
+  assert.equal(await prisma.bookingLocationUpdate.count({ where: { bookingId: open.id } }), 1);
   const closedRow = await prisma.booking.findUnique({ where: { id: closed.id }, select: { providerLatitude: true } });
   assert.equal(closedRow.providerLatitude, null);
 });

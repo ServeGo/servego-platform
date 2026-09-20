@@ -37,6 +37,27 @@ function dropLiveFix(bookingId) {
   routeCache.delete(bookingId);
 }
 
+/**
+ * Keep exactly one live location row per booking: update the existing row in
+ * place, or create it on the first persisted fix. The unique `bookingId` index
+ * guards the create against a concurrent first fix (P2002 -> fall back to an
+ * update), so a booking can never accumulate a second location row.
+ */
+async function persistLiveLocationRow({ client, bookingId, providerId, latitude, longitude }) {
+  const data = { providerId, latitude, longitude, recordedAt: new Date() };
+  const updated = await client.bookingLocationUpdate.updateMany({ where: { bookingId }, data });
+  if (updated.count > 0) return;
+  try {
+    await client.bookingLocationUpdate.create({ data: { bookingId, ...data } });
+  } catch (err) {
+    if (err?.code === 'P2002') {
+      await client.bookingLocationUpdate.updateMany({ where: { bookingId }, data });
+      return;
+    }
+    throw err;
+  }
+}
+
 /** Fresh cached Maps result for a booking, or undefined to recompute. */
 function cachedMaps(bookingId, now = Date.now()) {
   const hit = routeCache.get(bookingId);
@@ -139,7 +160,9 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
       endLocation: true,
       startLocation: true,
       providerPhase: true,
-      providerLocationUpdatedAt: true
+      providerLocationUpdatedAt: true,
+      serviceLatitude: true,
+      serviceLongitude: true
     }
   });
   if (!booking) throw trackingError('BOOKING_NOT_FOUND', 'Booking not found.');
@@ -203,8 +226,12 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
 
       await client.booking.update({ where: { id: booking.id }, data: updateData });
       socketMetrics.recordDbWrite();
-      await client.bookingLocationUpdate.create({
-        data: { bookingId: booking.id, providerId: provider.id, latitude: liveLat, longitude: liveLng }
+      await persistLiveLocationRow({
+        client,
+        bookingId: booking.id,
+        providerId: provider.id,
+        latitude: liveLat,
+        longitude: liveLng
       });
       socketMetrics.recordDbWrite();
 
@@ -226,6 +253,28 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
       });
     }
     pruneLiveFixes(now);
+  }
+
+  // Auto-arrival: when the provider's live fix is within the configured radius
+  // of the customer's service location, ARRIVED is signalled automatically —
+  // no manual tap required. Same gate as the manual GPS path (measured against
+  // the same service coordinates, validated with the in-flight fix), and
+  // idempotent: `markProviderArrived` returns early for a booking already
+  // ARRIVED, and the early return above stops feeding the room once arrived.
+  const radiusM = await arrivalRadiusMeters(client);
+  if (
+    booking.serviceLatitude != null &&
+    booking.serviceLongitude != null &&
+    haversineKm(lat, lng, Number(booking.serviceLatitude), Number(booking.serviceLongitude)) * 1000 <= radiusM
+  ) {
+    return markProviderArrived({
+      bookingId: booking.id,
+      providerUserId,
+      io,
+      source: 'gps',
+      client,
+      liveCoords: { latitude: lat, longitude: lng }
+    });
   }
 
   const destination = await resolveTrackingDestination(booking, client, inMemory);
@@ -279,6 +328,16 @@ export async function updateProviderLocation({ bookingId, providerUserId, latitu
 /** Cached resolved destination from a live-fix registry entry (or undefined). */
 function getDestFrom(inMemory) {
   return inMemory?.dest;
+}
+
+/**
+ * Configurable arrival radius (metres) — admin config `arrivalRadiusMeters`,
+ * default 150 m. Falls back to 150 when the caller's client has no
+ * adminConfig collection (unit-test mocks only).
+ */
+async function arrivalRadiusMeters(client) {
+  if (!client || typeof client.adminConfig === 'undefined') return 150;
+  return Math.max(1, Number(await getConfig('arrivalRadiusMeters', 150, client)) || 150);
 }
 
 /**
@@ -361,7 +420,7 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
 }
 
 /**
- * Last N recorded pings for a booking (polyline rendering / admin audit).
+ * The single live location row for a booking (admin audit).
  */
 export async function getBookingLocationHistory({ bookingId, userId, role, limit = 50, client = prisma }) {
   const booking = await client.booking.findUnique({ where: { id: bookingId }, select: { id: true, customerId: true, providerId: true } });
@@ -381,9 +440,10 @@ export async function getBookingLocationHistory({ bookingId, userId, role, limit
 }
 
 /**
- * Clear ALL location data for a closed booking: every `BookingLocationUpdate`
- * ping plus the stale live fix on the Booking row. Runs inline at every
- * terminal transition (completion, cancellation via the booking/lead/quotation
+ * Clear ALL location data for a closed booking: the single
+ * `BookingLocationUpdate` live row plus the stale live fix on the Booking row.
+ * Runs inline at every terminal transition (completion, cancellation via the
+ * booking/lead/quotation
  * close paths) so no pings outlive the trip they describe. Idempotent — a
  * second call matches zero rows and returns cleared: 0.
  */
@@ -399,7 +459,7 @@ export async function clearLocationHistory({ bookingId, client = prisma }) {
 }
 
 /**
- * Background fail-safe: delete every location ping (and clear the live fix)
+ * Background fail-safe: delete the location row (and clear the live fix)
  * belonging to a booking that is already COMPLETED or CANCELLED. Catches any
  * close path that was missed or interrupted before the inline purge ran.
  */
@@ -507,35 +567,35 @@ export async function markProviderOnTheWay({ bookingId, providerUserId, io = nul
  * without appending a duplicate `statusHistory` entry or re-notifying — the
  * customer can never see two "arrived" tracklines for one trip.
  */
-export async function markProviderArrived({ bookingId, providerUserId, io = null, source = 'gps', client = prisma }) {
+export async function markProviderArrived({ bookingId, providerUserId, io = null, source = 'gps', client = prisma, liveCoords = null }) {
   const { provider, booking } = await resolveProviderBooking({ bookingId, providerUserId, client });
 
   if (booking.providerPhase === 'ARRIVED') {
     return { ok: true, payload: { bookingId: booking.id, status: booking.status, providerPhase: 'ARRIVED', arrivedSource: booking.arrivedSource || null, timestamp: new Date().toISOString() }, booking, alreadyDone: true };
   }
 
-  // GPS arrival gate: a GPS-signalled arrival only counts within 150 m of the
-  // customer's service location (straight-line). The provider can't spoof a
-  // fix — the coordinates come from their own live feed. Manual overrides stay
-  // available for the no-GPS case and are audited via `arrivedSource`.
-  const ARRIVAL_RADIUS_M = 150;
+  // GPS arrival gate: a GPS-signalled arrival only counts within the arrival
+  // radius of the customer's service location (straight-line). The provider
+  // can't spoof a fix — the coordinates come from their own live feed.
+  // `liveCoords` (in-flight fix) takes precedence over the persisted position
+  // so the auto-arrival path validates against the ping that actually crossed
+  // the radius and can't throw on a stale sub-cadence value. Manual overrides
+  // stay available for the no-GPS case and are audited via `arrivedSource`.
+  const radiusM = await arrivalRadiusMeters(client);
+  const gateLat = liveCoords?.latitude != null ? Number(liveCoords.latitude) : booking.providerLatitude;
+  const gateLng = liveCoords?.longitude != null ? Number(liveCoords.longitude) : booking.providerLongitude;
   if (
     source !== 'manual' &&
-    booking.providerLatitude != null &&
-    booking.providerLongitude != null &&
+    gateLat != null &&
+    gateLng != null &&
     booking.serviceLatitude != null &&
     booking.serviceLongitude != null
   ) {
-    const distanceM = haversineKm(
-      Number(booking.providerLatitude),
-      Number(booking.providerLongitude),
-      Number(booking.serviceLatitude),
-      Number(booking.serviceLongitude)
-    ) * 1000;
-    if (distanceM > ARRIVAL_RADIUS_M) {
+    const distanceM = haversineKm(gateLat, gateLng, Number(booking.serviceLatitude), Number(booking.serviceLongitude)) * 1000;
+    if (distanceM > radiusM) {
       throw trackingError(
         'ARRIVAL_TOO_FAR',
-        `You are ${Math.round(distanceM)} m from the customer location. Arrival unlocks within 150 m of the address.`
+        `You are ${Math.round(distanceM)} m from the customer location. Arrival unlocks within ${radiusM} m of the address.`
       );
     }
   }

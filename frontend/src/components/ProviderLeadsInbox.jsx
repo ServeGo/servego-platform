@@ -18,7 +18,7 @@ import {
   Send,
   FileText
 } from 'lucide-react';
-import { useRealtime, useData, useFeatureFlags } from '../context/AppContext';
+import { useRealtime, useData } from '../context/AppContext';
 import { api } from '../utils/apiClient';
 import { getErrorInfo } from '../utils/errorMessages';
 import SkeletonLoader from './SkeletonLoader';
@@ -130,23 +130,20 @@ const cleanAddress = (raw) => {
   return parts.join(', ');
 };
 
-// Build the destination for Google Maps navigation. Origin is left unspecified
-// so Maps resolves the provider's current GPS position as the start point and
-// immediately offers turn-by-turn directions (driving).
+// Build the same Google Maps navigation URL the customer's tracking map uses:
+// origin is left unspecified so Maps resolves the viewer's current GPS position
+// as the start point and opens turn-by-turn driving directions. Exact service
+// coordinates are preferred; the address text is the fallback.
 const buildDirections = (booking) => {
-  const destination = cleanAddress([booking.locationAddress, booking.city].filter(Boolean).join(', '));
+  const end = booking?.endLocation;
+  const hasEnd = end && Number.isFinite(Number(end.latitude)) && Number.isFinite(Number(end.longitude));
+  const destination = hasEnd
+    ? `${Number(end.latitude)},${Number(end.longitude)}`
+    : booking?.serviceLatitude != null && booking?.serviceLongitude != null
+      ? `${Number(booking.serviceLatitude)},${Number(booking.serviceLongitude)}`
+      : cleanAddress([booking?.locationAddress, booking?.city].filter(Boolean).join(', '));
   if (!destination) return null;
-  const web = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  if (/android/i.test(ua)) {
-    // Android (Capacitor WebView / Chrome): launch the native navigation intent.
-    return { web, intent: `google.navigation:q=${encodeURIComponent(destination)}`, native: true };
-  }
-  if (/iphone|ipad|ipod/i.test(ua)) {
-    // iOS (Safari / app shell): hand off to the Google Maps app when installed.
-    return { web, intent: `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=driving`, native: true };
-  }
-  return { web, intent: web, native: false };
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 };
 
 const fmtTime = (d) => {
@@ -570,34 +567,19 @@ export default function ProviderLeadsInbox({ providerId, updateBookingStatus }) 
 }
 
 /**
- * "Show Direction" for an active duty booking. On mobile (the Capacitor
- * WebView and mobile Safari) it opens the Google Maps native app via its
- * intent/deep-link scheme for instant turn-by-turn navigation; if the app
- * isn't installed the scheme fails silently, so we fall back to the universal
- * Google Maps dir URL (which still auto-launches Maps on Android/iOS when
- * available). Desktop simply opens the dir URL in a new tab.
+ * "Show Direction" for an active duty booking. Opens the same Google Maps
+ * turn-by-turn directions URL the customer's tracking map uses, so the provider
+ * gets the standard Maps navigation (app or web) instead of a custom intent.
  */
 function ShowDirectionLink({ booking }) {
-  const links = buildDirections(booking);
-  if (!links) return null;
-
-  const open = (e) => {
-    if (!links.native) return;
-    e.preventDefault();
-    const fallback = () => { window.location.href = links.web; };
-    const t = window.setTimeout(fallback, 1200);
-    // If the native app opened, the page is backgrounded → blur fires → the
-    // web fallback is cancelled (otherwise we'd hijack the tab on return).
-    window.addEventListener('blur', () => window.clearTimeout(t), { once: true });
-    window.location.href = links.intent;
-  };
+  const href = buildDirections(booking);
+  if (!href) return null;
 
   return (
     <a
-      href={links.web}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={open}
       className="inline-flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-black rounded-full px-3 py-1.5 transition-colors shrink-0"
       title="Open directions in Google Maps"
     >
@@ -698,7 +680,6 @@ function EmptyInbox({ filter }) {
 
 function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onReject, onQuote, onComplete }) {
   const { getBookingLocation } = useRealtime();
-  const { liveTrackingProviders } = useFeatureFlags();
   const now = useNowTick(lead.status === 'NEW' || lead.status === 'VIEWED');
   const booking = lead.booking || {};
   const actionable = lead.status === 'NEW' || lead.status === 'VIEWED';
@@ -711,28 +692,17 @@ function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onRe
   // hidden until a booking is actually active.
   const activeDuty = bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING';
   const canShowPhone = activeDuty;
-  // Feature flag (admin "Tracking" section): when ON, the Active Duty card
-  // swaps the plain service address for a live-tracking map. OFF = address as
-  // usual. If the provider has no usable GPS fix, keep the address visible.
-  // Defaults OFF — providers opt in, matching the registry.
+  // Active Duty shows a live-tracking map while the provider is en route so
+  // they can navigate to the customer. Once the provider has ARRIVED, sharing
+  // stops and there is nothing left to track — swap the map for the plain
+  // service address so the end location stays readable.
   const realtimeLocation = getBookingLocation(booking.id);
-  const hasProviderGps = (location) => (
-    location?.latitude != null &&
-    location?.longitude != null &&
-    Number.isFinite(Number(location.latitude)) &&
-    Number.isFinite(Number(location.longitude))
-  );
   // Dispatch phase read live-first (socket/realtime) with the persisted value
   // from GET /leads as the reload fallback.
   const providerPhase = getBookingLocation(booking.id)?.providerPhase || booking.providerPhase || null;
   const arrived = providerPhase === 'ARRIVED';
 
-  // The provider's own live map hides once they have arrived: sharing has
-  // stopped, so there is nothing left to track.
-  const showLiveTracking = activeDuty && !arrived && liveTrackingProviders === true && (
-    hasProviderGps(realtimeLocation) ||
-    hasProviderGps({ latitude: booking.providerLatitude, longitude: booking.providerLongitude })
-  );
+  const showLiveTracking = activeDuty && !arrived;
   const liveLocation = showLiveTracking ? realtimeLocation : null;
 
   useEffect(() => {
@@ -827,10 +797,6 @@ function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onRe
             <span className="text-slate-800 leading-tight block">{booking.locationAddress || '—'}{booking.city ? `, ${booking.city}` : ''}</span>
           </div>
         )}
-        <div>
-          <span className="text-[10px] text-slate-400 uppercase block mb-1">Customer Requirements</span>
-          <p className="text-slate-700 font-semibold">"{booking.instructions || 'No special notes.'}"</p>
-        </div>
       </div>
 
       <div className="flex gap-2 justify-end flex-wrap items-center">
@@ -1034,8 +1000,8 @@ function ProviderDispatchControls({ booking }) {
 
   const arrivalHint =
     distanceM != null
-      ? `${(distanceM / 1000).toFixed(2)} km away — be within 150 m to mark arrival`
-      : 'Enable GPS sharing to mark arrival';
+      ? `${(distanceM / 1000).toFixed(2)} km away — arrival is marked automatically within 150 m`
+      : 'Enable GPS sharing to auto-mark arrival';
 
   return (
     <div className="flex items-center gap-2 mr-auto flex-wrap">

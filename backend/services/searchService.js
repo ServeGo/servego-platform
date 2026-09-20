@@ -17,6 +17,7 @@
  */
 
 import prisma from '../prisma/client.js';
+import { Prisma } from '@prisma/client';
 
 const WORD_SIM_THRESHOLD = 0.35;
 
@@ -55,6 +56,45 @@ export async function rankedServiceMatches(query, { limit = 100 } = {}) {
   `;
 
   return rows.map((r) => ({ id: r.id, score: Number(r.score) || 0 }));
+}
+
+/**
+ * Same ranking as rankedServiceMatches, but returns the full Service rows with
+ * the optional category filter applied inside SQL — one round-trip where the
+ * controller previously ran a ranked id lookup and then a separate findMany
+ * (rule 12: the cold search/category page costs 2 queries total, not 3).
+ */
+export async function rankedServiceRows(query, { limit = 100, categoryId = null } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+
+  const rows = await prisma.$queryRaw`
+    SELECT s.*,
+      GREATEST(
+        CASE WHEN s."nameNormalized" = lower(${q}) THEN 12 ELSE 0 END,
+        CASE WHEN lower(s."name") LIKE lower(${q}) || '%' THEN 8 ELSE 0 END,
+        CASE WHEN s."name" % ${q} THEN similarity(s."name", ${q}) * 6 ELSE 0 END,
+        CASE WHEN word_similarity(${q}, s."name") > ${WORD_SIM_THRESHOLD}
+             THEN word_similarity(${q}, s."name") * 6 ELSE 0 END,
+        CASE WHEN s."description" % ${q} THEN similarity(s."description", ${q}) * 3 ELSE 0 END,
+        CASE WHEN word_similarity(${q}, s."description") > ${WORD_SIM_THRESHOLD}
+             THEN word_similarity(${q}, s."description") * 3 ELSE 0 END
+      )::float8 AS score
+    FROM "Service" s
+    WHERE s."isHidden" = false
+      ${categoryId ? Prisma.sql`AND (s."id" = ${categoryId} OR lower(s."name") = lower(${categoryId}) OR s."nameNormalized" = lower(${categoryId}))` : Prisma.empty}
+      AND (
+        s."nameNormalized" = lower(${q})
+        OR lower(s."name") LIKE '%' || lower(${q}) || '%'
+        OR s."name" % ${q}
+        OR word_similarity(${q}, s."name") > ${WORD_SIM_THRESHOLD}
+        OR word_similarity(${q}, s."description") > ${WORD_SIM_THRESHOLD}
+      )
+    ORDER BY score DESC, s."name" ASC
+    LIMIT ${limit};
+  `;
+
+  return rows;
 }
 
 const DISCOVERY_SCORE_THRESHOLD = 35;
