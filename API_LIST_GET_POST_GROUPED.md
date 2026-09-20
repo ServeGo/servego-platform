@@ -1,6 +1,6 @@
 # HTTP API Reference (Grouped)
 
-Source: `backend/routes/api.js` — **142 routes**, all under `/api/v1`.
+Source: `backend/routes/api.js` — **140 routes**, all under `/api/v1`.
 
 Access legend: `auth` = any logged-in user, `customer` / `provider` / `admin` = role, `provider|admin` = either, `optional` = works logged-in or anonymously, `public` = no token required.
 
@@ -122,15 +122,6 @@ Rate-limited: `POST /support-tickets` (support-ticket limiter).
 
 Rate-limited: `POST /reviews` (review limiter).
 
-## Referrals / Ambassador
-
-| Method | Endpoint | Access |
-|------|----------|--------|
-| GET | /referrals/me | auth |
-| POST | /referrals/apply | auth |
-| POST | /referrals/generate | auth |
-| POST | /referrals/claim | auth |
-
 ## Service Discovery by Category
 
 | Method | Endpoint | Access |
@@ -177,6 +168,12 @@ Rate-limited: `POST /reviews` (review limiter).
 | PATCH | /admin/provider-service-requests/:id/deny | admin |
 | GET | /admin/provider-service-items | admin |
 | POST | /admin/providers/reputation/refresh | admin |
+| GET | /admin/providers/by-approved-service | admin |
+
+Admin-only provider search by approved service — returns **every** provider approved for the
+service (including blocked/on-hold/unverified/inactive/short-of-balance), each tagged with an
+`eligible` flag and a human `statusLabel`, so an admin can manually assign a `NO_PROVIDER`
+request. The public `GET /providers/by-approved-service` stays eligibility-gated for customers.
 
 ## Admin: Provider Account Status
 
@@ -214,6 +211,15 @@ One request = one lead = one provider. Lead is `NEW → VIEWED → ACCEPTED/REJE
 | GET | /permanent-service-requests/:id | auth |
 | PATCH | /permanent-service-requests/:id<br> v(updatePermanentServiceRequestValidation) | admin |
 | POST | /permanent-service-requests/:id/cancel | customer |
+
+Request types (`requestType`, validated by `createPermanentServiceRequestValidation`):
+- `PERMANENT` — recurring/contract work; requires all contract fields (engagementType, startDate, monthlyBudget, …).
+- `CUSTOM` — a one-off custom request; requires only `customServiceName` + `customServiceDescription`.
+- `NO_PROVIDER` — the customer found no provider for a service; requires only `serviceCategory`,
+  `locationAddress`, `additionalInfo`. It lands PENDING in the admin queue; the admin assigns a
+  provider via `PATCH /permanent-service-requests/:id { status: 'APPROVED', assignedProviderId }`
+  (choosing from `GET /admin/providers/by-approved-service`), which creates a `CONFIRMED` booking +
+  an `ACCEPTED` lead via `leadService.createManuallyAssignedBookingWithLead()`.
 
 ## Provider Levels, Performance & Promotions
 
@@ -267,6 +273,7 @@ One request = one lead = one provider. Lead is `NEW → VIEWED → ACCEPTED/REJE
 | GET | /admin/wallet | admin |
 | GET | /admin/wallet/ledger | admin |
 | GET | /admin/wallet/withdrawals | admin |
+| GET | /admin/providers/:id/wallet | admin |
 | PATCH | /admin/wallet/withdrawals/:id/process<br> v(processWithdrawalValidation) | admin |
 | POST | /admin/wallet/credit<br> v(adminCreditWalletValidation) | admin |
 
