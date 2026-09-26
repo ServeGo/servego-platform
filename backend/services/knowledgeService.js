@@ -92,10 +92,11 @@ async function readKnowledgeCenter() {
   try {
     fileNames = await fs.readdir(KNOWLEDGE_DIR);
   } catch (err) {
-    throw knowledgeError(
-      'CHAT_KNOWLEDGE_UNAVAILABLE',
-      `Knowledge Center directory is not readable: ${err.message}`
-    );
+    const code = err.code === 'ENOENT' ? 'CHAT_KNOWLEDGE_MISSING' : 'CHAT_KNOWLEDGE_UNAVAILABLE';
+    const msg = err.code === 'ENOENT'
+      ? `Knowledge Center directory not found at ${KNOWLEDGE_DIR}. Ensure backend/data/knowledge is deployed.`
+      : `Knowledge Center directory is not readable: ${err.message}`;
+    throw knowledgeError(code, msg);
   }
 
   const mdFiles = fileNames.filter((n) => n.endsWith('.md')).sort();
