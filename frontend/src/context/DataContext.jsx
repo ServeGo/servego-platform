@@ -12,6 +12,8 @@ import {
 } from '../utils/normalizeCustomerData';
 import { api as apiClient, API_BASE_URL } from '../utils/apiClient';
 import { api } from '../utils/apiWrapper';
+import { cachedRequest } from '../utils/requestCache';
+import { clearCatalogSnapshot, isCatalogFresh, readCatalogSnapshot, refreshCatalog } from '../utils/catalogCache';
 import { useAuth } from './AuthContext';
 import { advanceWatermark, readWatermark } from '../utils/reconnectWatermark';
 import { getErrorMessage } from '../utils/errorMessages';
@@ -29,7 +31,15 @@ export const DataProvider = ({ children }) => {
   // Admin-only service list (includes hidden categories, from GET /admin/services).
   const [adminServices, setAdminServices] = useState([]);
   const [providersByApprovedService, setProvidersByApprovedService] = useState([]);
-  const [servicesLoading, setServicesLoading] = useState(false);
+  // Starts `true` so the very first paint shows the skeleton instead of
+  // briefly rendering "No services available yet" before the bootstrap effect
+  // has had a chance to set the flag (rule 15: never a blank/empty flash).
+  const [servicesLoading, setServicesLoading] = useState(true);
+  // Why the last catalog refresh failed, or null when it succeeded. The home
+  // page renders this as a retry action instead of an empty grid (rule 19).
+  const [servicesError, setServicesError] = useState(null);
+  // True when `services` is a session snapshot rather than a fresh API read.
+  const [servicesStale, setServicesStale] = useState(false);
   // The provider's own dashboard summary (`GET /providers/me/summary`) — the
   // purpose-specific contract for the owner screens (header, profile, reviews,
   // wallet ambassador). Falls back to the providers list while loading.
@@ -159,17 +169,56 @@ export const DataProvider = ({ children }) => {
     bookingsRef.current = bookings;
   }, [bookings]);
 
-  const fetchServices = useCallback(async () => {
-    setServicesLoading(true);
-    try {
-      const res = await api(`${API_BASE_URL}/services`);
-      const data = await res.json();
-      setServices(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to fetch services:', err);
-    } finally {
-      setServicesLoading(false);
+  // Mirrors `services` so the fetch callbacks read the latest value without
+  // re-creating themselves (and re-triggering the bootstrap effect) on every
+  // catalog change.
+  const servicesRef = useRef(services);
+  useEffect(() => {
+    servicesRef.current = services;
+  }, [services]);
+
+  /**
+   * Public catalog loader.
+   *
+   * Paints the session snapshot synchronously so a reload shows real service
+   * cards on the first frame, then refreshes from the API in the background.
+   * A failed refresh keeps the last good data and only records a reason — the
+   * previous version did `setServices([])` on any error, which is why a single
+   * transient 5xx left the home page on "No services available yet" until the
+   * visitor refreshed twice.
+   */
+  const fetchServices = useCallback(async ({ force = false } = {}) => {
+    if (force) clearCatalogSnapshot();
+
+    const snapshot = readCatalogSnapshot();
+    if (snapshot) {
+      setServices(snapshot.value);
+      setServicesStale(!isCatalogFresh(snapshot.at));
     }
+
+    // A fresh snapshot is already correct data; only revalidate in the
+    // background so a revisit to the home page never waits on the network.
+    if (snapshot && !force && isCatalogFresh(snapshot.at)) {
+      setServicesLoading(false);
+      setServicesError(null);
+      return;
+    }
+
+    setServicesLoading(true);
+    await refreshCatalog({
+      fetchImpl: () => cachedRequest('services-catalog', () => apiClient.get('/services'), { force }),
+      onData: (list) => {
+        setServices(list);
+        setServicesStale(false);
+      },
+      onError: (reason) => {
+        // Only surface a reason when there is genuinely nothing to show; a
+        // failed background revalidation behind fresh data is not an error the
+        // visitor needs to act on.
+        setServicesError((prev) => (servicesRef.current.length > 0 ? prev : reason));
+      }
+    });
+    setServicesLoading(false);
   }, []);
 
   const fetchAdminServices = useCallback(async () => {
@@ -185,23 +234,47 @@ export const DataProvider = ({ children }) => {
     }
   }, []);
 
-  const searchServices = useCallback(async (query = '', location = '', signal) => {
-      try {
-        const params = new URLSearchParams();
-        if (query.trim()) params.set('query', query.trim());
-        if (location.trim()) params.set('location', location.trim());
-        const suffix = params.toString();
-        const res = await api(`${API_BASE_URL}/services/search${suffix ? `?${suffix}` : ''}`, { signal });
-        const data = await res.json();
-        // Aborted requests return null so the caller never renders a stale or
-        // empty result for a keystroke that was superseded.
-        if (res.error?.name === 'AbortError') return null;
-        return res.ok && Array.isArray(data) ? data : [];
-      } catch (err) {
-        if (err?.name === 'AbortError') return null;
-        console.error('Failed to search services:', err);
+  /**
+   * Catalog search for the services page and the category filter.
+   *
+   * Returns the matching rows, or `null` when the request was superseded by a
+   * newer keystroke (so the caller never renders a stale result). On a network
+   * failure it returns `null` and records the reason in `meta.error` instead of
+   * an empty array — an empty array is indistinguishable from "no matches" and
+   * previously turned a transient 5xx into a bogus "No services found" state.
+   *
+   * @param {{ ok?: boolean, error?: string|null }} [meta] optional out-param
+   *        so the page can show a retry action (rule 19).
+   */
+  const searchServices = useCallback(async (query = '', location = '', signal, meta) => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set('query', query.trim());
+    if (location.trim()) params.set('location', location.trim());
+    const suffix = params.toString();
+    const endpoint = `/services/search${suffix ? `?${suffix}` : ''}`;
+
+    try {
+      const res = await apiClient.get(endpoint, { signal, timeout: 10_000 });
+      // Aborted requests return null so the caller never renders a stale or
+      // empty result for a keystroke that was superseded.
+      if (res.error?.name === 'AbortError' || (res.status === 0 && res.data === null)) {
+        if (meta) meta.error = null;
+        return null;
       }
-      return [];
+      if (!res.ok || !Array.isArray(res.data)) {
+        if (meta) meta.error = res.data?.error || res.data?.message || 'Could not load services. Please try again.';
+        return null;
+      }
+      if (meta) meta.error = null;
+      return res.data;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        if (meta) meta.error = null;
+        return null;
+      }
+      if (meta) meta.error = 'Could not load services. Check your connection and try again.';
+      return null;
+    }
   }, []);
 
   // --- Granular single-booking updates (real-time socket events) ---
@@ -506,7 +579,8 @@ export const DataProvider = ({ children }) => {
           setAdminServices(prev => Array.isArray(prev) ? [...prev, newSvc] : [newSvc]);
           setServices(prev => Array.isArray(prev) ? [...prev, newSvc] : [newSvc]);
         }
-        fetchServices();
+        // Force a real refetch: the session snapshot must not mask an admin edit.
+        fetchServices({ force: true });
         fetchAdminServices();
         return data;
       }
@@ -537,7 +611,8 @@ export const DataProvider = ({ children }) => {
             Array.isArray(prev) ? prev.map(s => s.id === updated.id ? { ...s, ...updated } : s) : prev
           );
         }
-        fetchServices();
+        // Force a real refetch: the session snapshot must not mask an admin edit.
+        fetchServices({ force: true });
         fetchAdminServices();
         return data;
       }
@@ -558,7 +633,8 @@ export const DataProvider = ({ children }) => {
       if (res.ok) {
         setAdminServices(prev => Array.isArray(prev) ? prev.filter(s => s.id !== id) : prev);
         setServices(prev => Array.isArray(prev) ? prev.filter(s => s.id !== id) : prev);
-        fetchServices();
+        // Force a real refetch: the session snapshot must not mask an admin edit.
+        fetchServices({ force: true });
         fetchAdminServices();
         return data;
       }
@@ -589,7 +665,8 @@ export const DataProvider = ({ children }) => {
               : prev.map(s => (s.id === id ? { ...s, isHidden: hidden } : s))
             : prev
         );
-        fetchServices();
+        // Force a real refetch: the session snapshot must not mask an admin edit.
+        fetchServices({ force: true });
         fetchAdminServices();
         return data;
       }
@@ -685,10 +762,12 @@ export const DataProvider = ({ children }) => {
     pendingStatusTransitions.add(inFlightKey);
 
     try {
-      const res = await api(`${API_BASE_URL}/bookings/${bookingId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note })
+      const res = await apiClient.patch(`/bookings/${bookingId}/status`, { status, note }, {
+        // Disable retries for status transitions — mutations must never be
+        // retried. The backend is idempotent (compare-and-swap on status),
+        // but retries on timeout cause spurious "already cancelled" noise
+        // when the first attempt actually succeeded.
+        retryConfig: { maxRetries: 0 }
       });
       const data = await res.json();
       if (data.id) {
@@ -975,6 +1054,9 @@ export const DataProvider = ({ children }) => {
     DENIED: 0,
     TOTAL: 0
   });
+
+  // --- Admin: permanent service requests (NO_PROVIDER, PERMANENT, CUSTOM) ---
+  const [permanentServiceRequests, setPermanentServiceRequests] = useState([]);
   // Request sequencing: when the admin flips between tabs (All/Pending/Approved/
   // Denied) faster than the server responds, an older response for a previous
   // filter must never overwrite the list of the currently selected filter.
@@ -1011,6 +1093,22 @@ export const DataProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Failed to fetch provider service requests:', err);
+    }
+  };
+
+  const fetchPermanentServiceRequests = async () => {
+    if (currentUser?.role !== 'admin') return;
+    try {
+      const res = await api(`${API_BASE_URL}/admin/permanent-service-requests?limit=100`);
+      const data = await res.json();
+      if (res.ok) {
+        const list = Array.isArray(data?.requests) ? data.requests : Array.isArray(data) ? data : [];
+        setPermanentServiceRequests(list);
+      } else {
+        console.error('Failed to fetch permanent service requests:', data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch permanent service requests:', err);
     }
   };
 
@@ -1116,6 +1214,8 @@ export const DataProvider = ({ children }) => {
       tickets,
       services,
       servicesLoading,
+      servicesError,
+      servicesStale,
       providerServiceRequests,
       providerServiceItems,
       providerServiceItemsPagination,
@@ -1169,6 +1269,8 @@ export const DataProvider = ({ children }) => {
       fetchProviderServiceItems,
       approveProviderServiceRequest,
       denyProviderServiceRequest,
+      permanentServiceRequests,
+      fetchPermanentServiceRequests,
       // Dedupe-aware live-notification prepend for RealtimeProvider.
       addLiveNotification,
       addLiveAlert

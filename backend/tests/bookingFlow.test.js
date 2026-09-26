@@ -83,7 +83,7 @@ function activeWhere(base) {
     accountStatus: base?.accountStatus,
     user: base?.user ? { status: base.user.status, OR: base.user.OR } : null,
     walletGate: !!base?.user?.OR,
-    bookingGate: !!base?.bookings?.none,
+    bookingGate: undefined,
     serviceGate: !!base?.providerServices?.some,
     serviceId: base?.providerServices?.some?.serviceId ?? null,
     serviceName: base?.providerServices?.some?.service?.name?.equals ?? null,
@@ -165,7 +165,7 @@ test('RULE 1: providers without the requested service approved are excluded', as
   assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p3']);
 });
 
-test('RULE 1: busy, unverified, inactive or negative-wallet providers are excluded', async () => {
+test('RULE 1: only verified, active user, approved service and non-negative wallet providers are eligible', async () => {
   const pOk = makeProvider('p1');
   const pBusy = makeProvider('p2', { activeBooking: 'CONFIRMED' });
   const pOffline = makeProvider('p3', { isOnline: false });
@@ -179,10 +179,13 @@ test('RULE 1: busy, unverified, inactive or negative-wallet providers are exclud
 
   const ranked = await findEligibleProviders({ serviceId: 'svc-1', serviceCategory: 'Plumbing', client });
 
-  assert.deepEqual(ranked.map((p) => p.id), ['p1', 'p3', 'p6'], 'offline and cooling-down providers remain eligible');
+  // Only pOk, pBusy, pOffline, pCooldown have: verified=true, user.active=true, wallet>=0
+  // (pBusy has active booking but that's no longer a gate; pOffline is offline but that's no longer a gate;
+  // pCooldown is in cooldown but that's no longer a gate)
+  assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p2', 'p3', 'p6']);
 });
 
-test('RULE 1: eligibility WHERE carries each hard gate (approved service, verified, wallet, radius-ready); online/accepting/cooldown are NOT gates', async () => {
+test('RULE 1: eligibility WHERE carries only the 3 hard gates (verified, active user, approved service, wallet>=0); no online/accepting/cooldown/busy/radius gates', async () => {
   const p1 = makeProvider('p1');
   const { client, recorded } = makeEligibilityClient({ providers: [p1] });
 
@@ -195,9 +198,9 @@ test('RULE 1: eligibility WHERE carries each hard gate (approved service, verifi
   assert.equal(gates.walletGate, true, 'wallet gate present');
   assert.equal(gates.isOnline, undefined, 'isOnline is NOT an eligibility gate');
   assert.equal(gates.acceptingBookings, undefined, 'acceptingBookings is NOT an eligibility gate');
-  assert.equal(gates.bookingGate, true, 'no-active-booking filter present');
+  assert.equal(gates.bookingGate, undefined, 'no-active-booking is NOT an eligibility gate');
   assert.equal(gates.serviceGate, true, 'approved-service filter present');
-  assert.equal(gates.serviceId, 'svc-1', 'serviceId filter pinned to requested service');
+  assert.equal(gates.radiusGate, undefined, 'radius is NOT an eligibility gate');
 });
 
 test('RULE 1: createBookingWithLead broadcasts open offers to EVERY eligible provider (first-accept-wins)', async () => {
@@ -251,27 +254,27 @@ test('RULE 1: when no provider is eligible the booking is rejected with NO_ELIGI
   );
 });
 
-// ---- RULE 2: max 2 open leads, decline frees a slot, accept closes the rest --
+// ---- RULE 2: no open-lead cap, all eligible providers receive every broadcast --
 
-test('RULE 2: providers already holding 2 open leads drop out of new broadcasts', async () => {
+test('RULE 2: providers are NOT capped at 2 open leads; all eligible receive broadcasts', async () => {
   const pAtCap = makeProvider('p1', { rating: 5 });
   const pFree = makeProvider('p2', { rating: 4 });
   const { client, recorded } = makeEligibilityClient({
     providers: [pAtCap, pFree],
-    atCap: ['p1'] // p1 holds 2 open NEW/VIEWED offers (MAX_OPEN_LEADS)
+    atCap: ['p1'] // p1 holds 2 open NEW/VIEWED offers (but cap is removed)
   });
 
   const ranked = await findEligibleProviders({ serviceId: 'svc-1', serviceCategory: 'Plumbing', client });
 
-  assert.deepEqual(ranked.map((p) => p.id), ['p2'], 'capped provider excluded even though highest-rated');
-  const capWhere = recorded.groupBy?.where;
-  assert.equal(capWhere.isCurrent, true, 'cap counts current offers only');
-  assert.deepEqual(capWhere.lead.status.in, ['NEW', 'VIEWED'], 'cap counts open actionable leads only');
+  // No cap: both providers receive the broadcast regardless of open offers
+  assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p2']);
+  // No groupBy cap query should run
+  assert.equal(recorded.groupBy, null, 'no cap groupBy query should run');
 });
 
-test('RULE 2: a provider with fewer than 2 open leads keeps receiving leads', async () => {
+test('RULE 2: a provider with open leads keeps receiving leads (no cap)', async () => {
   const p1 = makeProvider('p1');
-  const { client } = makeEligibilityClient({ providers: [p1], atCap: [] });
+  const { client } = makeEligibilityClient({ providers: [p1], atCap: ['p1'] });
 
   const ranked = await findEligibleProviders({ serviceId: 'svc-1', serviceCategory: 'Plumbing', client });
 
@@ -329,9 +332,9 @@ function makeRejectClient({ lead = baseLead(), remaining = 1, nextOffer = null, 
   return { client, calls };
 }
 
-test('RULE 2: declining a lead withdraws the offer (frees a slot) and hands it to the next provider', async () => {
+test('RULE 2: declining a lead withdraws the offer (frees a slot) and returns the request to the open pool (unowned)', async () => {
   const { client, calls } = makeRejectClient({
-    lead: baseLead(),
+    lead: baseLead({ providerId: 'p1' }),
     remaining: 2,
     nextOffer: { providerId: 'p2' }
   });
@@ -344,8 +347,8 @@ test('RULE 2: declining a lead withdraws the offer (frees a slot) and hands it t
   assert.equal(calls.withdrawn[0].where.isCurrent, true);
   assert.equal(calls.withdrawn[0].data.isCurrent, false, 'isCurrent flipped false = slot freed');
   assert.equal(calls.withdrawn[0].data.status, 'REJECTED');
-  assert.equal(result.lead.providerId, 'p2', 'lead re-pointed to the next ranked provider');
-  assert.equal(result.booking.providerId, 'p2', 'booking re-pointed too');
+  assert.equal(result.lead.providerId, null, 'lead has no owner again — the next offer is not an assignment');
+  assert.equal(result.booking.providerId, null, 'booking has no owner again, so no provider is shown on a pending booking');
   assert.equal(result.booking.status, 'PENDING');
   assert.equal(calls.cancels.length, 0, 'booking NOT cancelled while another provider still holds an offer');
 });
@@ -670,7 +673,7 @@ test('RULE 4: a different service is allowed while another booking is active (pa
   assert.equal(res.statusCode, 201, 'parallel different-service booking succeeds');
   assert.equal(res.body.success, true);
   assert.equal(res.body.data.booking.serviceCategory, 'Electrician');
-  assert.equal(res.body.data.booking.providerId, 'p1', 'first eligible provider owns the booking');
+  assert.equal(res.body.data.booking.providerId, null, 'the new request is unowned until a provider accepts it');
   assert.deepEqual(created.filter((c) => c.offerCount != null).map((c) => c.offerCount), [1], 'one provider got an offer');
 });
 
@@ -726,11 +729,13 @@ test('BLOCKER 4: rejectLead loads the lead WITH its booking so the last-decline 
   assert.equal(calls.cancels.length, 1, 'booking cancelled when every provider declined (was stuck PENDING forever before the fix)');
 });
 
-test('BLOCKER 4: when other providers remain, rejectLead also re-points the BOOKING (not just the lead) to the next provider', async () => {
+test('BLOCKER 4: when other providers remain, rejectLead clears the BOOKING owner (not just the lead) so the request returns to the open pool', async () => {
   // Pre-fix, the missing `lead.booking` made this branch silently skip the
-  // booking.update, leaving the declining provider as booking owner while the
-  // lead rotated to the next provider.
-  const lead = baseLead();
+  // booking.update, leaving the declining provider as booking owner. The bug
+  // this replaced was worse: the booking was re-pointed at the NEXT provider,
+  // which displayed a provider the customer never chose and locked that
+  // provider out of future leads. A declined request must be unowned.
+  const lead = baseLead({ providerId: 'p1' });
   const bookingSpy = { updates: [] };
   const client = {
     lead: {
@@ -761,16 +766,45 @@ test('BLOCKER 4: when other providers remain, rejectLead also re-points the BOOK
   const result = await rejectLead({ leadId: 'lead-1', providerId: 'p1', reason: 'BUSY', client });
 
   assert.equal(result.settled, false, 'another provider still holds an offer');
-  assert.equal(bookingSpy.updates.length, 1, 'the booking is re-pointed to the next provider');
-  assert.equal(bookingSpy.updates[0].data.providerId, 'p2');
-  assert.equal(result.booking.providerId, 'p2');
+  assert.equal(bookingSpy.updates.length, 1, 'the stale booking owner is cleared');
+  assert.equal(bookingSpy.updates[0].data.providerId, null, 'not re-pointed at the next offer — the request is unowned again');
+  assert.equal(result.booking.providerId, null);
+});
+
+test('BLOCKER 4: rejectLead does not write the booking at all when the request is already unowned', async () => {
+  const lead = baseLead({ providerId: null, booking: { id: 'b1', status: 'PENDING', providerId: null } });
+  const bookingSpy = { updates: [] };
+  const client = {
+    lead: {
+      findUnique: async (args) => (args?.include?.booking ? lead : { ...lead, booking: null }),
+      update: async ({ data }) => ({ ...lead, ...data })
+    },
+    leadAssignmentHistory: { updateMany: async () => ({ count: 1 }), count: async () => 2 },
+    booking: {
+      update: async ({ data }) => {
+        bookingSpy.updates.push(data);
+        return { id: 'b1', providerId: data.providerId, status: 'PENDING' };
+      },
+      updateMany: async () => ({ count: 1 })
+    },
+    bookingLocationUpdate: { deleteMany: async () => ({ count: 0 }) },
+    bookingEvent: { create: async () => ({}) },
+    $executeRaw: async () => {},
+    providerPerformance: {
+      findUniqueOrThrow: async () => ({ ...perfRow }),
+      update: async ({ data }) => ({ ...perfRow, ...data })
+    }
+  };
+
+  await rejectLead({ leadId: 'lead-1', providerId: 'p1', reason: 'BUSY', client });
+  assert.equal(bookingSpy.updates.length, 0, 'no pointless write when there is no owner to clear');
 });
 
 // ---- RULE 5: unranked distribution ------------------------------------------
 // No ranking or "top provider" concept: every eligible provider gets the same
 // open offer (first-accept-wins); provider level / distance / rating do NOT
-// prioritise anyone. The FK owner is simply the first in deterministic
-// (createdAt, id) order.
+// prioritise anyone. The request is created unowned — nobody is shown as the
+// provider until one of them accepts.
 
 test('RULE 5: levelRank still orders BRONZE < SILVER < GOLD < PLATINUM < DIAMOND (level engine unchanged)', () => {
   assert.ok(levelRank('BRONZE') < levelRank('SILVER'));
@@ -822,7 +856,7 @@ test('RULE 5: distance does NOT rank — every provider within radius is eligibl
   assert.deepEqual(ranked.map((p) => p.id).sort(), ['p1', 'p2'], 'both are within their radius — no distance prioritisation');
 });
 
-test('RULE 5: createBookingWithLead assigns the first eligible provider (deterministic createdAt/id) as owner — no level preference', async () => {
+test('RULE 5: createBookingWithLead creates the booking UNOWNED and broadcasts to every eligible provider (no level preference, no phantom owner)', async () => {
   const olderBronze = makeProvider('p1', { providerLevel: 'BRONZE', rating: 4.5, latitude: 17.3850, longitude: 78.4867, createdAt: new Date('2023-01-01T00:00:00Z') });
   const newerDiamond = makeProvider('p2', { providerLevel: 'DIAMOND', rating: 4.5, latitude: 17.3850, longitude: 78.4867, createdAt: new Date('2025-01-01T00:00:00Z') });
   const { client } = makeEligibilityClient({ providers: [olderBronze, newerDiamond] });
@@ -853,9 +887,15 @@ test('RULE 5: createBookingWithLead assigns the first eligible provider (determi
     }
   });
 
-  assert.equal(result.provider.id, 'p1', 'first eligible provider owns the booking (createdAt order, NOT level)');
-  assert.equal(result.booking.providerId, 'p1');
-  assert.equal(result.eligibleCount, 2, 'but both providers still received the broadcast offer');
+  assert.equal(result.booking.providerId, null, 'a PENDING booking has no owner — nobody is shown as the provider until one accepts');
+  assert.equal(result.lead.providerId, null, 'the lead is unowned too; LeadAssignmentHistory is the offer ledger');
+  assert.equal(result.provider, null, 'the create result reports no chosen provider');
+  assert.equal(result.eligibleCount, 2, 'both providers received the broadcast offer');
+  assert.deepEqual(
+    result.providers.map((p) => p.id).sort(),
+    ['p1', 'p2'],
+    'the broadcast reaches every eligible provider regardless of level/rating'
+  );
 });
 
 // ---- BLOCKER 3: role-gated terminal transitions -------------------------------

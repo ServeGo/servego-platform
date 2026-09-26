@@ -402,11 +402,15 @@ export async function getBookingTracking({ bookingId, userId, role, client = pri
     bookingId: booking.id,
     status: booking.status,
     providerPhase: booking.providerPhase || null,
-    provider: {
-      id: booking.provider.id,
-      name: booking.provider.user?.name,
-      avatar: booking.provider.user?.avatar
-    },
+    // No provider while the booking is still PENDING (open broadcast offer) —
+    // tracking only has a provider to plot once someone accepted.
+    provider: booking.provider
+      ? {
+          id: booking.provider.id,
+          name: booking.provider.user?.name,
+          avatar: booking.provider.user?.avatar
+        }
+      : null,
     startLocation: booking.startLocation || null,
     endLocation: booking.endLocation || (destination ? { ...destination } : null),
     providerLatitude: booking.providerLatitude ?? null,

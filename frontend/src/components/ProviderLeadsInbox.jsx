@@ -687,11 +687,13 @@ function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onRe
   const expiryMs = lead.expiryTime ? new Date(lead.expiryTime).getTime() - now : null;
   const expired = expiryMs != null && expiryMs <= 0;
   const bookingStatus = booking.status || 'PENDING';
-  // Rule: the customer's name and number are only revealed while the job is
-  // live (active duty). Action-required/closed/declined etc. keep identities
-  // hidden until a booking is actually active.
+  // Rule: the customer's identity, number and exact location are only revealed
+  // once THIS provider owns the job. An open broadcast offer (PENDING, nobody
+  // accepted yet) is redacted by the API — the provider judges it on the
+  // service and the city, and the details unlock on accept. Once the booking is
+  // cancelled the number is withheld again for good.
   const activeDuty = bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING';
-  const canShowPhone = activeDuty;
+  const canShowPhone = activeDuty && booking.status !== 'CANCELLED';
   // Active Duty shows a live-tracking map while the provider is en route so
   // they can navigate to the customer. Once the provider has ARRIVED, sharing
   // stops and there is nothing left to track — swap the map for the plain
@@ -791,10 +793,23 @@ function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onRe
               <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
             </Suspense>
           </div>
-        ) : (
+        ) : booking.locationAddress ? (
           <div>
             <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Address</span>
-            <span className="text-slate-800 leading-tight block">{booking.locationAddress || '—'}{booking.city ? `, ${booking.city}` : ''}</span>
+            <span className="text-slate-800 leading-tight block">{booking.locationAddress}{booking.city ? `, ${booking.city}` : ''}</span>
+          </div>
+        ) : (
+          // Open broadcast offer: the exact address, the instructions and the
+          // customer's number are withheld until this provider accepts, so the
+          // card shows the city only and says why.
+          <div>
+            <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Area</span>
+            <span className="text-slate-800 leading-tight block">
+              {booking.city || 'City not specified'}
+            </span>
+            <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-1">
+              The exact address, the customer's note and their contact number are shared as soon as you accept this request.
+            </span>
           </div>
         )}
       </div>

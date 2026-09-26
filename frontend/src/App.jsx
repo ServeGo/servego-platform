@@ -28,6 +28,10 @@ import Logo from './components/Logo';
 import CustomerBottomNav from './components/CustomerBottomNav';
 import ProviderBottomNav from './components/ProviderBottomNav';
 import ActionSpinnerOverlay from './components/ActionSpinnerOverlay';
+// The Knowledge Assistant is a global widget, not a page: it is available on every route.
+// The component itself gates on the `chatbotEnabled` flag and lazy-loads its panel, so a
+// disabled or unused assistant costs nothing (rule 15).
+import KnowledgeAssistant from './components/KnowledgeAssistant';
 
 
 import {
@@ -852,6 +856,9 @@ export function MainLayout() {
             </>
           )}
         </div>
+
+        {/* The admin layout returns early, so the assistant needs its own mount here. */}
+        <KnowledgeAssistant />
       </div>
     );
   }
@@ -859,6 +866,10 @@ export function MainLayout() {
   return (
     <div className="flex flex-col min-h-screen">
       <ActionSpinnerOverlay isOpen={!!actionSpinner?.isOpen} message={actionSpinner?.message} />
+
+      <Suspense fallback={null}>
+        <KnowledgeAssistant />
+      </Suspense>
 
       {currentUser && connectionStatus !== 'online' && (
         <div

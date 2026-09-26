@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
@@ -14,6 +15,7 @@ import { requestLogger, errorHandler, requestTimeout } from './middleware/loggin
 import { sendApiSuccess } from './utils/response.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
 import { sweepClosedLocationHistory } from './services/trackingService.js';
+import { warmServiceCaches } from './controllers/serviceController.js';
 
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
 import { socketMetrics } from './services/socketMetrics.js';
@@ -45,10 +47,23 @@ async function bootstrap() {
   app.set('trust proxy', 1);
 
   // Security middleware
+  app.set('etag', 'strong');
   app.use(helmetConfig);
   app.use(hppConfig);
   app.use(cors(getCorsConfig()));
   app.use(generalRateLimiter);
+
+  // Response compression. The service catalog is a large JSON array of
+  // descriptions + Cloudinary URLs; without gzip every public home page load
+  // pulled the full uncompressed payload across the wire. Must run before the
+  // body is written, and never touch the Socket.io upgrade path.
+  app.use(compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers.upgrade) return false;
+      return compression.filter(req, res);
+    }
+  }));
 
   // Request parsing
   app.use(express.json({ limit: '1mb' }));
@@ -286,6 +301,9 @@ async function bootstrap() {
     void scheduleAllLeadTimers(io).catch((err) => {
       console.error('Lead timer scheduling failed:', err.message);
     });
+    // Precompute the public catalog + top-rated chips so the first visitor
+    // after a deploy does not pay for a cold cache.
+    warmServiceCaches();
     // Recover any jobs a previous process left mid-flight, then drain the
     // async side-effect queue (email, analytics, invoices, performance).
     void recoverInterruptedJobs()

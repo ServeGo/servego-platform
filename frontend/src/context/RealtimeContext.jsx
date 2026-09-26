@@ -200,6 +200,13 @@ export const RealtimeProvider = ({ children }) => {
       // Admin: refresh pending service requests when a new one arrives
       if (currentUser?.role === 'admin') {
         socket.on('newApprovalRequest', () => fetchProviderServiceRequests());
+        // New permanent/custom/NO_PROVIDER service request submitted by customer
+        socket.on('admin:notification', (payload) => {
+          if (payload?.type === 'PERMANENT_SERVICE_REQUEST') {
+            fetchProviderServiceRequests();
+            fetchPermanentServiceRequests();
+          }
+        });
       }
 
       // Live in-app notification. `addLiveNotification` dedupes on the stable

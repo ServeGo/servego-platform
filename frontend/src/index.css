@@ -24,6 +24,27 @@
   .animate-overlay-in {
     animation: sg-fade-in 0.18s ease-out both;
   }
+  /* Chatbot "assistant is typing" dots — the standard three-dot pulse every
+     chat widget uses, so waiting never reads as a frozen screen (rule 15). */
+  .sg-typing-dot {
+    animation: sg-typing 1.15s ease-in-out infinite;
+  }
+  .sg-typing-dot:nth-child(2) {
+    animation-delay: 0.16s;
+  }
+  .sg-typing-dot:nth-child(3) {
+    animation-delay: 0.32s;
+  }
+  @keyframes sg-typing {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.35;
+    }
+    30% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
+  }
   @keyframes sg-pop-in {
     from {
       opacity: 0;

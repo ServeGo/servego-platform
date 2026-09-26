@@ -102,6 +102,10 @@ export function normalizeBooking(booking) {
   if (!booking) return booking;
 
   const providerUser = booking.provider?.user || {};
+  // A PENDING booking is an open broadcast offer: `providerId` is null and the
+  // API returns `provider: null` because nobody has taken the job yet. Never
+  // label that as an assigned specialist — say what is actually happening.
+  const isPending = lc(booking.status) === 'pending';
 
   return {
     ...booking,
@@ -111,7 +115,10 @@ export function normalizeBooking(booking) {
     status: lc(booking.status),
 
     providerName:
-      booking.providerName || providerUser.name || booking.provider?.name || 'Assigned Specialist',
+      booking.providerName ||
+      providerUser.name ||
+      booking.provider?.name ||
+      (isPending ? 'Finding your provider' : 'Assigned Specialist'),
     providerAvatar:
       booking.providerAvatar || booking.provider?.photo || providerUser.avatar || null,
     // serviceCategory must come from the booking record itself, never from provider.category

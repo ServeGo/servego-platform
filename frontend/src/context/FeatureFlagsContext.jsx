@@ -12,10 +12,12 @@ import { api as apiClient } from '../utils/apiClient';
  * Defaults (mirror backend FEATURE_FLAGS):
  *   - liveTrackingCustomers: true  (customer already saw live tracking)
  *   - liveTrackingProviders: false (provider card shows service address; opt-in)
+ *   - chatbotEnabled: true          (Knowledge Assistant widget shown)
  */
 const DEFAULT_FLAGS = {
   liveTrackingCustomers: true,
-  liveTrackingProviders: false
+  liveTrackingProviders: false,
+  chatbotEnabled: true
 };
 
 const FeatureFlagsContext = createContext(DEFAULT_FLAGS);
@@ -36,7 +38,8 @@ export const FeatureFlagsProvider = ({ children }) => {
         const raw = res.data?.flags || {};
         setFlags({
           liveTrackingCustomers: raw.liveTrackingCustomers === true,
-          liveTrackingProviders: raw.liveTrackingProviders === true
+          liveTrackingProviders: raw.liveTrackingProviders === true,
+          chatbotEnabled: raw.chatbotEnabled !== false
         });
       })
       .catch(() => {

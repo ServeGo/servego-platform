@@ -31,12 +31,26 @@ export const NETWORK_ERROR_MESSAGE =
 
 
 
-// Retry configuration
+// Retry configuration.
+//
+// The catalog is idempotent GET traffic: retrying it is always safe. Keep the
+// attempt count but bound the total wait so a struggling origin can never pin
+// the visitor behind a skeleton for 7s per endpoint before failing (rule 15).
 const DEFAULT_RETRY_CONFIG = {
-  maxRetries: 3,
-  retryDelay: 1000,
+  maxRetries: 2,
+  retryDelay: 400,
   retryableStatuses: [408, 500, 502, 503, 504]
 };
+
+// Hard ceiling for a single attempt. Without it a request that never settles
+// (dropped connection, stalled proxy) leaves the UI on a skeleton forever
+// because nothing ever rejects.
+const DEFAULT_TIMEOUT_MS = 12_000;
+
+// In-flight GET coalescing. Two components asking for the same endpoint in the
+// same tick (Home's hero + DataContext's catalog) used to fire two identical
+// requests; now they share one. Only safe for GET — never for mutations.
+const inflightGets = new Map();
 
 // Token storage
 let accessToken = null;
@@ -159,17 +173,38 @@ async function apiRequest(endpoint, options = {}) {
   let tokenRefreshed = false;
 
   // A caller-supplied AbortController signal (e.g. live-search cancellation)
-  // wins over the built-in timeout so an in-flight request can be aborted
-  // immediately on the next keystroke.
-  const { timeout, signal: externalSignal } = options;
-  const signal = externalSignal || (timeout ? AbortSignal.timeout(timeout) : undefined);
+  // lets an in-flight request be aborted immediately on the next keystroke —
+  // but it must not disable the deadline, or a hung connection with no further
+  // keystrokes would spin forever. Combine both when the platform supports it.
+  // Otherwise every attempt gets its own deadline, so one hung attempt cannot
+  // outlive the budget.
+  const { signal: externalSignal } = options;
+  const attemptTimeout = options.timeout || DEFAULT_TIMEOUT_MS;
+  const makeSignal = () => {
+    const own = typeof AbortSignal?.timeout === 'function'
+      ? AbortSignal.timeout(attemptTimeout)
+      : (() => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), attemptTimeout);
+        return controller.signal;
+      })();
+
+    if (!externalSignal) return own;
+    if (typeof AbortSignal?.any === 'function') return AbortSignal.any([externalSignal, own]);
+    // No AbortSignal.any: forward the caller's abort onto our own signal.
+    if (externalSignal.aborted) own.abort();
+    else externalSignal.addEventListener('abort', () => own.abort(), { once: true });
+    return own;
+  };
 
   for (const baseUrl of API_BASES) {
     const url = `${baseUrl}${endpoint}`;
     for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
       try {
         const headers = createHeaders(options.headers, options.body);
-        const fetchOptions = { ...options, headers, signal };
+        const fetchOptions = { ...options, headers, signal: makeSignal() };
+        delete fetchOptions.retryConfig;
+        delete fetchOptions.timeout;
         const response = await fetch(url, fetchOptions);
       
       // Handle 401 Unauthorized with token refresh
@@ -210,19 +245,27 @@ async function apiRequest(endpoint, options = {}) {
         return { ok: response.ok, status: response.status, data, headers: response.headers };
       } catch (err) {
         lastError = err;
-        // A cancelled request must never be retried or delayed.
-        if (err?.name === 'AbortError') break;
+        // A caller-initiated cancel (live search superseded) must never be
+        // retried or delayed. Our own deadline AbortError is a timeout, so it
+        // still gets the normal retry budget.
+        const callerCancelled = err?.name === 'AbortError' && Boolean(externalSignal?.aborted);
+        if (callerCancelled) break;
         if (attempt < config.maxRetries) {
           await sleep(config.retryDelay * Math.pow(2, attempt));
           continue;
         }
       }
     }
-    if (lastError?.name === 'AbortError') break;
+    if (lastError?.name === 'AbortError' && externalSignal?.aborted) break;
   }
 
   if (lastResponse) {
     return { ok: false, status: lastResponse.status, data: { error: NETWORK_ERROR_MESSAGE }, headers: lastResponse.headers };
+  }
+  // A caller-cancelled request reports the abort so the search debounce can
+  // recognise it and ignore the result.
+  if (lastError?.name === 'AbortError' && externalSignal?.aborted) {
+    return { ok: false, status: 0, data: null, error: lastError };
   }
   return {
     ok: false,
@@ -236,8 +279,25 @@ async function apiRequest(endpoint, options = {}) {
  * API client methods
  */
 export const api = {
-  get: (endpoint, options = {}) => 
-    apiRequest(endpoint, { ...options, method: 'GET' }),
+  get: (endpoint, options = {}) => {
+    // Coalesce identical concurrent GETs. The public home page used to ask for
+    // `GET /services` twice (hero marquee + catalog context) on every load;
+    // both now share one request. Requests carrying a caller AbortSignal are
+    // excluded — two components with separate signals must not cancel each
+    // other out when one unmounts.
+    if (options?.signal) return apiRequest(endpoint, { ...options, method: 'GET' });
+
+    const existing = inflightGets.get(endpoint);
+    if (existing) return existing;
+
+    const request = apiRequest(endpoint, { ...options, method: 'GET' });
+    inflightGets.set(endpoint, request);
+    const release = () => {
+      if (inflightGets.get(endpoint) === request) inflightGets.delete(endpoint);
+    };
+    request.then(release, release);
+    return request;
+  },
   
   post: (endpoint, body, options = {}) => 
     apiRequest(endpoint, { 

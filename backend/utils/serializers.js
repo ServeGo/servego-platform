@@ -215,16 +215,22 @@ export function providerDetails(provider, opts = {}) {
 export function bookingListItem(booking) {
   if (!booking) return null;
 
-  const provider = booking.provider || {};
-  const providerUser = provider.user || {};
+  const provider = booking.provider || null;
+  const providerUser = provider?.user || {};
 
   return {
     ...pick(booking, BOOKING_SCALAR_FIELDS),
     customer: pick(booking.customer || {}, ['id', 'name', 'email', 'phone']),
-    provider: {
-      ...pick(provider, ['id', 'photo']),
-      user: pick(providerUser, ['id', 'name', 'avatar'])
-    },
+    // A PENDING booking is an open broadcast offer with no owner yet
+    // (`Booking.providerId` stays null until a provider accepts). Returning
+    // `null` — not an empty object — so the client renders "Awaiting provider"
+    // instead of a blank card that reads like a real, unnamed provider.
+    provider: provider
+      ? {
+          ...pick(provider, ['id', 'photo']),
+          user: pick(providerUser, ['id', 'name', 'avatar'])
+        }
+      : null,
     service: pick(booking.service || {}, ['id', 'name']),
     // The live (latest) quotation for the booking — drives the Start Work /
     // Confirm quotation panels. Empty until a provider submits one.

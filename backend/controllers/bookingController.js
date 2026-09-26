@@ -382,7 +382,10 @@ export const BookingController = {
         // commits. Persistence is handled by the queue workers.
         void Promise.allSettled(
           (result.providers || []).map((provider) =>
-            notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider))
+            // `forProviderId` keeps an open broadcast offer redacted — the
+            // customer's phone, full address, instructions and exact
+            // coordinates are released only to the provider who accepts.
+            notifyNewLead(io, provider.user.id, buildLeadPayload(result.lead, result.booking, provider, { forProviderId: provider.id }))
           )
         );
         io.to(`user:${actorId}`).emit('booking:created', { bookingId: result.booking.id, status: 'PENDING' });
@@ -460,10 +463,15 @@ export const BookingController = {
         return sendApiError(res, 400, 'NO_CHANGE', 'Booking is already in this status.');
       }
 
-      const provider = await prisma.provider.findUnique({ 
-        where: { id: booking.providerId }, 
-        select: { userId: true, accountStatus: true }
-      });
+      // `providerId` is null while the booking is still an unaccepted broadcast
+      // offer, so there may be no provider row to load — that is normal, not an
+      // error (the customer cancelling a PENDING request lands here).
+      const provider = booking.providerId
+        ? await prisma.provider.findUnique({
+            where: { id: booking.providerId },
+            select: { id: true, userId: true, accountStatus: true }
+          })
+        : null;
 
       if (role === 'provider' && provider?.accountStatus === 'BLOCKED') {
         return sendApiError(res, 403, 'PROVIDER_BLOCKED', 'Blocked providers cannot update bookings.');
@@ -647,6 +655,20 @@ export const BookingController = {
         }
       });
       if (!booking) return sendApiError(res, 404, 'NOT_FOUND', 'Booking not found.');
+
+      // Deduplicate events: remove entries with the same action + actorRole that
+      // occurred within a few seconds of each other (race/retries can produce
+      // near-duplicate BookingEvent rows even though statusHistory is idempotent).
+      const rawEvents = booking.events || [];
+      const dedupedEvents = [];
+      for (const e of rawEvents) {
+        const prev = dedupedEvents[dedupedEvents.length - 1];
+        const sameAction = prev && prev.action === e.action && prev.actorRole === e.actorRole;
+        const closeTime = sameAction && prev.createdAt && e.createdAt &&
+          Math.abs(new Date(prev.createdAt).getTime() - new Date(e.createdAt).getTime()) < 5000;
+        if (!closeTime) dedupedEvents.push(e);
+      }
+
       return sendApiSuccess(res, 200, {
         bookingId: booking.id,
         currentStatus: booking.status,
@@ -654,7 +676,7 @@ export const BookingController = {
         createdAt: booking.createdAt,
         customer: booking.customer,
         provider: booking.provider?.user,
-        timeline: booking.events
+        timeline: dedupedEvents
       });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to fetch booking timeline', err.message);
@@ -736,7 +758,18 @@ export const BookingController = {
 
 async function handleAccept(req, res, { booking, provider, io }) {
   try {
-    const result = await acceptLeadForBooking({ bookingId: booking.id, providerId: booking.providerId });
+    // Admin-only override (see STATUS_ROLE_MATRIX: CONFIRMED is admin). It
+    // confirms the booking FOR a specific provider — the request has no owner
+    // while it is an open offer, so refuse rather than silently picking one.
+    if (!provider?.id) {
+      return sendApiError(
+        res,
+        409,
+        'BOOKING_UNASSIGNED',
+        'This request has no provider yet. Ask a provider to accept it, or assign one through the lead inbox.'
+      );
+    }
+    const result = await acceptLeadForBooking({ bookingId: booking.id, providerId: provider.id });
     if (result.lead) cancelLeadExpiry(result.lead.id);
 
     const updated = await prisma.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
@@ -878,7 +911,7 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
 
       if (redistribution?.reassigned && redistribution.nextProvider) {
         scheduleLeadExpiry(redistribution.lead, io);
-        const payload = buildLeadPayload(redistribution.lead, updated, redistribution.nextProvider);
+        const payload = buildLeadPayload(redistribution.lead, updated, redistribution.nextProvider, { forProviderId: redistribution.nextProvider.id });
         await notifyLeadRejected(io, booking.customerId, payload);
         await notifyLeadTransferred(io, redistribution.nextProvider.user?.id, payload);
         return sendApiSuccess(res, 200, updated);
@@ -897,6 +930,7 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
 
     // Customer / Admin cancellation.
     let affectedProviders = [];
+    let closedOffers = [];
     if (lead) {
       cancelLeadExpiry(lead.id);
       const closed = await cancelOpenOffers({
@@ -904,6 +938,7 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
         reason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED'
       });
       affectedProviders = closed?.providerUserIds || [];
+      closedOffers = closed?.offers || [];
       await prisma.lead.update({
         where: { id: lead.id },
         data: { status: 'REJECTED', lastRejectReason: actorRole === 'CUSTOMER' ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED' }
@@ -931,12 +966,21 @@ async function handleCancellation(req, res, { booking, provider, requesterId, ro
       io.to(`user:${booking.customerId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
       if (provider?.userId) io.to(`user:${provider.userId}`).emit('booking:cancelled', { bookingId: booking.id, status: 'CANCELLED' });
       // Every provider still holding an open broadcast offer sees it closed in
-      // realtime — same pattern as `accept` notifying losing providers. The
-      // payload carries the CANCELLED booking, so the number stays stripped.
+      // realtime — same pattern as `accept` notifying losing providers. Each
+      // payload is scoped to its recipient, so a provider who never took the
+      // job never receives the customer's contact details or address.
       await Promise.all(
         affectedProviders
           .filter((uid) => uid !== provider?.userId)
-          .map((uid) => notifyLeadCancelledByCustomer(io, uid, buildLeadPayload(lead, updated)))
+          .map((uid) =>
+            notifyLeadCancelledByCustomer(
+              io,
+              uid,
+              buildLeadPayload(lead, updated, null, {
+                forProviderId: closedOffers.find((o) => o.userId === uid)?.providerId ?? null
+              })
+            )
+          )
       );
     }
     // Admin override cancellation must land in the audit trail.

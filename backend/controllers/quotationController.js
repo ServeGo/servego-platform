@@ -120,9 +120,11 @@ export const QuotationController = {
         if (io) {
           // Real-time re-offers — same broadcast pattern as a fresh booking:
           // every eligible provider gets a `newLead` event; first-accept-wins.
+          // The offer is unowned again, so each payload is redacted for its
+          // recipient (they only see the details if they are the one who takes it).
           void Promise.allSettled(
             reoffered.map((provider) =>
-              notifyNewLead(io, provider.user?.id, buildLeadPayload(result.lead, result.booking, provider))
+              notifyNewLead(io, provider.user?.id, buildLeadPayload(result.lead, result.booking, provider, { forProviderId: provider.id }))
             )
           );
           io.to(`user:${result.booking.customerId}`).emit('booking:statusChanged', { bookingId: result.booking.id, status: 'PENDING' });

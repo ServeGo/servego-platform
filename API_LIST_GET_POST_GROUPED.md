@@ -199,7 +199,7 @@ Multer single `image` → Cloudinary; optional auth so providers can upload duri
 | PATCH | /leads/:id/accept | provider |
 | PATCH | /leads/:id/reject | provider |
 
-One request = one lead = one provider. Lead is `NEW → VIEWED → ACCEPTED/REJECTED`; rejection re-assigns the next ranked eligible provider. Open offers capped at `MAX_OPEN_LEADS = 2`.
+A customer booking creates a **single lead** that is broadcast to **every eligible provider** at once. The lead starts as `NEW`, becomes `VIEWED` when a provider opens it, and moves to `ACCEPTED` or `REJECTED` on action. A **rejection does NOT re-assign the request to another provider** — the offer returns to the open pool (the booking stays unowned) and every remaining eligible provider keeps their open offer. The provider who accepts claims the job: the lead becomes `ACCEPTED` and the booking transitions `PENDING → CONFIRMED`. Open offers are capped at `MAX_OPEN_LEADS = 2`.
 
 ## Permanent / Contract Service Requests
 

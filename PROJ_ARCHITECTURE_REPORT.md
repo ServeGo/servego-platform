@@ -38,8 +38,9 @@ ServeGo is a two-role marketplace ("book a local expert") with an admin back off
 a ServeGo "lead marketplace" monetization layer. It is a single deployed backend
 (Express + Socket.IO + PostgreSQL/Prisma) with a separate React 19 + Vite frontend.
 
-- **Customers** browse a service catalog, book the first eligible specialist (no
-  provider is hand-picked at booking time) or send permanent/contract requests.
+- **Customers** browse a service catalog and send an open broadcast offer to every
+  eligible provider; the first specialist to accept claims the job (no provider is
+  hand-picked at booking time). Customers can also send permanent/contract requests.
 - **Providers** sign up self-serve (role `provider`), get admin-verified, register
   services, receive leads whose visible data is gated until purchase/acceptance.
 - **Admins** manage providers, service categories, the lead marketplace, wallet
@@ -287,8 +288,10 @@ PENDING → CONFIRMED → ONGOING → COMPLETED
 
 ## 10) Lead generation & matching engine
 
-The ServeGo model: **one customer request = one lead = one assigned provider.** Center
+The ServeGo model: **one customer request = one lead, broadcast to all eligible providers; first accept wins.** Center
 of logic is `services/leadService.js` which is also used for the booking-created leads.
+
+A booking is created with `status = PENDING` and **no provider assigned** (`providerId = null`). Every eligible provider receives an open offer via `LeadAssignmentHistory` (`isCurrent: true`). The first provider to accept claims the job: `acceptLeadForBooking` writes `providerId` on both the booking and the lead inside the `PENDING → CONFIRMED` compare-and-swap. Rejecting a lead **does not re-assign** the request — the offer returns to the open pool, the booking stays unowned, and all remaining providers keep their open offers. If the last offer is rejected the booking is cancelled.
 
 Eligibility (`findEligibleProviders`) — all three must hold:
 
@@ -297,44 +300,38 @@ Eligibility (`findEligibleProviders`) — all three must hold:
    `serviceCategory` (case-insensitive). The historical `provider.category`-fallback
    match was removed — a provider without an approved link for the requested service
    is not eligible, even if their free-text `category` matches.
-2. **Distance:** customer coordinates are required; providers without `latitude`/
-   `longitude`, or outside their `maxRadiusKm` (default 50 km) of the customer, are
-   excluded. A bounding-box pre-filter on the provider table shrinks the haversine set.
+2. **Verified + Active:** provider `isVerified: true`, `accountStatus: 'ACTIVE'`, and
+   `user.status: 'ACTIVE'`.
 3. **Wallet ≥ 0:** provider wallet must be null (new provider) or `balance >= 0` —
    providers in wallet debt never receive leads.
 
-Also excluded: not `isVerified`, `profileComplete: false`, `acceptingBookings: false`,
-`isOnline: false`, `accountStatus !== ACTIVE`, user not ACTIVE, provider in performance
-cooldown.
+No distance/radius filter, no `isOnline`/`acceptingBookings`/`profileComplete` gates,
+no performance cooldown exclusion, no open-lead cap. Every eligible provider receives
+the broadcast offer simultaneously; first-accept-wins.
 
-Silent exclusion: a provider with `latitude`/`longitude` NULL never survives the
-bounding-box pre-filter (`NULL >= X` is falsy in the WHERE), so it is removed before
-ranking with no per-provider explanation — the classic cause of "No Providers Available"
-for a brand-new provider who skipped the location step.
+Silent exclusion removed: providers without `latitude`/`longitude` are no longer
+excluded — they receive leads like any other eligible provider.
 
-Inbox cap & one-job rule (rule 17, verified by `bookingFlow.test.js`): a provider may
-hold at most `MAX_OPEN_LEADS = 2` open offers (`findEligibleProviders` pushes the cap
-into SQL via `groupBy`/`having`). Declining one frees a slot; accepting one closes the
-provider's remaining open offers and clears the matched `Alert` rows
-(`consumeAlertsByData`) so a provider can only ever hold one active job. A customer
-cannot create a second booking on the same service while one is active (409
-`CUSTOMER_BUSY`), but may book different services in parallel.
+Inbox cap removed: providers are not limited to 2 open offers. There is no `MAX_OPEN_LEADS`
+cap and no `groupBy` cap query. Accepting a lead does not auto-close other open offers
+(those remain available until explicitly rejected or accepted by another provider).
 
-Ranking (`rankProviders`), used for assignment and re-assignment, in priority order:
-Distance → Rating → Provider Level (`BRONZE < SILVER < GOLD < PLATINUM < DIAMOND`) →
-Acceptance Rate → Cancellation Rate (low wins) → Response Rate → Experience Years →
-Review Count → Service Fee (low wins) → `createdAt` determinism. There is no
-PREMIUM/GENERAL sector tie-break — all providers are `GENERAL`.
+`rankProviders` is used only for transfers (re-matching after a rejection/expiry), in
+priority order: Distance → Rating → Provider Level → Acceptance Rate → Cancellation Rate
+(low wins) → Response Rate → Experience Years → Review Count → Service Fee (low wins) →
+`createdAt` determinism. There is no PREMIUM/GENERAL sector tie-break — all providers
+are `GENERAL`.
 
 `diagnoseProvider` explains WHY a provider isn't eligible for a customer
-(`NO_SERVICE_MATCH`, `OUT_OF_RADIUS`/`NO_COORDS`, `WALLET_BELOW_ZERO`,
-`NOT_VERIFIED`, `OFFLINE`, `NOT_ACCEPTING`, `COOLDOWN`...).
+(`NO_SERVICE_MATCH`, `WALLET_BELOW_ZERO`, `NOT_VERIFIED`, `ACCOUNT_INACTIVE`...).
+`OUT_OF_RADIUS`/`NO_COORDS` and `OFFLINE`/`NOT_ACCEPTING`/`COOLDOWN` are no longer
+eligibility codes.
 
 Lead lifecycle: `NEW → VIEWED → ACCEPTED/REJECTED`, transfers (`transferCount`) re-match
 the next eligible provider; `LeadAssignmentHistory`/`LeadTransferHistory` record each
-hop. `distanceKm` is persisted on the lead at creation and each transfer so the inbox
-can sort by proximity. Expiry timers (`leadExpiryService`) re-dispatch on timeout. Lead
-providers only see customer contact data once accepted.
+hop. `distanceKm` is always `null` (no distance calculation). Expiry timers
+(`leadExpiryService`) re-dispatch on timeout. Lead providers only see customer contact
+data once accepted.
 
 ## 11) Wallet, billing & withdrawals
 
