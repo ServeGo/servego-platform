@@ -82,10 +82,19 @@ export const FEATURE_FLAGS = {
   liveTrackingProviders: {
     key: 'liveTrackingProviders',
     label: 'Live Tracking (Providers)',
-    description: 'When ON, the provider\u2019s Active Duty card shows the live-tracking map in place of the service address. When OFF, the service address is shown as usual.',
+    description: 'When ON, the provider\u2019s Active Duty card shows the live-tracking map in place of the service address. When OFF, the provider card shows the service address.',
     category: 'Tracking',
     valueType: 'boolean',
     default: false,
+    public: true
+  },
+  chatbotEnabled: {
+    key: 'chatbotEnabled',
+    label: 'Knowledge Assistant (Chatbot)',
+    description: 'When ON, the floating ServeGo24 Knowledge Assistant is shown to customers and providers. When OFF, the widget is hidden everywhere \u2014 use this to disable the assistant without a redeploy.',
+    category: 'Support',
+    valueType: 'boolean',
+    default: true,
     public: true
   }
 };

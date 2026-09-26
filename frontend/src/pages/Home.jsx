@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useData, useUI } from '../context/AppContext';
+import { useAuth, useData, useUI } from '../context/AppContext';
 import { api as apiClient } from '../utils/apiClient';
+import { cachedRequest } from '../utils/requestCache';
 import { useSEO } from '../hooks/useSEO';
 
 // Components
@@ -121,7 +122,8 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
   const {
     searchQuery, setSearchQuery, setCategory,
   } = useUI();
-  const { providers, services, servicesLoading } = useData();
+  const { currentUser } = useAuth();
+  const { providers, services, servicesLoading, servicesError, servicesStale, fetchServices } = useData();
 
   useSEO({
     title: HOME_SEO.title,
@@ -135,11 +137,15 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
 
   useEffect(() => {
     let cancelled = false;
-    apiClient.get('/services/top-rated?limit=5').then((res) => {
-      if (!cancelled && res.ok && Array.isArray(res.data)) {
-        setTopServices(res.data);
-      }
-    }).catch(() => {});
+    // `cachedRequest` dedupes this against the identical call on the services
+    // page and keeps the chips warm across route changes.
+    cachedRequest('services-top-rated', () => apiClient.get('/services/top-rated?limit=5'))
+      .then((res) => {
+        if (!cancelled && res.ok && Array.isArray(res.data)) {
+          setTopServices(res.data);
+        }
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -154,9 +160,20 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
     onNavigate('services');
   };
 
+  // The card is a whole-card tap target, so "Book now" and the card body share
+  // this one handler. Booking is an authenticated action (it creates a Booking,
+  // a Lead and a LeadAssignmentHistory), so this mirrors Services.jsx: only a
+  // signed-in customer proceeds, everyone else is sent to login first instead of
+  // being dropped on the services page. The intent is persisted so login can
+  // resume straight into the booking form.
   const handleCategoryClick = (catNameOrId) => {
     setCategory(catNameOrId);
-    onNavigate('services');
+    sessionStorage.setItem('servego_booking_intent', JSON.stringify({ catId: catNameOrId }));
+    if (currentUser?.role === 'customer') {
+      onNavigate('services');
+    } else {
+      onNavigate('login');
+    }
   };
 
   const handleQuickSearch = (term) => {
@@ -180,6 +197,7 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
         setInputQuery={setInputQuery}
         onQuickSearch={handleQuickSearch}
         topServices={topServices}
+        services={services}
       />
 
       {servicesLoading && !hasServices ? (
@@ -190,7 +208,7 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">Find the right expert</h2>
             </div>
           </div>
-          <SkeletonLoader type="card" count={6} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" />
+          <SkeletonLoader type="card" count={6} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6" />
         </section>
       ) : (
         <CategoryGrid
@@ -199,6 +217,9 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
           onCategoryClick={handleCategoryClick}
           onSeeAll={handleSeeAll}
           loading={servicesLoading}
+          error={servicesError}
+          stale={servicesStale}
+          onRetry={() => fetchServices({ force: true })}
         />
       )}
 

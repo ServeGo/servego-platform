@@ -67,12 +67,15 @@ export const LeadController = {
   /** Single lead with its full assignment/transfer history (role-aware). */
   getById: async (req, res) => {
     try {
-      const lead = await getLeadWithHistory(req.params.id);
+      // Resolve the reader first: a provider only ever sees the customer's
+      // contact details + exact address for a request THEY accepted, so the
+      // redaction has to be decided before the row is sent.
+      const viewerProviderId = req.user.role === 'provider' ? await resolveProviderId(req) : null;
+      const lead = await getLeadWithHistory(req.params.id, undefined, { viewerProviderId });
       if (!lead) return sendApiError(res, 404, 'NOT_FOUND', 'Lead not found.');
 
       if (req.user.role === 'provider') {
-        const providerId = await resolveProviderId(req);
-        if (!providerId || lead.providerId !== providerId && !lead.assignmentHistory.some((a) => a.providerId === providerId)) {
+        if (!viewerProviderId || lead.providerId !== viewerProviderId && !lead.assignmentHistory.some((a) => a.providerId === viewerProviderId)) {
           return sendApiError(res, 403, 'FORBIDDEN', 'You can only view leads assigned to you.');
         }
       } else if (req.user.role === 'customer' && lead.customerId !== req.user.id) {
@@ -126,7 +129,10 @@ export const LeadController = {
         // parallel (each is an independent notify + queue insert).
         await Promise.all(
           (result.cancelledProviders || []).map((loser) =>
-            notifyLeadCancelled(io, loser.userId, buildLeadPayload(result.lead ?? lead, updated))
+            // Scoped to the losing provider: they were only OFFERED this job, so
+            // they must not receive the customer's phone/address in the
+            // "someone else took it" payload.
+            notifyLeadCancelled(io, loser.userId, buildLeadPayload(result.lead ?? lead, updated, null, { forProviderId: loser.providerId }))
           )
         );
       }

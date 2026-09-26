@@ -320,11 +320,17 @@ model Booking {
   id             String        @id @default(cuid())
   bookingNumber  String?       @unique
   customerId     String
-  providerId      String
-  serviceId       String?
+  // NULL until a provider accepts the request. A booking is created as an open
+  // broadcast offer to every eligible provider, so at PENDING time nobody owns
+  // it — writing a placeholder provider here would both display a provider the
+  // customer never chose and lock that provider out of every later lead (their
+  // phantom PENDING booking fails the "not busy with an active job" gate).
+  // `acceptLeadForBooking` sets it inside the PENDING -> CONFIRMED transition.
+  providerId     String?
+  serviceId      String?
   serviceCategory String
-  bookingDate     DateTime      @default(now())
-  status          BookingStatus @default(PENDING)
+  bookingDate    DateTime      @default(now())
+  status         BookingStatus @default(PENDING)
   locationAddress String
   city            String
   instructions    String?
@@ -392,7 +398,7 @@ model Booking {
   @@index([providerId, createdAt])
 
   customer        User          @relation("CustomerBookings", fields: [customerId], references: [id])
-  provider        Provider      @relation(fields: [providerId], references: [id])
+  provider        Provider?     @relation(fields: [providerId], references: [id])
   service         Service?      @relation(fields: [serviceId], references: [id])
   reviews         Review[]
   events          BookingEvent[]
@@ -419,7 +425,7 @@ model Quotation {
   updatedAt   DateTime        @updatedAt
 
   booking  Booking  @relation(fields: [bookingId], references: [id])
-  provider Provider @relation(fields: [providerId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
 
   @@index([bookingId, createdAt])
   @@index([providerId, createdAt])

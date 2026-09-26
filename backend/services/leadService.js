@@ -15,10 +15,6 @@ import { nextBusinessNumber } from '../utils/businessNumber.js';
 import { appendStatusHistory } from '../utils/statusHistory.js';
 import { clearLocationHistory } from './trackingService.js';
 
-// A provider may hold at most this many open leads offers (NEW/VIEWED) at once.
-// Declining or accepting one frees a slot for the next eligible lead.
-const MAX_OPEN_LEADS = 2;
-
 /** Run `fn` inside a transaction unless the caller already provided a transaction client. */
 async function withClientTransaction(client, fn, { maxRetries = 2 } = {}) {
   if (client !== prisma) return fn(client);
@@ -54,27 +50,94 @@ function serviceError(code, message) {
   return err;
 }
 
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+/**
+ * Customer-identifying / customer-locating fields. They are withheld from every
+ * provider who has only been OFFERED a request and released as soon as one
+ * provider actually owns it (accepted it, or an admin assigned them).
+ */
+const CUSTOMER_PRIVATE_BOOKING_FIELDS = [
+  'locationAddress',
+  'instructions',
+  'serviceLatitude',
+  'serviceLongitude',
+  'endLocation'
+];
+
+/**
+ * Is `providerId` the provider who actually owns this request?
+ *
+ * A booking/lead is created unowned (`providerId` null) and broadcast to every
+ * eligible provider, so before someone accepts there is no owner and NOBODY is
+ * entitled to the customer's contact details or exact address. `acceptLeadForBooking`
+ * writes both `Booking.providerId` and `Lead.providerId` inside the accept
+ * transaction, and the admin manual-assignment path writes them at creation.
+ */
+function providerOwnsRequest(lead, booking, providerId) {
+  if (!providerId) return false;
+  if (booking?.providerId && booking.providerId === providerId) return true;
+  if (lead?.providerId && lead.providerId === providerId) return true;
+  return false;
+}
+
+/**
+ * Strip the customer's phone number and exact service location from a lead row
+ * unless `providerId` is the provider who owns it.
+ *
+ * Applied to every provider-facing read (`buildLeadPayload`, the provider inbox,
+ * the single-lead view) so a broadcast offer can never leak an unaccepted
+ * customer's details to a provider who did not take the job. The city, service
+ * category and amount stay — that is what an offer needs to be worth accepting.
+ */
+export function redactLeadForProvider(lead, providerId) {
+  if (!lead) return lead;
+  // A falsy `providerId` means this is NOT a provider-scoped read — the
+  // customer, an admin, or an internal caller. Those are entitled to the full
+  // shape, so redaction is opt-in per provider and never the default.
+  if (!providerId) return lead;
+
+  const booking = lead.booking;
+  const reveals = providerOwnsRequest(lead, booking, providerId);
+
+  if (reveals) {
+    // Owner still loses the phone number once the booking is cancelled, so a
+    // finished/cancelled job can never be re-used to re-contact the customer.
+    if (booking?.status === 'CANCELLED' && lead.customer) {
+      return { ...lead, customer: { ...lead.customer, phone: null } };
+    }
+    return lead;
+  }
+
+  const redactedBooking = booking
+    ? Object.fromEntries(CUSTOMER_PRIVATE_BOOKING_FIELDS.map((f) => [f, null]))
+    : null;
+
+  return {
+    ...lead,
+    customer: lead.customer ? { ...lead.customer, phone: null } : lead.customer,
+    booking: booking ? { ...booking, ...redactedBooking } : booking
+  };
 }
 
 /**
  * Lightweight socket-safe payload used by `newLead` and other real-time lead
  * events so the frontend does not have to re-fetch.
+ *
+ * Pass `forProviderId` when the payload is going to a provider's socket. Until
+ * that provider owns the request, the customer's phone number, full address,
+ * instructions and exact coordinates are withheld (see `redactLeadForProvider`);
+ * customer- and admin-facing callers omit it and get the unredacted shape.
  */
-export function buildLeadPayload(lead, booking = null, provider = null) {
+export function buildLeadPayload(lead, booking = null, provider = null, { forProviderId = null } = {}) {
   const customer = booking?.customer ?? lead?.customer ?? null;
+  // Normalize into one shape so the redaction below sees the same customer and
+  // booking the payload is built from, no matter how the caller passed them.
+  const scoped = redactLeadForProvider({ ...lead, customer, booking }, forProviderId);
+
   // Rule: the customer's phone number is only shared with providers while the
   // booking is live. Once it is cancelled the number is stripped from every
   // payload so it can never be re-shown or leaked after cancellation.
   const cancelled = booking?.status === 'CANCELLED';
+  const visibleBooking = scoped.booking;
   return {
     leadId: lead?.id,
     bookingId: booking?.id ?? lead?.bookingId,
@@ -87,21 +150,21 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
     transferCount: lead?.transferCount,
     createdAt: lead?.createdAt,
     customer: customer
-      ? { id: customer.id, name: customer.name, phone: cancelled ? null : customer.phone, avatar: customer.avatar }
+      ? { id: customer.id, name: customer.name, phone: cancelled || !scoped.customer?.phone ? null : customer.phone, avatar: customer.avatar }
       : null,
     booking: booking
       ? {
           id: booking.id,
           bookingNumber: booking.bookingNumber || null,
           status: booking.status,
-          locationAddress: booking.locationAddress,
+          locationAddress: visibleBooking.locationAddress ?? null,
           city: booking.city,
-          instructions: booking.instructions,
+          instructions: visibleBooking.instructions ?? null,
           amount: booking.amount,
           providerPhase: booking.providerPhase,
-          serviceLatitude: booking.serviceLatitude ?? null,
-          serviceLongitude: booking.serviceLongitude ?? null,
-          endLocation: booking.endLocation ?? null,
+          serviceLatitude: visibleBooking.serviceLatitude ?? null,
+          serviceLongitude: visibleBooking.serviceLongitude ?? null,
+          endLocation: visibleBooking.endLocation ?? null,
           providerLatitude: booking.providerLatitude ?? null,
           providerLongitude: booking.providerLongitude ?? null,
           providerLocationUpdatedAt: booking.providerLocationUpdatedAt ?? null
@@ -116,79 +179,25 @@ export function buildLeadPayload(lead, booking = null, provider = null) {
 /**
  * Find providers eligible for a new/transferred lead.
  *
- * Eligibility criteria (rule 11):
- *   - approved — account ACTIVE + verified,
- *   - has the service REGISTERED/approved (`ProviderService` link for the
- *     requested service — the legacy `provider.category` fallback is removed,
- *     a provider is only matchable for a service they actually registered),
- *   - inside the provider's service radius (`maxRadiusKm` vs. customer pin) —
- *     TEMPORARILY DISABLED via the `ENFORCE_SERVICE_RADIUS` flag so providers
- *     without coordinates keep receiving offers,
- *   - wallet balance >= 0 — a negative balance blocks new leads until cleared,
- *   - not busy with an active job,
- *   - below the open-lead cap (`MAX_OPEN_LEADS = 2`).
+ * Eligibility criteria (3 rules, no more):
+ *   1. Provider is verified + user account is ACTIVE
+ *   2. Provider has an APPROVED ProviderService link for the requested service
+ *   3. Wallet balance >= 0 (null = new provider, OK)
  *
- * `isOnline`, `acceptingBookings` and cooldown are NOT eligibility gates: a
- * provider who is offline / paused / cooling down still receives offers and
- * decides themselves whether to accept.
- *
- * Providers receive leads without any subscription or quota blockers (rule 3).
- * There is no ranking or "top provider" concept — the returned list is in a
- * deterministic order (createdAt, then id) and every eligible provider is
- * broadcast an open offer; the first entry merely satisfies the required
- * `Booking.providerId` FK until one of them accepts.
- *
- * The pipeline is "progressively cheaper":
- *   1. PostgreSQL does the filtering — every hard eligibility rule (including
- *      the service radius) is a WHERE clause,
- *      so only a small candidate set is ever loaded into Node. The radius uses a
- *      cheap bounding box that is provably a superset of the true circle (the
- *      box is sized to the largest effective radius among candidates), so the
- *      box never wrongly excludes a far-radius provider.
- *   2. Only the small candidate set is filtered further in Node (exact haversine).
- *
- * The provider's own `maxRadiusKm` wins; otherwise the admin default radius is
- * used. When customer coordinates are known the radius filter is mandatory —
- * providers without usable coordinates are not eligible for that lead.
- * (Not currently enforced — see `ENFORCE_SERVICE_RADIUS`.)
+ * No distance/radius filter, no online/acceptingBookings/profileComplete/cooldown
+ * gates, no open-lead cap. Every eligible provider receives the broadcast offer.
+ * First-accept-wins via `acceptLeadForBooking`.
  */
 export async function findEligibleProviders({
   serviceCategory,
   serviceId = null,
   excludeProviderIds = [],
-  customerLat = null,
-  customerLng = null,
   client = prisma
 }) {
-  const defaultKm = 50;
-  // TEMPORARY: the service-radius gate is disabled to stop customers seeing
-  // "no providers available". Providers without usable coordinates keep
-  // receiving offers. Set `ENFORCE_SERVICE_RADIUS` back to true to restore the
-  // 50 km (or provider `maxRadiusKm`) area filter — the full logic is retained
-  // below so it can be re-enabled without touching the pipeline.
-  const ENFORCE_SERVICE_RADIUS = false;
-  const hasCustomerCoords = customerLat != null && customerLng != null;
-
-  // Rule — capped inbox: a provider may hold at most MAX_OPEN_LEADS open
-  // offers. Providers at the cap (2 open NEW/VIEWED leads) drop out of new
-  // broadcasts entirely; declining or accepting one frees a slot so the next
-  // eligible lead gets offered. Mirrors what the provider sees in the
-  // "Action Required" inbox tab (open = isCurrent offer on a still-open lead).
-  const atCap = await client.leadAssignmentHistory.groupBy({
-    by: ['providerId'],
-    where: { isCurrent: true, lead: { status: { in: ['NEW', 'VIEWED'] } } },
-    _count: { _all: true },
-    having: { providerId: { _count: { gte: MAX_OPEN_LEADS } } }
-  });
-  const cappedOutIds = atCap.map((r) => r.providerId);
-  const excludedProviderIds = [...excludeProviderIds, ...cappedOutIds];
-
-  // Step 1 — every hard rule below runs in PostgreSQL, not Node.
   const baseWhere = {
-    id: excludedProviderIds.length ? { notIn: excludedProviderIds } : undefined,
+    id: excludeProviderIds.length ? { notIn: excludeProviderIds } : undefined,
     isVerified: true,
     accountStatus: 'ACTIVE',
-    // Negative wallet balances block new leads until cleared.
     user: {
       status: 'ACTIVE',
       OR: [
@@ -196,9 +205,6 @@ export async function findEligibleProviders({
         { wallet: { is: { balance: { gte: 0 } } } }
       ]
     },
-    // Not busy with an active job.
-    bookings: { none: { status: { in: ['PENDING', 'CONFIRMED', 'ONGOING'] } } },
-    // The requested service must be registered (approved `ProviderService`).
     providerServices: {
       some: serviceId
         ? { serviceId }
@@ -206,80 +212,22 @@ export async function findEligibleProviders({
     }
   };
 
-  const where = { AND: [baseWhere] };
-
-  // Rule 6 — service radius as a cheap bounding box. The box must be a superset
-  // of the true circle, so it is sized to the largest effective radius among
-  // candidates (a provider may set maxRadiusKm larger than the admin default).
-  // The precise haversine check still runs in Node — but only on this subset.
-  if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords) {
-    const lat = Number(customerLat);
-    const lng = Number(customerLng);
-    const { _max } = await client.provider.aggregate({
-      _max: { maxRadiusKm: true },
-      where: baseWhere
-    });
-    const boxRadiusKm = Math.max(defaultKm, Number(_max.maxRadiusKm) || defaultKm);
-    const dLat = boxRadiusKm / 110.574;
-    const cosAtPole = Math.cos(Math.min(Math.abs(lat) + dLat, 89) * (Math.PI / 180));
-    const dLng = boxRadiusKm / (111.32 * Math.max(cosAtPole, 0.05));
-    where.AND.push({
-      latitude: { gte: lat - dLat, lte: lat + dLat },
-      longitude: { gte: lng - dLng, lte: lng + dLng }
-    });
-  }
-
-  // Only the small candidate set crosses the wire (select, not include).
+  // Deterministic order (createdAt, then id) — stable, not a ranking.
   const providers = await client.provider.findMany({
-    where,
+    where: baseWhere,
     select: {
       id: true,
       userId: true,
       rating: true,
-      latitude: true,
-      longitude: true,
-      maxRadiusKm: true,
       createdAt: true,
       user: {
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          phone: true
-        }
+        select: { id: true, name: true, avatar: true, phone: true }
       }
-    }
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
   });
 
-  // Deterministic order (createdAt, then id) so the FK-backed owner pick is
-  // stable across runs — NOT a preference ranking. Every entry below is a
-  // full member of the broadcast; no one is "better" than another.
-  const ordered = [...providers].sort((a, b) => {
-    const da = new Date(a.createdAt).getTime();
-    const db = new Date(b.createdAt).getTime();
-    if (da !== db) return da - db;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-
-  // Step 2 — filter only the SQL-shrunk candidate set in Node.
-  const eligible = [];
-  for (const p of ordered) {
-    if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords && p.latitude != null && p.longitude != null) {
-      const km = haversineKm(customerLat, customerLng, p.latitude, p.longitude);
-      p.distanceKm = km;
-      const providerRadius = Number(p.maxRadiusKm ?? defaultKm) || defaultKm;
-      if (km > providerRadius) continue;
-    } else if (ENFORCE_SERVICE_RADIUS && hasCustomerCoords) {
-      // Rule 6 — providers without usable coordinates are not eligible.
-      p.distanceKm = null;
-      continue;
-    } else {
-      p.distanceKm = null;
-    }
-    eligible.push(p);
-  }
-
-  return eligible;
+  return providers.map((p) => ({ ...p, distanceKm: null }));
 }
 
 /** Diagnose why a specific preferred provider is not in the eligible pool. */
@@ -296,8 +244,6 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
   if (provider.user?.wallet && Number(provider.user.wallet.balance) < 0) {
     return { code: 'WALLET_BELOW_ZERO', message: 'Clear your outstanding balance to start receiving new bookings.' };
   }
-  // Note: `isOnline`, `acceptingBookings` and cooldown are NOT eligibility
-  // gates — they do not block a provider from being offered a lead.
   if (serviceId || serviceCategory) {
     const approved = await client.providerService.findFirst({
       where: serviceId
@@ -309,15 +255,6 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
       return { code: 'SERVICE_NOT_APPROVED', message: 'This provider is not approved for the requested service.' };
     }
   }
-  const openOffers = await client.leadAssignmentHistory.count({
-    where: { providerId, isCurrent: true, lead: { status: { in: ['NEW', 'VIEWED'] } } }
-  });
-  if (openOffers >= MAX_OPEN_LEADS) {
-    return {
-      code: 'LEAD_CAP_REACHED',
-      message: `This provider already has ${MAX_OPEN_LEADS} open requests. Accept or decline one before taking on more.`
-    };
-  }
   return { code: 'PROVIDER_INELIGIBLE', message: 'This provider is not currently available for the requested service.' };
 }
 
@@ -326,20 +263,22 @@ async function diagnoseProvider(providerId, { serviceId = null, serviceCategory 
  *
  * Temporary-service bookings broadcast the request to EVERY eligible provider
  * (approved, verified, inside the service radius, active account — no
- * subscription or quota gate) at the same time — first-accept-wins. The
- * booking is created against the first eligible provider (`Booking.providerId`
- * is required, so it points at an arbitrary member of the broadcast — the
- * first in the deterministic order; there is no ranking or "top provider") but
- * every eligible provider receives an open offer via `LeadAssignmentHistory`
- * (`isCurrent: true`) and can accept it.
+ * subscription or quota gate) at the same time — first-accept-wins. The booking
+ * and the lead are created with NO provider (`providerId` is null: the request is
+ * an open offer, nobody has taken it yet). Every eligible provider receives that
+ * open offer via `LeadAssignmentHistory` (`isCurrent: true`) and the first to
+ * accept claims the job — `acceptLeadForBooking` writes `providerId` inside the
+ * PENDING -> CONFIRMED compare-and-swap. There is no ranking or "top provider".
  *
  * - With `preferredProviderId`: that provider is moved to the front (when
  *   eligible); otherwise a descriptive 409-ish error is thrown.
  * - When no eligible provider exists the booking is rejected with
  *   `NO_ELIGIBLE_PROVIDERS`.
  *
- * Returns { booking, lead, provider, providers, eligibleCount }. Socket emission
- * is left to the caller after the transaction commits.
+ * Returns { booking, lead, provider, providers, eligibleCount } where `provider`
+ * is always null here (nobody owns the request yet) and `providers` is the full
+ * broadcast list. Socket emission is left to the caller after the transaction
+ * commits.
  */
 export async function createBookingWithLead({
   customerId,
@@ -388,7 +327,6 @@ export async function createBookingWithLead({
   }
 
   return withClientTransaction(client, async (tx) => {
-    const assignedProvider = eligible[0];
     const timestamp = new Date();
 
     const baseAmount = amount != null && !Number.isNaN(Number(amount)) ? Number(amount) : null;
@@ -404,7 +342,13 @@ export async function createBookingWithLead({
       data: {
         bookingNumber,
         customerId,
-        providerId: assignedProvider.id,
+        // No owner yet: the request is an open broadcast offer, and
+        // `acceptLeadForBooking` writes the real providerId inside the
+        // PENDING -> CONFIRMED compare-and-swap. Never store a placeholder
+        // provider — it would be displayed on the customer's pending booking
+        // and would fail the "not busy with an active job" eligibility gate for
+        // that provider on every later lead.
+        providerId: null,
         serviceId: serviceId || null,
         serviceCategory,
         locationAddress,
@@ -447,7 +391,7 @@ export async function createBookingWithLead({
         serviceId: serviceId || null,
         serviceCategory,
         status: 'NEW',
-        distanceKm: assignedProvider.distanceKm ?? null,
+        distanceKm: null,
         notes: notes || null
       }
     });
@@ -457,12 +401,12 @@ export async function createBookingWithLead({
 
     const assignedLead = await tx.lead.update({
       where: { id: lead.id },
-      data: { providerId: assignedProvider.id, expiryTime }
+      data: { providerId: null, expiryTime }
     });
 
-    // Broadcast: open the offer to every eligible provider at once. `assignedProvider`
-    // (eligible[0]) merely satisfies the required `Booking.providerId` FK and stays
-    // the booking/lead owner until one of them accepts — no ranking involved.
+    // Broadcast: open the offer to every eligible provider at once. Nobody owns
+    // the booking or the lead until one of them accepts — the offer history is
+    // the source of truth for "who was offered this", not a single owner.
     await tx.leadAssignmentHistory.createMany({
       data: eligible.map((p) => ({
         leadId: lead.id,
@@ -478,7 +422,7 @@ export async function createBookingWithLead({
     // the caller enqueues one `performance` job per offered provider. It must
     // never add serial round trips to this critical path.
 
-    return { booking, lead: assignedLead, provider: assignedProvider, providers: eligible, eligibleCount: eligible.length };
+    return { booking, lead: assignedLead, provider: null, providers: eligible, eligibleCount: eligible.length };
   });
 }
 
@@ -1163,22 +1107,19 @@ export async function rejectLead({ leadId, providerId, reason, client = prisma }
     });
 
     if (remaining > 0) {
-      // Re-point the lead and booking at the next remaining offer so the
-      // declining provider (who may have been the nominal owner) stops owning them.
-      const nextOffer = await tx.leadAssignmentHistory.findFirst({
-        where: { leadId, isCurrent: true },
-        orderBy: { assignedAt: 'asc' },
-        select: { providerId: true }
-      });
+      // The request goes back into the open pool: it has NO owner until one of
+      // the remaining offers accepts. (It used to be re-pointed at the next
+      // remaining offer, which just moved the phantom owner around and made a
+      // declined job look assigned in the customer's booking list.)
       let updatedLead = lead;
-      if (nextOffer && lead.providerId !== nextOffer.providerId) {
-        updatedLead = await tx.lead.update({ where: { id: leadId }, data: { providerId: nextOffer.providerId } });
+      if (lead.providerId) {
+        updatedLead = await tx.lead.update({ where: { id: leadId }, data: { providerId: null } });
       }
       let updatedBooking = lead.booking;
-      if (nextOffer && lead.booking && lead.booking.providerId !== nextOffer.providerId) {
+      if (lead.booking?.providerId) {
         updatedBooking = await tx.booking.update({
           where: { id: lead.booking.id },
-          data: { providerId: nextOffer.providerId }
+          data: { providerId: null }
         });
       }
       return { lead: updatedLead, booking: updatedBooking, remaining, settled: false };
@@ -1208,6 +1149,11 @@ export async function cancelOpenOffers({ leadId, reason = 'CANCELLED', client = 
     });
     return {
       count: open.length,
+      // Pairs, so a caller notifying each offer holder can scope the payload to
+      // that provider (see `redactLeadForProvider`) without a second query.
+      offers: open
+        .filter((o) => o.providerId && o.provider?.user?.id)
+        .map((o) => ({ providerId: o.providerId, userId: o.provider.user.id })),
       providerIds: [...new Set(open.map((o) => o.providerId).filter(Boolean))],
       providerUserIds: [...new Set(open.map((o) => o.provider?.user?.id).filter(Boolean))]
     };
@@ -1245,8 +1191,15 @@ export async function markLeadViewed({ leadId, providerId, client = prisma }) {
   return client.lead.findUnique({ where: { id: leadId } });
 }
 
-/** Ledger + booking view of a single lead. */
-export async function getLeadWithHistory(leadId, client = prisma) {
+/**
+ * Ledger + booking view of a single lead.
+ *
+ * `viewerProviderId` is the provider reading this. When supplied, the customer's
+ * phone number / full address / instructions are redacted unless that provider
+ * is the one who accepted the request. Admins and the customer read the full
+ * shape (omit the option) — they are entitled to it.
+ */
+export async function getLeadWithHistory(leadId, client = prisma, { viewerProviderId = null } = {}) {
   const lead = await client.lead.findUnique({
     where: { id: leadId },
     include: {
@@ -1264,11 +1217,8 @@ export async function getLeadWithHistory(leadId, client = prisma) {
     }
   });
 
-  // Cancelled booking → never expose the customer's phone to the provider.
-  if (lead?.booking?.status === 'CANCELLED' && lead.customer) {
-    lead.customer = { ...lead.customer, phone: null };
-  }
-  return lead;
+  if (!lead) return lead;
+  return viewerProviderId ? redactLeadForProvider(lead, viewerProviderId) : lead;
 }
 
 /**
@@ -1287,6 +1237,9 @@ export async function listProviderLeads(providerId, client = prisma) {
           id: true,
           bookingNumber: true,
           status: true,
+          // Needed to decide whether THIS provider may see the customer's
+          // contact details + exact address (only the accepting owner may).
+          providerId: true,
           serviceCategory: true,
           service: { select: { id: true, name: true, serviceNumber: true } },
           locationAddress: true,
@@ -1342,10 +1295,9 @@ export async function listProviderLeads(providerId, client = prisma) {
       };
       delete lead.booking.quotations;
     }
-    if (lead.booking?.status === 'CANCELLED' && lead.customer) {
-      lead.customer = { ...lead.customer, phone: null };
-    }
-    return lead;
+    // An open broadcast offer is redacted: only the provider who accepted the
+    // request sees the phone number, the full address and the instructions.
+    return redactLeadForProvider(lead, providerId);
   });
 }
 

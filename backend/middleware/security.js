@@ -116,6 +116,26 @@ export const supportTicketRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// The Knowledge Assistant is public and calls an external paid model on every request,
+// so it gets its own budget. Generous enough for a real conversation, tight enough that
+// the endpoint cannot be used to burn through the Gemini quota.
+export const chatRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: parseInt(process.env.CHAT_RATE_LIMIT_MAX || '20', 10),
+  message: {
+    success: false,
+    code: 'CHAT_RATE_LIMIT_EXCEEDED',
+    message: 'You are asking questions too quickly. Please wait a moment and try again.',
+    retryAfter: '1 minute'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Authenticated users are limited per account; anonymous visitors per IP.
+    return req.user?.id || req.ip || 'unknown';
+  }
+});
+
 // HPP (HTTP Parameter Pollution) protection
 export const hppConfig = hpp({
   whitelist: [

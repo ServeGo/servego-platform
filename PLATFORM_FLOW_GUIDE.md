@@ -82,8 +82,7 @@ There are **3 types of people** on the platform:
   - Specialties (what they're good at)
   - Service areas (which areas/localities they cover)
   - Location (their base location on map)
-  - Service radius (how far they're willing to travel, default 50 km)
-- **Until profile is complete, provider won't receive any jobs**
+- **Until profile is complete and admin-verified, provider won't receive any jobs**
 
 ### 3. Request a Service
 - Provider applies to offer a specific service (e.g. "I want to do AC Repair")
@@ -94,14 +93,13 @@ There are **3 types of people** on the platform:
 ### 4. Admin Approves
 - Once admin approves the service, provider is now **eligible to receive jobs**
 - Admin also verifies the provider's profile (background check, etc.)
-- **Both profile complete + admin verified = provider can receive leads**
+- **Admin verified + account active + wallet not negative = provider can receive leads**
 
 ### 5. Receiving a Lead (Job Offer)
-- When a customer books a service that matches the provider's approved service AND the customer is within the provider's radius, the provider gets a **lead notification**
-- The lead shows: service type, general area, distance — but **NOT the customer's contact details yet**
+- When a customer books a service that matches the provider's approved service, the provider gets a **lead notification**
+- The lead shows: service type, general area (city) — but **NOT the customer's contact details yet**
 - Provider can **Accept** or **Reject** the lead
-- Provider can hold maximum **2 open leads** at a time
-- Once provider accepts one lead, all other open offers are automatically closed
+- There is no limit on open leads. Accepting one does not close other offers automatically.
 
 ### 6. Doing the Job
 - After accepting, provider sees full customer details and address
@@ -147,27 +145,34 @@ System looks for eligible providers
 Checks ALL providers who have:
   ✅ Approved "AC Repair" service
   ✅ Active & verified profile
-  ✅ Profile complete
-  ✅ Currently online & accepting bookings
-  ✅ Customer's location is within their service radius
   ✅ Wallet balance is not negative
            ↓
-Ranks them by:
-  1. Closest distance first
-  2. Highest rating
-  3. Provider level (Diamond > Platinum > Gold > Silver > Bronze)
-  4. Best acceptance rate
-  5. Lowest cancellation rate
+Creates an OPEN broadcast offer:
+  - A Booking is created with status PENDING and NO provider assigned
+  - A Lead is created with status NEW and NO provider assigned
+  - The offer is sent to EVERY eligible provider simultaneously
            ↓
-Sends lead notification to ALL eligible providers simultaneously
+Each provider receives a lead notification showing:
+  - Service type (e.g. "AC Repair")
+  - The city / general area (NOT the full address)
+  - The customer's name (first name only) and NO phone number
            ↓
-First provider to accept → gets the job
-Other providers' offers are automatically cancelled
+Providers can Accept or Reject the offer
            ↓
-If NO provider accepts within the time limit → lead is reassigned to next eligible provider
+First provider to Accept → claims the job:
+  - Booking becomes CONFIRMED, providerId set to that provider
+  - Lead becomes ACCEPTED, providerId set to that provider
+  - All OTHER providers' open offers are auto-cancelled
+  - Customer is notified with the provider's full details
            ↓
-Customer is notified once a provider accepts
+If a provider Rejects:
+  - Their offer is withdrawn
+  - The request goes back into the OPEN POOL (unowned)
+  - All OTHER providers KEEP their open offers
+  - If the LAST provider rejects, the booking is CANCELLED
 ```
+
+**What changed:** We used to write a "placeholder provider" on the PENDING booking just to satisfy a foreign key. That showed a provider the customer never chose, and it locked that provider out of every future job. Now the booking is truly unowned until a provider accepts.
 
 ### What if no provider is available?
 - If no eligible provider is found, customer is informed
@@ -178,10 +183,7 @@ Customer is notified once a provider accepts
   as confirmed and the provider gets a lead/provides accepted — the admin's choice is
   applied as-is
 - Common reasons a provider might not show up in the list automatically:
-  - They haven't set their location on the map
-  - Customer is outside their service radius
   - Their profile is incomplete or not verified
-  - They are offline
   - Their wallet balance is negative
 
 ---
@@ -217,7 +219,6 @@ Admin is the ServeGo24 operations team. They have a full dashboard to manage eve
 - **Set commission rate** (default 10%)
 - **Set service fee** (default ₹249)
 - **Set withdrawal limits** (minimum/maximum payout amounts)
-- **Set lead radius defaults**
 
 ### Provider Level Rules
 - **Configure level thresholds** — how many jobs to reach Silver, Gold, etc.

@@ -262,6 +262,9 @@ export const ProviderController = {
     try {
       const isAdmin = req.user?.role === 'admin';
       const isProvider = req.user?.role === 'provider';
+      // optionalAuth leaves `req.user` undefined for anonymous requests, so every
+      // read of the viewer's id must go through this.
+      const viewerId = req.user?.id ?? null;
       const publicProviderWhere = { accountStatus: 'ACTIVE', isVerified: true, user: { status: 'ACTIVE' } };
 
       // Providers retain access to their own profile even while it awaits
@@ -270,14 +273,14 @@ export const ProviderController = {
       let ownProviderId = null;
       if (isProvider) {
         const own = await prisma.provider.findUnique({
-          where: { userId: req.user.id },
+          where: { userId: viewerId },
           select: { id: true }
         });
         ownProviderId = own?.id || null;
       }
 
       const providers = await prisma.provider.findMany({
-        where: isAdmin ? {} : isProvider ? { OR: [publicProviderWhere, { userId: req.user.id }] } : publicProviderWhere,
+        where: isAdmin ? {} : isProvider ? { OR: [publicProviderWhere, { userId: viewerId }] } : publicProviderWhere,
         include: {
           // Public rows only need id/name/avatar for the card; contact fields
           // are fetched for admins and the owner (whose row serializer emits them).
@@ -307,8 +310,13 @@ export const ProviderController = {
         200,
         providers.map((provider) =>
           providerListItem(provider, {
-            includeContact: isAdmin || provider.userId === req.user.id,
-            isOwnRow: isProvider && provider.userId === req.user.id
+            // `req.user` is undefined for anonymous visitors (optionalAuth only
+            // sets it when a valid token is present), so read the viewer id once
+            // through optional chaining. Dereferencing `req.user.id` here threw a
+            // TypeError and 500'd this whole endpoint for every logged-out
+            // visitor, which is how the public provider list went missing.
+            includeContact: isAdmin || provider.userId === viewerId,
+            isOwnRow: isProvider && provider.userId === viewerId
           })
         )
       );

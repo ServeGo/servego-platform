@@ -25,10 +25,11 @@ import { QueueController } from '../controllers/queueController.js';
 import { SocketController } from '../controllers/socketController.js';
 import { FeatureFlagController } from '../controllers/featureFlagController.js';
 import { MetricsController } from '../controllers/metricsController.js';
+import { ChatController } from '../controllers/chatController.js';
 import { uploadImage } from '../middleware/upload.js';
 import { requireAuth, requireRole, optionalAuth } from '../utils/auth.js';
-import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter } from '../middleware/security.js';
-import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation } from '../middleware/validation.js';
+import { authRateLimiter, bookingRateLimiter, reviewRateLimiter, supportTicketRateLimiter, chatRateLimiter } from '../middleware/security.js';
+import { validate, registerValidation, loginValidation, createBookingValidation, createReviewValidation, createTicketValidation, createAuthenticatedTicketValidation, createServiceValidation, updateServiceValidation, updateAvailabilityValidation, registerProviderServiceValidation, updateProviderProfileValidation, updateUserProfileValidation, forgotPasswordValidation, resetPasswordValidation, createPermanentServiceRequestValidation, updatePermanentServiceRequestValidation, updateBookingLocationValidation, requestWithdrawalValidation, processWithdrawalValidation, adminCreditWalletValidation, askKnowledgeValidation } from '../middleware/validation.js';
 
 const apiRouter = Router();
 
@@ -226,5 +227,10 @@ apiRouter.get('/admin/metrics', requireAuth, requireRole('admin'), MetricsContro
 apiRouter.get('/feature-flags/public', FeatureFlagController.getPublic);
 apiRouter.get('/feature-flags', requireAuth, requireRole('admin'), FeatureFlagController.getAll);
 apiRouter.put('/feature-flags/:key', requireAuth, requireRole('admin'), FeatureFlagController.update);
+
+// --- Knowledge Assistant (grounded Q&A over the published Knowledge Center) ---
+// Public by design: it only reads published content and never touches user data.
+// `optionalAuth` lets the rate limiter budget per account when a token is present.
+apiRouter.post('/chat/ask', optionalAuth, chatRateLimiter, validate(askKnowledgeValidation), ChatController.ask);
 
 export default apiRouter;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, ArrowRight, CheckCircle2, RefreshCw, WifiOff } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
 import { useSEO } from '../hooks/useSEO';
 import { api as apiClient } from '../utils/apiClient';
@@ -78,6 +78,9 @@ export const Services = ({ onNavigate }) => {
   const [inputSearch, setInputSearch] = useState(searchQuery);
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Set when the catalog request fails, so a network error renders a retry
+  // action instead of the misleading "No services match ..." empty state.
+  const [searchError, setSearchError] = useState(null);
   const [topServices, setTopServices] = useState([]);
   const [page, setPage] = useState(1);
   const gridRef = useRef(null);
@@ -166,11 +169,13 @@ export const Services = ({ onNavigate }) => {
   // Fetch top-rated services for the popular chips
   useEffect(() => {
     let cancelled = false;
-    apiClient.get('/services/top-rated?limit=5').then((res) => {
-      if (!cancelled && res.ok && Array.isArray(res.data)) {
-        setTopServices(res.data);
-      }
-    }).catch(() => {});
+    cachedRequest('services-top-rated', () => apiClient.get('/services/top-rated?limit=5'))
+      .then((res) => {
+        if (!cancelled && res.ok && Array.isArray(res.data)) {
+          setTopServices(res.data);
+        }
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -187,17 +192,23 @@ export const Services = ({ onNavigate }) => {
     debounceTimerRef.current = setTimeout(() => {
       if (seq !== searchSeqRef.current) return;
       setIsLoading(true);
-      searchServices(searchQuery, '', controller.signal).then((data) => {
-        // `data` is null for aborted requests; the seq guard also rejects any
-        // response that raced past the abort. Always flip loading off once the
-        // settled request is the latest so an empty result set falls through to
-        // the empty state instead of spinning forever.
+      const meta = {};
+      searchServices(searchQuery, '', controller.signal, meta).then((data) => {
+        // `data` is null for aborted requests and for failures; the seq guard
+        // also rejects any response that raced past the abort. Always flip
+        // loading off once the settled request is the latest so an empty result
+        // set falls through to the empty state instead of spinning forever.
         if (seq !== searchSeqRef.current) return;
         setIsLoading(false);
-        if (data) {
-          setResults(data);
-          setPage(1);
+        if (data === null) {
+          // Keep the previous page visible (rule 15) but mark the failure so
+          // an empty result set reads as an error, not as "no matches".
+          setSearchError(meta.error || null);
+          return;
         }
+        setSearchError(null);
+        setResults(data);
+        setPage(1);
       });
     }, SEARCH_DEBOUNCE_MS);
 
@@ -205,6 +216,26 @@ export const Services = ({ onNavigate }) => {
       clearTimeout(debounceTimerRef.current);
       if (searchAbortRef.current) searchAbortRef.current.abort();
     };
+  }, [searchQuery, searchServices]);
+
+  // Re-run the current search. Deliberately skips the debounce so a retry feels
+  // instant instead of making the visitor wait 350ms for a keystroke that
+  // already happened.
+  const retrySearch = useCallback(() => {
+    clearTimeout(debounceTimerRef.current);
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+    setIsLoading(true);
+    const meta = {};
+    searchServices(searchQuery, '', undefined, meta).then((data) => {
+      setIsLoading(false);
+      if (data === null) {
+        setSearchError(meta.error || 'Could not load services. Please try again.');
+        return;
+      }
+      setSearchError(null);
+      setResults(data);
+      setPage(1);
+    });
   }, [searchQuery, searchServices]);
 
   // Live filtering: every keystroke updates the searchQuery
@@ -520,9 +551,69 @@ export const Services = ({ onNavigate }) => {
           </div>
         )}
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-            <SkeletonLoader type="card" count={6} />
+        {/* A failed refresh behind visible results must not pass as fresh data.
+            Keep the grid on screen (rule 15) but mark it and offer a retry. */}
+        {!isLoading && searchError && results.length > 0 && (
+          <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+            <span className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+              <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {searchError} Showing the last results we loaded.
+            </span>
+            <button
+              type="button"
+              onClick={retrySearch}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 px-3 py-1.5 text-[11px] font-bold text-white transition-colors"
+            >
+              <RefreshCw className="h-3 w-3" aria-hidden="true" />
+              Try again
+            </button>
+          </div>
+        )}
+
+          {isLoading ? (
+            // Grid classes live on SkeletonLoader itself so the skeleton cards
+            // occupy the same three columns as the real results below; wrapping
+            // them in a grid div nested the cards in a single inner block.
+            <SkeletonLoader
+              type="card"
+              count={6}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
+            />
+          ) : results.length === 0 && searchError ? (
+          // Rule 19: a failed fetch is not the same as "no matches". Say what
+          // happened, why, and give a recovery action.
+          <div role="alert" className="text-center py-14 sm:py-20 bg-white rounded-3xl border border-amber-200 shadow-2xs max-w-xl mx-auto px-6">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <WifiOff className="h-7 w-7" />
+            </div>
+            <h3 className="mt-4 text-lg font-extrabold text-slate-900 tracking-tight">
+              We couldn&apos;t load services
+            </h3>
+            <p className="text-xs text-slate-500 mt-2 font-medium max-w-sm mx-auto leading-relaxed">
+              {searchError}
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={retrySearch}
+                className="inline-flex items-center gap-2 bg-slate-900 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-colors"
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                Try again
+              </button>
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputSearch('');
+                    setSearchQuery('');
+                  }}
+                  className="border border-slate-300 hover:border-teal-400 text-slate-800 hover:text-teal-700 font-bold px-5 py-2.5 rounded-xl text-xs transition-colors"
+                >
+                  Reset Search
+                </button>
+              )}
+            </div>
           </div>
         ) : results.length === 0 ? (
           <div className="text-center py-14 sm:py-20 bg-white rounded-3xl border border-slate-200 shadow-2xs max-w-xl mx-auto px-6">

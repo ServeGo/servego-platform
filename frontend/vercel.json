@@ -4,6 +4,18 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
       "source": "/dashboard-customer(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" },

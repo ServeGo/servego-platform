@@ -156,7 +156,10 @@ test('serializers degrade gracefully on missing relations', () => {
 
   const booking = bookingListItem({ id: 'bk' });
   assert.equal(booking.providerId, undefined);
-  assert.deepEqual(booking.provider, { user: {} });
+  // No provider relation at all (an unowned PENDING booking, or a partial
+  // include) must serialise as `null` — not `{}`, which the client would render
+  // as a real provider with an empty name.
+  assert.equal(booking.provider, null);
   assert.deepEqual(booking.service, {});
 
   assert.equal(badgeItem(null), null);

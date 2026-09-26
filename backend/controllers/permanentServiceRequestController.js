@@ -8,7 +8,7 @@ import {
   notifyPermanentServiceRequestSubmitted,
   notifyNewLead
 } from '../services/notificationService.js';
-import { createManuallyAssignedBookingWithLead, buildLeadPayload } from '../services/leadService.js';
+import { createManuallyAssignedBookingWithLead, buildLeadPayload, withClientTransaction } from '../services/leadService.js';
 
 const REQUEST_INCLUDE = {
   customer: { select: { id: true, name: true, email: true, phone: true } },
@@ -263,12 +263,6 @@ export const PermanentServiceRequestController = {
       const { id } = req.params;
       const { status, assignedProviderId, adminNote } = req.body;
 
-      const existing = await prisma.permanentServiceRequest.findUnique({ where: { id } });
-      if (!existing) return sendApiError(res, 404, 'NOT_FOUND', 'Service request not found.');
-      if (existing.status !== 'PENDING') {
-        return sendApiError(res, 409, 'ALREADY_REVIEWED', `This request has already been ${existing.status.toLowerCase()}.`);
-      }
-
       const nextStatus = String(status || '').toUpperCase();
       if (!['APPROVED', 'REJECTED'].includes(nextStatus)) {
         return sendApiError(res, 400, 'VALIDATION_ERROR', 'Status must be APPROVED or REJECTED.');
@@ -276,43 +270,56 @@ export const PermanentServiceRequestController = {
 
       let providerId = null;
       if (assignedProviderId) {
-        const provider = await prisma.provider.findUnique({ where: { id: assignedProviderId }, select: { id: true } });
+        // First try to find by ID, then fall back to email in case frontend sends email
+        let provider = await prisma.provider.findUnique({ where: { id: assignedProviderId }, select: { id: true } });
+        if (!provider && assignedProviderId.includes('@')) {
+          provider = await prisma.provider.findUnique({ where: { user: { email: assignedProviderId } }, select: { id: true } });
+        }
         if (!provider) return sendApiError(res, 404, 'NOT_FOUND', 'Assigned provider not found.');
         providerId = provider.id;
       }
-      // Admin manual assignment is an explicit override: the admin may assign
-      // any existing provider regardless of verification, account/user status,
-      // service approval or wallet balance. The admin UI lists providers
-      // approved for the requested service to guide the choice, but assignment
-      // itself is deliberately unconditional (rule 24).
       if (nextStatus === 'APPROVED' && !providerId) {
         return sendApiError(res, 400, 'VALIDATION_ERROR', 'A provider must be assigned to approve this request.');
       }
 
-      let updated = await prisma.permanentServiceRequest.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          assignedProviderId: providerId,
-          adminNote: adminNote ? String(adminNote).trim() : null
-        },
-        include: REQUEST_INCLUDE
-      });
+      // Execute the entire approval/rejection atomically inside a transaction.
+      // This prevents race conditions where a double-click could see a partially
+      // completed state (request=APPROVED but booking not yet created).
+      const result = await withClientTransaction(prisma, async (tx) => {
+        const existing = await tx.permanentServiceRequest.findUnique({ where: { id } });
+        if (!existing) throw serviceError('NOT_FOUND', 'Service request not found.');
 
-      const io = req.app.get('socketio');
-      if (nextStatus === 'APPROVED') {
-        if (existing.requestType === 'NO_PROVIDER') {
-          // Link the created booking to the exact catalog service the customer
-          // booked (exact name match first, ignoring isHidden), so it behaves
-          // like any other booking and the provider list stays tied to that
-          // service. A missing catalog row just leaves serviceId null.
+        // Idempotent: already approved with the same provider -> return current state.
+        if (existing.status === 'APPROVED' && existing.assignedProviderId === providerId) {
+          return { existing, booking: null, alreadyApproved: true };
+        }
+        if (existing.status !== 'PENDING') {
+          throw serviceError('ALREADY_REVIEWED', `This request has already been ${existing.status.toLowerCase()}.`);
+        }
+
+        // Update the request row inside the same transaction.
+        const updated = await tx.permanentServiceRequest.update({
+          where: { id },
+          data: {
+            status: nextStatus,
+            assignedProviderId: providerId,
+            adminNote: adminNote ? String(adminNote).trim() : null
+          },
+          include: REQUEST_INCLUDE
+        });
+
+        let booking = null;
+        let assignment = null;
+
+        if (nextStatus === 'APPROVED' && existing.requestType === 'NO_PROVIDER') {
           const bookedService = existing.serviceCategory
-            ? await prisma.service.findFirst({
+            ? await tx.service.findFirst({
                 where: { nameNormalized: String(existing.serviceCategory).trim().toLowerCase() },
                 select: { id: true }
               })
             : null;
-          const assignment = await createManuallyAssignedBookingWithLead({
+
+          assignment = await createManuallyAssignedBookingWithLead({
             customerId: existing.customerId,
             providerId,
             serviceId: bookedService?.id || null,
@@ -320,36 +327,78 @@ export const PermanentServiceRequestController = {
             locationAddress: existing.locationAddress || '',
             serviceLatitude: existing.serviceLatitude,
             serviceLongitude: existing.serviceLongitude,
-            instructions: existing.additionalInfo || ''
+            instructions: existing.additionalInfo || '',
+            client: tx
           });
-          updated = { ...updated, bookingId: assignment.booking.id };
-          if (io && assignment.provider?.user?.id) {
-            await notifyNewLead(io, assignment.provider.user.id, buildLeadPayload(assignment.lead, assignment.booking, assignment.provider));
-            io.to(`user:${existing.customerId}`).emit('booking:created', { bookingId: assignment.booking.id, status: 'CONFIRMED' });
-            io.to(`user:${existing.customerId}`).emit('booking:statusChanged', { bookingId: assignment.booking.id, status: 'CONFIRMED' });
-          }
+          booking = assignment.booking;
         }
-        await notifyPermanentServiceRequestApproved(existing.customerId, { requestId: id, assignedProviderId: providerId, requestType: existing.requestType });
-        if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:approved', { requestId: id, status: 'APPROVED' });
-      } else {
-        await notifyPermanentServiceRequestRejected(existing.customerId, { requestId: id, status: 'REJECTED', adminNote: updated.adminNote, requestType: existing.requestType });
-        if (io) io.to(`user:${existing.customerId}`).emit('permanentRequest:rejected', { requestId: id, status: 'REJECTED' });
+
+        return { existing, updated, booking, assignment, alreadyApproved: false };
+      });
+
+if (result.alreadyApproved) {
+        return sendApiSuccess(res, 200, result.existing);
       }
 
-      await writeAuditLog({
-        actorId: req.user.id,
-        actorRole: 'ADMIN',
-        action: nextStatus === 'APPROVED' ? 'APPROVE_PERMANENT_REQUEST' : 'REJECT_PERMANENT_REQUEST',
-        targetType: 'PermanentServiceRequest',
-        targetId: id,
-        oldValue: { status: 'PENDING', assignedProviderId: null },
-        newValue: { status: nextStatus, assignedProviderId: providerId || null, adminNote: updated.adminNote || null },
-        ip: req.ip
-      });
+      const { updated, booking, assignment } = result;
+      const io = req.app.get('socketio');
+
+      if (nextStatus === 'APPROVED') {
+        if (booking) {
+          updated = { ...updated, bookingId: booking.id };
+          if (io && assignment?.provider?.user?.id) {
+            try {
+              await notifyNewLead(io, assignment.provider.user.id, buildLeadPayload(assignment.lead, booking, assignment.provider, { forProviderId: assignment.provider.id }));
+            } catch (e) {
+              console.error('[AdminManualBookingRequests.update] notifyNewLead failed:', e.message);
+            }
+            try {
+              io.to(`user:${result.existing.customerId}`).emit('booking:created', { bookingId: booking.id, status: 'CONFIRMED' });
+              io.to(`user:${result.existing.customerId}`).emit('booking:statusChanged', { bookingId: booking.id, status: 'CONFIRMED' });
+            } catch (e) {
+              console.error('[AdminManualBookingRequests.update] customer socket emit failed:', e.message);
+            }
+          }
+        }
+        try {
+          await notifyPermanentServiceRequestApproved(result.existing.customerId, { requestId: id, assignedProviderId: providerId, requestType: result.existing.requestType });
+          if (io) io.to(`user:${result.existing.customerId}`).emit('permanentRequest:approved', { requestId: id, status: 'APPROVED' });
+        } catch (e) {
+          console.error('[AdminManualBookingRequests.update] notify approved failed:', e.message);
+        }
+      } else {
+        try {
+          await notifyPermanentServiceRequestRejected(result.existing.customerId, { requestId: id, status: 'REJECTED', adminNote: updated.adminNote, requestType: result.existing.requestType });
+          if (io) io.to(`user:${result.existing.customerId}`).emit('permanentRequest:rejected', { requestId: id, status: 'REJECTED' });
+        } catch (e) {
+          console.error('[AdminManualBookingRequests.update] notify rejected failed:', e.message);
+        }
+      }
+
+      try {
+        await writeAuditLog({
+          actorId: req.user.id,
+          actorRole: 'ADMIN',
+          action: nextStatus === 'APPROVED' ? 'APPROVE_PERMANENT_REQUEST' : 'REJECT_PERMANENT_REQUEST',
+          targetType: 'PermanentServiceRequest',
+          targetId: id,
+          oldValue: { status: 'PENDING', assignedProviderId: null },
+          newValue: { status: nextStatus, assignedProviderId: providerId || null, adminNote: updated.adminNote || null },
+          ip: req.ip
+        });
+      } catch (e) {
+        console.error('[AdminManualBookingRequests.update] audit log failed:', e.message);
+      }
 
       return sendApiSuccess(res, 200, updated);
     } catch (err) {
-      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update the service request', err.message);
+      console.error('[AdminManualBookingRequests.update] Error:', err.message, err.stack);
+      const code = err.code && err.code !== 'INTERNAL_ERROR' ? err.code : 'INTERNAL_ERROR';
+      const isClientError = code !== 'INTERNAL_ERROR';
+      // Always include error message for debugging assignment failures
+      return sendApiError(res, isClientError ? 409 : 500, code,
+        isClientError ? err.message : `Failed to update the service request: ${err.message}`,
+        process.env.NODE_ENV !== 'production' && !isClientError ? err.message : undefined);
     }
   },
 

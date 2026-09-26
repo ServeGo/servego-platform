@@ -2,6 +2,7 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './tailwind-dist.css';
+import { initAnalytics } from './utils/analytics';
 
 // Chrome DevTools hot-injects a Web Vitals instrumentation shim into the
 // running bundle (GoogleChrome/web-vitals#274, Angular#70464). While the
@@ -29,7 +30,12 @@ window.addEventListener(
   // hook re-injects client-side schemas when the page mounts, so drop the
   // static copy to avoid duplicate structured data in the DOM.
   document.querySelectorAll('script[data-prerendered-schema]').forEach((el) => el.remove());
-  
+
+  // The gtag.js base tag is in index.html, so it is already live by this point.
+  // This only adds per-navigation page_views, which gtag.js cannot infer in an
+  // SPA. No-ops when VITE_GA_ID is empty (local/testing).
+  initAnalytics();
+
   createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

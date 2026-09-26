@@ -64,10 +64,16 @@ async function handleLeadTimeout(leadId, io) {
   const result = await reopenLeadBroadcast({ leadId });
   if (result.skipped || !result.providers?.length) return;
 
-  const payload = buildLeadPayload(result.lead, result.booking);
+  // A re-broadcast is still an open offer, so each recipient's payload is
+  // scoped to them — the customer's contact details stay hidden until someone
+  // accepts. The payload is built per provider because `forProviderId` is part of
+  // the redaction decision.
   await Promise.allSettled(
     result.providers.map((provider) =>
-      notifyLeadReminder(io, provider.user?.id, { ...payload, provider })
+      notifyLeadReminder(io, provider.user?.id, {
+        ...buildLeadPayload(result.lead, result.booking, null, { forProviderId: provider.id }),
+        provider
+      })
     )
   );
 }

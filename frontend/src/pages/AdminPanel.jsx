@@ -82,8 +82,13 @@ export const AdminPanel = ({ activeTab: activeTabProp, setActiveTabExternal }) =
     ? (typeof setActiveTabExternal === 'function' ? setActiveTabExternal : undefined)
     : setInternalActiveTab;
 
-  const onOverrideCancel = (bookingId) => {
-    updateBookingStatus(bookingId, 'cancelled', 'Cancelled by administrator override.');
+  const onOverrideCancel = async (bookingId) => {
+    const result = await updateBookingStatus(bookingId, 'cancelled', 'Cancelled by administrator override.');
+    if (result?.error) {
+      // Show error via toast (assuming ToastContext is available)
+      console.error('Admin cancel failed:', result.error);
+      alert(`Failed to cancel booking: ${result.error}`);
+    }
   };
 
   const tabProps = {

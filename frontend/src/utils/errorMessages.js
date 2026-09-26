@@ -107,6 +107,16 @@ const CODE_COPY = {
   MESSAGE_TOO_LONG: { message: 'That message is too long. Please shorten it.' },
   NO_FILE: { message: 'Please attach a file first.' },
   UPLOAD_FAILED: { message: 'We could not upload that file. Please try again.' },
+
+  // --- Knowledge Assistant (chatbot) ---
+  CHAT_RATE_LIMIT_EXCEEDED: { message: 'You are asking questions too quickly. Please wait a moment and try again.', action: 'Try again' },
+  CHAT_MODEL_TIMEOUT: { message: 'The assistant took too long to answer. Please try again.', action: 'Try again' },
+  CHAT_MODEL_UNREACHABLE: { message: 'Could not reach the assistant. Check your connection and try again.', action: 'Try again' },
+  CHAT_MODEL_ERROR: { message: 'The assistant is temporarily unavailable. Please try again in a moment.', action: 'Try again' },
+  CHAT_MODEL_BLOCKED: { message: 'The assistant could not answer that question. Please raise a support ticket and the team will help.', action: 'Contact support' },
+  CHAT_NOT_CONFIGURED: { message: 'The assistant is not available right now. Please contact support.' },
+  CHAT_KNOWLEDGE_UNAVAILABLE: { message: 'The assistant cannot reach its knowledge base right now. Please contact support.' },
+  CHAT_QUESTION_REQUIRED: { message: 'Please type a question first.' },
 };
 
 // When the exact code is unknown, fall back per domain prefix so users still
@@ -118,6 +128,7 @@ const PREFIX_FALLBACK = {
   PAYMENT_: { message: 'We could not process that payment. Please try again.', action: 'Try again' },
   WALLET_: { message: 'We could not complete that wallet action. Please try again.', action: 'Try again' },
   AUTH_: { message: 'We could not complete that sign-in step. Please try again.' },
+  CHAT_: { message: 'The assistant could not answer that. Please try again.', action: 'Try again' },
 };
 
 const NETWORK_PATTERNS = [

@@ -1,23 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Search, ArrowRight } from 'lucide-react';
-import { api } from '../utils/apiClient';
 import { HERO_IMAGE_DESKTOP, HERO_IMAGE_MOBILE } from '../data/websiteImages';
 
-export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearch, topServices = [] }) {
-  const [marqueeServices, setMarqueeServices] = useState([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/services').then(res => {
-      if (cancelled) return;
-      // apiClient unwraps `{ success, data }`, so `res.data` is the array
-      // itself; tolerate a raw `{ data: [...] }` shape defensively too.
-      const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-      const names = [...new Set(list.map(s => s.name).filter(Boolean))];
-      setMarqueeServices(names);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearch, topServices = [], services = [] }) {
+  // The marquee reuses the catalog the app already loaded. It used to fire its
+  // own `GET /services` on mount, doubling the public catalog traffic on every
+  // home page view and racing the context's copy.
+  const marqueeServices = React.useMemo(
+    () => [...new Set((Array.isArray(services) ? services : []).map((s) => s?.name).filter(Boolean))],
+    [services]
+  );
 
   return (
     <section className="relative isolate flex min-h-[93svh] w-full flex-col overflow-hidden bg-slate-950 text-white md:min-h-[calc(100vh-72px)] md:flex-row md:justify-center">

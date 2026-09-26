@@ -41,17 +41,29 @@ export function useAdminPanelController() {
   // twice (real panel re-mounts get a fresh ref).
   const dashboardFetchedRef = useRef(false);
   useEffect(() => {
+    console.log('[AdminDashboard] Effect running, isAdmin:', isAdmin, 'currentUser:', currentUser?.role, 'fetched:', dashboardFetchedRef.current);
     if (!isAdmin) {
+      console.log('[AdminDashboard] Not admin, skipping fetch');
       setAdminSummary(null);
       setAdminSummaryLoading(false);
       return undefined;
     }
-    if (dashboardFetchedRef.current) return undefined;
+    if (dashboardFetchedRef.current) {
+      console.log('[AdminDashboard] Already fetched, skipping');
+      return undefined;
+    }
     dashboardFetchedRef.current = true;
     setAdminSummaryLoading(true);
+    console.log('[AdminDashboard] Fetching /admin/dashboard...');
     apiClient.get('/admin/dashboard')
-      .then((res) => { setAdminSummary(res.ok ? res.data : null); })
-      .catch(() => { setAdminSummary(null); })
+      .then((res) => { 
+        console.log('[AdminDashboard] API response:', { ok: res.ok, status: res.status, data: res.data });
+        setAdminSummary(res.ok ? res.data : null); 
+      })
+      .catch((err) => { 
+        console.error('[AdminDashboard] API error:', err); 
+        setAdminSummary(null); 
+      })
       .finally(() => setAdminSummaryLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);

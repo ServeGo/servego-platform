@@ -332,7 +332,10 @@ function BookingSubTabs({ bookings, manualRequests = [], onDownloadReceipt, onCa
             changed = true;
             continue;
           }
-          const providerId = (b) => b?.provider?.id ?? b?.provider?.userId ?? null;
+          // Read the SCALAR providerId first: a PENDING booking is unowned, so the
+          // API returns `provider: null` and the nested relation can no longer be
+          // the source of truth for "did a provider get assigned".
+          const providerId = (b) => b?.providerId ?? b?.provider?.id ?? b?.provider?.userId ?? null;
           // Skip only when nothing the card renders changed — status, provider
           // AND chat messages must all match, otherwise message-only updates
           // (quick replies) would never reach the visible card.

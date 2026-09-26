@@ -478,6 +478,15 @@ export const sendMessageValidation = [
     .escape()
 ];
 
+// ==================== Knowledge Assistant Validations ====================
+
+export const askKnowledgeValidation = [
+  body('question')
+    .trim()
+    .notEmpty().withMessage('Please type a question')
+    .isLength({ min: 3, max: 500 }).withMessage('Question must be between 3 and 500 characters')
+];
+
 // ==================== Password Reset Validations ====================
 
 export const forgotPasswordValidation = [
