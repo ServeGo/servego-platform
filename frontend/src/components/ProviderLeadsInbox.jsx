@@ -59,6 +59,15 @@ const BOOKING_STATUS_STYLES = {
   CANCELLED: 'bg-rose-100 border-rose-300 text-rose-800'
 };
 
+// Amount with no currency symbol — for chips that already render the
+// IndianRupee icon as the symbol. Using fmtMoney() there printed the rupee
+// twice (icon + "₹1,200").
+const fmtAmount = (v) => {
+  const n = Number(v || 0);
+  return Number.isFinite(n) ? n.toLocaleString('en-IN') : '—';
+};
+
+// Symbol-bearing variant, for amounts written into a sentence.
 const fmtMoney = (v) => {
   const n = Number(v || 0);
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : '—';
@@ -778,41 +787,49 @@ function LeadCardItem({ lead, busy, hasActiveJob = false, onOpen, onAccept, onRe
         <div className="flex items-center gap-3">
           {booking.amount != null && (
             <span className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 inline-flex items-center gap-1">
-              <IndianRupee className="w-3.5 h-3.5" /> {fmtMoney(booking.amount)}
+              <IndianRupee className="w-3.5 h-3.5" /> {fmtAmount(booking.amount)}
             </span>
           )}
           <span className="text-[10px] text-slate-400 font-bold">{fmtTime(lead.createdAt)}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 font-bold text-xs text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
-        {showLiveTracking ? (
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase block mb-1.5">Live Tracking</span>
-            <Suspense fallback={<MapLoadingFallback />}>
-              <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
-            </Suspense>
-          </div>
-        ) : booking.locationAddress ? (
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Address</span>
-            <span className="text-slate-800 leading-tight block">{booking.locationAddress}{booking.city ? `, ${booking.city}` : ''}</span>
-          </div>
-        ) : (
-          // Open broadcast offer: the exact address, the instructions and the
-          // customer's number are withheld until this provider accepts, so the
-          // card shows the city only and says why.
-          <div>
-            <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Area</span>
-            <span className="text-slate-800 leading-tight block">
-              {booking.city || 'City not specified'}
-            </span>
-            <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-1">
-              The exact address, the customer's note and their contact number are shared as soon as you accept this request.
-            </span>
-          </div>
-        )}
-      </div>
+      {showLiveTracking ? (
+        // The map is deliberately NOT inside the grey details panel below. That
+        // panel is a light `bg-slate-50 p-4` box, so the dark map floated inset
+        // 40px from the card edge on a grey backdrop, while the customer renders
+        // the very same component flush in the card — the two maps looked a
+        // different size and shape. The map carries its own frame, so it only
+        // needs spacing here. Its own header already labels it, hence no
+        // "Live Tracking" caption on top of it.
+        <div className="mb-4">
+          <Suspense fallback={<MapLoadingFallback tone="dark" />}>
+            <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
+          </Suspense>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 font-bold text-xs text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4">
+          {booking.locationAddress ? (
+            <div>
+              <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Address</span>
+              <span className="text-slate-800 leading-tight block">{booking.locationAddress}{booking.city ? `, ${booking.city}` : ''}</span>
+            </div>
+          ) : (
+            // Open broadcast offer: the exact address, the instructions and the
+            // customer's number are withheld until this provider accepts, so the
+            // card shows the city only and says why.
+            <div>
+              <span className="text-[10px] text-slate-400 uppercase block mb-1">Service Area</span>
+              <span className="text-slate-800 leading-tight block">
+                {booking.city || 'City not specified'}
+              </span>
+              <span className="text-[11px] text-slate-500 font-medium leading-snug block mt-1">
+                The exact address, the customer's note and their contact number are shared as soon as you accept this request.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end flex-wrap items-center">
         {(bookingStatus === 'CONFIRMED' || bookingStatus === 'ONGOING') && (

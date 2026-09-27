@@ -59,6 +59,52 @@ model User {
   wallet                  Wallet?
   walletTransactions      WalletTransaction[]
   walletWithdrawalRequests WalletWithdrawalRequest[]
+  refreshSessions         RefreshSession[]
+}
+
+/// One issued refresh token, tracked server-side.
+///
+/// The refresh JWT stays stateless for signature and `exp`, but every refresh now
+/// resolves to a row here, which is what makes revocation possible: a stolen
+/// token is only useful while its row is live, and logout flips `revokedAt`.
+///
+/// Only the SHA-256 of the token is stored, never the token itself, so a
+/// database leak cannot be replayed against /auth/refresh (the same rule the
+/// password-reset token already follows on `User.resetToken`).
+model RefreshSession {
+  id        String @id @default(cuid())
+
+  /// The `jti` claim of the refresh JWT. Unique, and the lookup key on refresh.
+  jti       String @unique
+  userId    String
+
+  /// Defence in depth behind the signature. An unknown `jti` is already refused
+  /// because no row matches; this catches the rarer case of a valid signature
+  /// over a known `jti` carrying different bytes, which means forgery.
+  tokenHash String
+
+  /// The token's own `exp`.
+  expiresAt DateTime
+  /// Hard session lifetime, independent of the token's `exp`, so a session can
+  /// be capped shorter than 7 days without touching the signing config.
+  absoluteExpiry DateTime
+
+  revokedAt     DateTime?
+  revokedReason String?
+
+  ip        String?
+  userAgent String?
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // `userId` leads every revoke-all / session-list / session-cap query, and the
+  // composite leading column also serves the `userId`-only variants, so one
+  // index covers all of them. `expiresAt` serves the cleanup sweep.
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model Customer {

@@ -16,7 +16,7 @@ import ProfileView from '../components/ProfileView';
 import CustomerAddresses from '../components/CustomerAddresses';
 import ReviewModal from '../components/ReviewModal';
 import InvoiceModal from '../components/InvoiceModal';
-import PermanentRequestsView from '../components/PermanentRequestsView';
+import PermanentRequestsView, { VISIBLE_REQUEST_TYPES } from '../components/PermanentRequestsView';
 import WalletView from '../components/WalletView';
 
 export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setActiveTabExternal }) => {
@@ -94,7 +94,10 @@ export const CustomerDashboard = ({ onNavigate, activeTab: activeTabProp, setAct
     // request instead of two when the requests tab and dashboard mount together.
     const res = await cachedRequest('permanent-service-requests/mine', () => api.get('/permanent-service-requests/mine'));
     if (res.ok && Array.isArray(res.data)) {
-      setPermanentCount(res.data.length);
+      // The badge counts what the Requests tab actually lists. `/mine` also returns
+      // NO_PROVIDER (admin-assigned) requests, which that tab deliberately hides, so
+      // counting the raw length here would show a badge larger than the list.
+      setPermanentCount(res.data.filter((request) => VISIBLE_REQUEST_TYPES.includes(request.requestType)).length);
       setPendingManualRequests(res.data.filter((request) => request.requestType === 'NO_PROVIDER' && request.status === 'PENDING'));
     }
   }, []);

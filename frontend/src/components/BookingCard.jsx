@@ -172,8 +172,15 @@ export default function BookingCard({
             </div>
           </div>
         ) : liveTrackingCustomers ? (
-          <div className="mb-6 rounded-xl overflow-hidden border border-slate-200">
-            <Suspense fallback={<MapLoadingFallback />}>
+          // Spacing only. `LiveTrackingMap` already declares its own frame
+          // (`rounded-2xl border-slate-800 overflow-hidden`); the `rounded-xl
+          // overflow-hidden border-slate-200` wrapper that used to sit here
+          // re-declared all three, clipping the map's own radius down to 12px and
+          // drawing a pale hairline around the dark panel. That is what made the
+          // customer's map look a different shape from the provider's, which renders
+          // the same component un-clipped.
+          <div className="mb-6">
+            <Suspense fallback={<MapLoadingFallback tone="dark" />}>
               <LiveTrackingMap booking={booking} liveLocation={liveLocation} />
             </Suspense>
           </div>

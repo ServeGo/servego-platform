@@ -45,7 +45,7 @@ export default function CustomServiceRequestModal({ onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100dvh-3rem)] overflow-y-auto hide-scrollbar">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
           <div>
             <h3 className="text-xl font-bold text-slate-900">Custom Service Request</h3>
@@ -116,7 +116,7 @@ export default function CustomServiceRequestModal({ onClose, onSuccess }) {
             </span>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}

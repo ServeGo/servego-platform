@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeAnswer, NOT_IN_KNOWLEDGE_CENTER, NO_KNOWLEDGE_ANSWER, askKnowledgeAssistant } from '../services/chatService.js';
+import { normalizeAnswer, NOT_IN_KNOWLEDGE_CENTER, NO_KNOWLEDGE_ANSWER, askKnowledgeAssistant, detectSmallTalk } from '../services/chatService.js';
 import { getKnowledgeCenter, invalidateKnowledgeCenter } from '../services/knowledgeService.js';
 
 // The chatbot's core promise: every answer comes from the Knowledge Center, and anything
@@ -185,4 +185,93 @@ test('a missing Knowledge Center fails loudly rather than answering nothing', as
     () => askKnowledgeAssistant({ question: 'What is ServeGo24?', knowledgeCenter: null }),
     (err) => err.code === 'CHAT_KNOWLEDGE_UNAVAILABLE' && err.statusCode === 503
   );
+});
+
+// --- Small talk ------------------------------------------------------------
+// A greeting is not a knowledge gap. Before this existed, "Hii" was sent to the
+// model, which correctly reported the Knowledge Center could not answer it, and the
+// user read "That isn't in my knowledge base" + a support-ticket nudge as a broken
+// assistant. Greetings/thanks/goodbyes/identity are now answered locally.
+
+test('a greeting is answered with a welcome, not the knowledge fallback', () => {
+  for (const raw of ['hi', 'Hii', 'HII', 'HI', 'hello', 'Hello There', 'hey', 'yo', 'good morning', 'good evening', 'namaste']) {
+    const match = detectSmallTalk(raw);
+    assert.ok(match, `must be recognised as small talk: ${raw}`);
+    assert.notEqual(match.answer, NO_KNOWLEDGE_ANSWER, `must not be the fallback: ${raw}`);
+    assert.ok(match.answer.length > 20, `must be a real reply: ${raw}`);
+  }
+});
+
+test('punctuation, emoji, casing and stray whitespace do not hide a greeting', () => {
+  const messy = ['  hii  ', 'Hii!', 'Hii!!!', 'Hii 👋', '👋 hii', 'h i i', 'Hiiii', 'hey there!', 'HELLO,', 'hi  :)'];
+  for (const raw of messy) {
+    assert.ok(detectSmallTalk(raw), `must still be recognised: ${JSON.stringify(raw)}`);
+  }
+});
+
+test('thanks, goodbye and identity questions get their own replies', () => {
+  assert.match(detectSmallTalk('thanks').answer, /Happy to help/i);
+  assert.match(detectSmallTalk('thank you!').answer, /Happy to help/i);
+  assert.match(detectSmallTalk('bye').answer, /Goodbye/i);
+  assert.match(detectSmallTalk('who are you').answer, /ServeGo24 assistant/i);
+  assert.match(detectSmallTalk('what can you do').answer, /Bookings/i);
+});
+
+test('a real question is NEVER swallowed as small talk', () => {
+  // Guards the guard. The matcher uses whole-sentence lists, so anything that is
+  // not literally a greeting must fall through to the Knowledge Center. If a
+  // keyword-style matcher is ever introduced, this is the test that catches it.
+  const realQuestions = [
+    'What is ServeGo24?',
+    'How do I book a service?',
+    'How do you find a provider for me?',
+    'How does payment work?',
+    'What happens if I cancel a booking?',
+    'Is there a service fee?',
+    'How much commission do providers pay?',
+    'Can I choose my provider?',
+    'How do I become a ServeGo24 provider?',
+    'What are your operating hours?',
+    'Where is ServeGo24 available?',
+    'Who is my assigned provider?',
+    'Thanks, but what is the cancellation fee?',
+    'Hi, how do I book a service?',
+    'hello how much does AC repair cost',
+    // Substring traps: these START with a greeting word but are real questions.
+    'hip replacement cost',
+    'hitachi AC not cooling',
+    'bye-law India rules',
+    'hiv testing near me',
+    'helicopter booking in Hyderabad'
+  ];
+  for (const raw of realQuestions) {
+    assert.equal(detectSmallTalk(raw), null, `must NOT be treated as small talk: ${raw}`);
+  }
+});
+
+test('blank and empty input is not small talk', () => {
+  for (const raw of ['', '   ', '???', '...', '🙂']) {
+    assert.equal(detectSmallTalk(raw), null, `must not match: ${JSON.stringify(raw)}`);
+  }
+});
+
+test('a greeting is answered without calling the model', async () => {
+  // No GEMINI_API_KEY is set in the test env, so if this ever reached callGemini it
+  // would reject with CHAT_NOT_CONFIGURED instead of resolving.
+  const result = await askKnowledgeAssistant({ question: 'Hii', knowledgeCenter: { text: 'x' } });
+  assert.equal(result.grounded, true);
+  assert.equal(result.intent, 'smalltalk_greeting');
+  assert.notEqual(result.answer, NO_KNOWLEDGE_ANSWER);
+  assert.match(result.answer, /ServeGo24/i);
+});
+
+test('the knowledge fallback points the user at topics it can actually answer', () => {
+  // Rule 19: an unknown question must tell the user what to do next, not just that
+  // the assistant is unsure. It must steer back into answerable territory.
+  assert.match(NO_KNOWLEDGE_ANSWER, /don't want to guess/i);
+  for (const topic of ['Booking', 'payment', 'Cancelling', 'provider', 'support ticket']) {
+    assert.ok(NO_KNOWLEDGE_ANSWER.includes(topic), `fallback must mention ${topic}`);
+  }
+  // Never blame the user's phrasing — they asked a reasonable question.
+  assert.doesNotMatch(NO_KNOWLEDGE_ANSWER, /knowledge base/i);
 });

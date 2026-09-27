@@ -29,7 +29,7 @@ const LOCATION_MIN_INTERVAL_MS = 8000;
 const LOCATION_MIN_DISTANCE_M = 30;
 
 export const RealtimeProvider = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const { showToast } = useToast();
   const {
     fetchBookings,
@@ -233,6 +233,18 @@ export const RealtimeProvider = ({ children }) => {
       });
       socket.on('alert:cleared', () => {
         clearAlertsSilently();
+      });
+
+      // Admin blocked/suspended the account. The server has already revoked this
+      // session's refresh token, so the next API call would 401 anyway; signing
+      // out here makes the reason explicit instead of leaving the user on a
+      // dashboard that silently stops updating.
+      socket.on('forceLogout', (payload) => {
+        const reason = payload?.reason === 'account_blocked'
+          ? 'Your account has been blocked. Please contact support.'
+          : 'Your session has ended. Please sign in again.';
+        showToast({ title: 'Signed out', message: reason, type: 'error' });
+        logout();
       });
 
       socket.on('connect', () => {

@@ -12,6 +12,7 @@ export default function ServiceHeader({
   onSearchSubmit,
   onSearchChange,
   onQuick,
+  loading = false,
 }) {
   return (
     <section className="relative overflow-hidden rounded-2xl bg-slate-950 text-white px-4 py-6 sm:px-6 sm:py-7 mb-6">
@@ -77,7 +78,7 @@ export default function ServiceHeader({
           </button>
         </form>
 
-        {topServices.length > 0 && (
+        {topServices.length > 0 ? (
           <div className="mt-3.5 text-[10px]">
             <span className="text-slate-500 font-bold uppercase tracking-wider">Popular:</span>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -93,7 +94,18 @@ export default function ServiceHeader({
               ))}
             </div>
           </div>
-        )}
+        ) : loading ? (
+          // Reserve the row while the catalog is in flight so the chips land without
+          // shifting the search box down (rule 15).
+          <div aria-hidden="true" className="mt-3.5 text-[10px]">
+            <span className="block h-2.5 w-16 rounded-full bg-slate-300/50 animate-pulse" />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span key={i} className="h-6 w-20 rounded-full bg-slate-300/40 animate-pulse" />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

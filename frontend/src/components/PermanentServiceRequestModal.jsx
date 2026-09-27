@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
-import { AlertCircle, Briefcase, ShieldCheck, MapPin, Plus, Home, MoreHorizontal } from 'lucide-react';
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
+import { AlertCircle, Briefcase, ShieldCheck, MapPin, Plus, Home, MoreHorizontal, CalendarDays } from 'lucide-react';
 import { api } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
 import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
@@ -145,7 +145,7 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100vh-4rem)] overflow-y-auto hide-scrollbar">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-xl w-full relative shadow-2xl animate-fade-in mt-6 mb-6 text-left max-h-[calc(100dvh-3rem)] overflow-y-auto hide-scrollbar">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
           <div>
             <h3 className="text-xl font-bold text-slate-900">Permanent / Contract Request</h3>
@@ -193,12 +193,11 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
                 Start Date <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="date"
+              <DateInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-800 outline-none"
+                onChange={setStartDate}
                 required
+                label="Start Date"
               />
             </div>
 
@@ -390,7 +389,7 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
             </span>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -428,6 +427,56 @@ export default function PermanentServiceRequestModal({ serviceName, onClose, onS
           usedLabels={savedAddresses.map((a) => a.label)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Date field with an always-visible calendar affordance.
+ *
+ * A bare `input[type=date]` loses its icon on mobile: iOS Safari and Android
+ * Chrome both drop or squeeze `::-webkit-calendar-picker-indicator` on a
+ * full-width field, so the field looks like plain text with no hint that it
+ * opens a picker. So the native indicator is hidden and replaced with our own
+ * icon; tapping anywhere in the field calls `showPicker()`, which is the only
+ * way to open the native dialog from script and must run inside the user
+ * gesture. Where it is unsupported, focusing the field still raises the native
+ * wheel picker.
+ */
+function DateInput({ value, onChange, required, label }) {
+  const ref = useRef(null);
+
+  const openPicker = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+      try {
+        el.showPicker();
+        return;
+      } catch {
+        // Throws when the field is not focusable or the gesture was consumed;
+        // fall through to the focus/click fallback.
+      }
+    }
+    el.focus();
+    el.click();
+  };
+
+  return (
+    <div className="relative" onClick={openPicker}>
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        aria-label={label}
+        className="w-full appearance-none bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-date-and-time-value]:text-left"
+      />
+      <CalendarDays
+        className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        aria-hidden="true"
+      />
     </div>
   );
 }

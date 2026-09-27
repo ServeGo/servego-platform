@@ -8,6 +8,17 @@ import PermanentServiceRequestModal from './PermanentServiceRequestModal';
 import CustomServiceRequestModal from './CustomServiceRequestModal';
 import PermanentRequestSuccess from './PermanentRequestSuccess';
 
+// The Requests tab is scoped to the three self-service hires: PERMANENT with
+// engagementType CONTRACT, PERMANENT with engagementType PERMANENT, and CUSTOM.
+// `NO_PROVIDER` requests are deliberately excluded — those are admin-assigned
+// (an admin picks the provider in AdminManualBookingRequestsTab) and the
+// dashboard surfaces them separately, so they don't belong in this list.
+//
+// An allow-list, not a deny-list: `/mine` also returns NO_PROVIDER and is shared
+// with the dashboard, so a future request type must be opted in here explicitly
+// rather than leaking into this tab by default.
+export const VISIBLE_REQUEST_TYPES = ['PERMANENT', 'CUSTOM'];
+
 const STATUS_STYLES = {
   PENDING: 'bg-amber-100 border-amber-300 text-amber-800',
   APPROVED: 'bg-emerald-100 border-emerald-300 text-emerald-800',
@@ -44,7 +55,8 @@ export default function PermanentRequestsView({ onNavigate }) {
     // a live snapshot (and invalidate first, so concurrent views refetch too).
     const res = await cachedRequest('permanent-service-requests/mine', () => api.get('/permanent-service-requests/mine'), { force });
     if (res.ok) {
-      setRequests(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setRequests(list.filter((r) => VISIBLE_REQUEST_TYPES.includes(r.requestType)));
       setError('');
     } else {
       setRequests([]);
@@ -151,17 +163,22 @@ export default function PermanentRequestsView({ onNavigate }) {
           <p className="text-slate-500 text-xs mt-1 font-medium">
             Request a permanent, contract, or custom service and our team will arrange everything for you.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2.5 justify-center mt-5">
+          {/* Both CTAs are the same size. In a flex row each button is sized by its own
+              label, so "Request a Service" came out wider than "Browse Services"; a
+              single-column grid gives them one shared width instead. `max-w-[16rem]`
+              keeps that width comfortably inside the box rather than stretching to the
+              full 384px, and it leaves room for the longer label at any phone width. */}
+          <div className="mt-5 mx-auto w-full max-w-[16rem] grid grid-cols-1 gap-2.5">
             <button
               onClick={() => setShowRequestChoice(true)}
-              className="inline-flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
+              className="w-full inline-flex items-center justify-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               Request a Service
             </button>
             <button
               onClick={() => onNavigate('services')}
-              className="bg-slate-900 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
+              className="w-full inline-flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs transition-all"
             >
               Browse Services
             </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AppProvider, useAuth, useData, useUI, useRealtime } from './context/AppContext';
-import { api as apiClient } from './utils/apiClient';
+import { useFeatureFlags } from './context/FeatureFlagsContext';
 import './cursor.css';
 
 // Pages are lazy-loaded so each becomes its own chunk, pulled in only when the
@@ -185,32 +185,15 @@ export function MainLayout() {
     return () => window.removeEventListener('keydown', onKey);
   }, [adminMoreOpen]);
 
-  // Public feature flags: the single "what's new" announcement (targeted to
+  // Public feature flags — the single "what's new" announcement (targeted to
   // one audience — customers OR providers — at a time).
-  const [siteFlags, setSiteFlags] = useState({
-    newFeature: { enabled: false, audience: 'customer', text: '' }
-  });
+  //
+  // Read from FeatureFlagsContext rather than fetched again here. This component
+  // and the provider were each calling `GET /feature-flags/public` on every load
+  // for the same payload; one request, one source of truth (see
+  // context/FeatureFlagsContext.jsx).
+  const { newFeature } = useFeatureFlags();
   const [dismissedAnnouncement, setDismissedAnnouncement] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    apiClient
-      .get('/feature-flags/public')
-      .then((res) => {
-        if (!active) return;
-        const data = res.data?.data || {};
-        const flags = data.flags || {};
-        setSiteFlags({
-          newFeature: {
-            enabled: flags.newFeatureEnabled === true,
-            audience: flags.newFeatureAudience || 'customer',
-            text: flags.newFeatureText || ''
-          }
-        });
-      })
-      .catch(() => { /* fail open — no flags means normal operation */ });
-    return () => { active = false; };
-  }, []);
 
   const getDefaultDashboardForRole = (user) => {
     if (!user) return 'login';
@@ -886,13 +869,13 @@ export function MainLayout() {
       )}
 
       {currentUser &&
-        siteFlags.newFeature.enabled &&
-        siteFlags.newFeature.text &&
-        currentUser.role === siteFlags.newFeature.audience &&
+        newFeature.enabled &&
+        newFeature.text &&
+        currentUser.role === newFeature.audience &&
         !dismissedAnnouncement && (
-          <div className={`text-white text-center text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 ${siteFlags.newFeature.audience === 'provider' ? 'bg-indigo-600' : 'bg-teal-600'}`}>
+          <div className={`text-white text-center text-xs font-semibold px-4 py-2 flex items-center justify-center gap-2 ${newFeature.audience === 'provider' ? 'bg-indigo-600' : 'bg-teal-600'}`}>
             <Sparkles className="w-3.5 h-3.5 shrink-0" />
-            <span>{siteFlags.newFeature.text}</span>
+            <span>{newFeature.text}</span>
             <button
               onClick={() => setDismissedAnnouncement(true)}
               className="ml-2 font-black hover:underline"

@@ -1,11 +1,12 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import prisma from '../prisma/client.js';
-import { generateTokenPair, verifyRefreshToken, isAuthBlocked, recordFailedAuthAttempt } from '../utils/auth.js';
+import { buildAuthResponse, verifyRefreshToken, isAuthBlocked, recordFailedAuthAttempt } from '../utils/auth.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { validatePasswordStrength } from '../utils/validation.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
 import { nextBusinessNumber } from '../utils/businessNumber.js';
+import * as refreshSessions from '../services/refreshSessionService.js';
 
 export const UserController = {
   forgotPassword: async (req, res) => {
@@ -98,6 +99,13 @@ export const UserController = {
           resetTokenExpiry: null
         }
       });
+
+      // A password reset is the user's statement that every existing session is
+      // untrusted. Now that sessions are revocable, honour that: a thief holding
+      // a refresh token captured before the reset loses it here, not in 7 days.
+      await refreshSessions
+        .revokeAllForUser(user.id, refreshSessions.REVOKE_REASON.PASSWORD_CHANGED)
+        .catch((e) => console.error('[resetPassword] session revocation failed:', e.message));
 
       return sendApiSuccess(res, 200, { message: 'Password has been reset successfully. You can now log in with your new password.' });
     } catch (err) {
@@ -394,7 +402,14 @@ export const UserController = {
         updatedAt: newUser.updatedAt
       };
 
-      const tokens = generateTokenPair(newUser);
+      // Minted together with its RefreshSession row so the token is revocable.
+      // The row's tokenHash is the hash of exactly this token (see login).
+      const { refreshToken } = await refreshSessions.issueSession({
+        user: newUser,
+        ip: req.ip || req.connection?.remoteAddress,
+        userAgent: req.get('user-agent')
+      });
+      const tokens = buildAuthResponse(newUser, refreshToken);
 
       return sendApiSuccess(res, 201, { user: safeUser, ...tokens });
     } catch (err) {
@@ -464,8 +479,17 @@ export const UserController = {
       });
 
       const { password: _, ...safeUser } = user;
-      const tokens = generateTokenPair(user);
-      
+      // issueSession mints the refresh token AND stores its hash in one step.
+      // The returned token is the only copy the server ever has, so it must be
+      // the one handed to the client — re-signing here would persist the hash of
+      // a token nobody receives.
+      const { refreshToken } = await refreshSessions.issueSession({
+        user,
+        ip: clientIp,
+        userAgent: req.get('user-agent')
+      });
+      const tokens = buildAuthResponse(user, refreshToken);
+
       return sendApiSuccess(res, 200, { user: safeUser, ...tokens });
     } catch (err) {
       console.error('Login error:', err);
@@ -476,8 +500,8 @@ export const UserController = {
 
   refreshToken: async (req, res) => {
     try {
-      const { refreshToken } = req.body;
-      
+      const { refreshToken } = req.body || {};
+
       if (!refreshToken) {
         return sendApiError(res, 400, 'MISSING_TOKEN', 'Refresh token is required.');
       }
@@ -487,26 +511,137 @@ export const UserController = {
         return sendApiError(res, 401, 'INVALID_REFRESH_TOKEN', 'Invalid or expired refresh token.');
       }
 
+      // A signed refresh token with no jti predates session tracking. Refusing it
+      // is deliberate: honouring it would preserve exactly the un-revocable token
+      // this flow exists to eliminate.
+      if (!decoded.jti) {
+        return sendApiError(res, 401, 'REFRESH_TOKEN_REVOKED', 'This session is no longer valid. Please sign in again.');
+      }
+
+      // The authoritative gate: live row, hash match, not past absolute expiry.
+      const verdict = await refreshSessions.assertUsable(refreshToken, decoded.jti);
+      if (!verdict.ok) {
+        return sendApiError(res, 401, verdict.code, verdict.message);
+      }
+
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
         select: {
           id: true,
           email: true,
           role: true,
-          status: true
+          status: true,
+          // Refresh must re-check the provider gate exactly as login does.
+          // Without this an admin-blocked provider kept minting access tokens for
+          // the rest of the refresh token's life, because only `status` was read.
+          providerProfile: { select: { accountStatus: true } }
         }
       });
 
       if (!user || user.status !== 'ACTIVE') {
+        await refreshSessions.revokeAllForUser(decoded.id, refreshSessions.REVOKE_REASON.ACCOUNT_BLOCKED);
         return sendApiError(res, 401, 'ACCOUNT_INACTIVE', 'User account is not active.');
       }
+      if (user.role === 'provider' && user.providerProfile?.accountStatus === 'BLOCKED') {
+        await refreshSessions.revokeAllForUser(decoded.id, refreshSessions.REVOKE_REASON.ACCOUNT_BLOCKED);
+        return sendApiError(res, 401, 'PROVIDER_BLOCKED', 'This provider account has been blocked. Please contact support.');
+      }
 
-      const tokens = generateTokenPair(user);
+      await refreshSessions.touchSession(decoded.jti);
 
-      return sendApiSuccess(res, 200, tokens);
+      // The refresh token is deliberately returned unchanged: it is stable for the
+      // life of the session, and the server holds only its hash, so the caller's
+      // copy is the only copy. Revocation is what ends it, not rotation.
+      return sendApiSuccess(res, 200, buildAuthResponse(user, refreshToken));
     } catch (err) {
       console.error('Token refresh error:', err);
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to refresh token',
+        process.env.NODE_ENV !== 'production' ? err.message : undefined);
+    }
+  },
+
+  /**
+   * Revoke the refresh token that was presented.
+   *
+   * Deliberately unauthenticated: the access token is often already expired by the
+   * time a user signs out, and requiring it would make logout fail exactly when
+   * it matters most. The refresh token in the body is the credential.
+   *
+   * Always answers 200, whatever the token was. Reporting "unknown token" vs
+   * "already signed out" would turn this into an oracle for testing whether a
+   * captured token is still good, and the caller's intent — this device is
+   * signed out — holds either way (rule 18: logout is idempotent).
+   */
+  logout: async (req, res) => {
+    try {
+      const { refreshToken } = req.body || {};
+      // Decoded once: an unparseable token is simply "nothing to revoke", which
+      // is still a successful sign-out.
+      const decoded = refreshToken ? verifyRefreshToken(refreshToken) : null;
+      let revoked = 0;
+
+      if (decoded?.jti) {
+        revoked = await refreshSessions.revokeByJti(
+          decoded.jti,
+          refreshSessions.REVOKE_REASON.LOGOUT
+        );
+      }
+
+      // The AuthEventType.LOGOUT value existed in the schema but nothing ever
+      // wrote it, so sign-outs left no server-side trace at all.
+      //
+      // Only recorded when a user was actually identified. This endpoint is
+      // unauthenticated, so writing unconditionally would let any anonymous
+      // caller insert unlimited rows — a write-amplification hole far worse than
+      // the missing audit line. An unattributable sign-out is a server log line.
+      if (decoded?.id) {
+        await prisma.authEvent.create({
+          data: {
+            userId: decoded.id,
+            email: '',
+            eventType: 'LOGOUT',
+            success: true,
+            ip: req.ip || req.connection?.remoteAddress,
+            userAgent: req.get('user-agent')
+          }
+        }).catch(() => {});
+      } else {
+        console.warn('[logout] sign-out with no identifiable session', {
+          ip: req.ip || req.connection?.remoteAddress,
+          userAgent: req.get('user-agent')
+        });
+      }
+
+      return sendApiSuccess(res, 200, { revoked: revoked > 0 });
+    } catch (err) {
+      // Never fail a sign-out: the client clears its own tokens regardless, and
+      // an error here would leave the user unable to leave the app.
+      return sendApiSuccess(res, 200, { revoked: false });
+    }
+  },
+
+  /** Revoke every live session for the signed-in user ("sign out everywhere"). */
+  logoutAll: async (req, res) => {
+    try {
+      const revoked = await refreshSessions.revokeAllForUser(
+        req.user.id,
+        refreshSessions.REVOKE_REASON.LOGOUT_ALL
+      );
+      return sendApiSuccess(res, 200, { revokedSessions: revoked });
+    } catch (err) {
+      console.error('Logout-all error:', err);
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to sign out of all devices',
+        process.env.NODE_ENV !== 'production' ? err.message : undefined);
+    }
+  },
+
+  /** Active sessions for the signed-in user, for a "where am I signed in" screen. */
+  listSessions: async (req, res) => {
+    try {
+      const sessions = await refreshSessions.listActiveForUser(req.user.id);
+      return sendApiSuccess(res, 200, sessions);
+    } catch (err) {
+      return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to load your active sessions',
         process.env.NODE_ENV !== 'production' ? err.message : undefined);
     }
   },

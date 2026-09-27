@@ -15,6 +15,7 @@ import { requestLogger, errorHandler, requestTimeout } from './middleware/loggin
 import { sendApiSuccess } from './utils/response.js';
 import { scheduleAllLeadTimers } from './services/leadExpiryService.js';
 import { sweepClosedLocationHistory } from './services/trackingService.js';
+import { sweepDeadSessions } from './services/refreshSessionService.js';
 import { warmServiceCaches } from './controllers/serviceController.js';
 
 import { updateProviderLocation, markProviderOnTheWay, markProviderArrived } from './services/trackingService.js';
@@ -333,6 +334,25 @@ async function bootstrap() {
     };
     runLocationSweep();
     setInterval(runLocationSweep, 15 * 60 * 1000);
+
+    // Refresh-session sweep: drop rows that can no longer authenticate anyone,
+    // so the table tracks live sessions instead of accumulating every sign-in
+    // ever. Hourly is fine — a stale row is inert, just untidy. Never overlaps.
+    let sessionSweepRunning = false;
+    const runSessionSweep = () => {
+      if (sessionSweepRunning) return;
+      sessionSweepRunning = true;
+      sweepDeadSessions()
+        .then(({ expired, revoked }) => {
+          if (expired > 0 || revoked > 0) {
+            console.log(`🧹 Session sweep: ${expired} expired, ${revoked} revoked refresh sessions removed`);
+          }
+        })
+        .catch((err) => console.error('Session sweep failed:', err.message))
+        .finally(() => { sessionSweepRunning = false; });
+    };
+    runSessionSweep();
+    setInterval(runSessionSweep, 60 * 60 * 1000);
   });
 
   httpServer.on('error', (err) => {

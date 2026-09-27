@@ -39,6 +39,11 @@ apiRouter.post('/auth/login', authRateLimiter, validate(loginValidation), UserCo
 apiRouter.post('/auth/forgot-password', authRateLimiter, validate(forgotPasswordValidation), UserController.forgotPassword);
 apiRouter.post('/auth/reset-password', authRateLimiter, validate(resetPasswordValidation), UserController.resetPassword);
 apiRouter.post('/auth/refresh', UserController.refreshToken);
+// Unauthenticated on purpose: the access token is usually already expired when a
+// user signs out, and the refresh token in the body is the credential.
+apiRouter.post('/auth/logout', UserController.logout);
+apiRouter.post('/auth/logout-all', requireAuth, UserController.logoutAll);
+apiRouter.get('/auth/sessions', requireAuth, UserController.listSessions);
 apiRouter.get('/auth/me', requireAuth, UserController.getMe);
 apiRouter.get('/users', requireAuth, requireRole('admin'), UserController.getUsers);
 apiRouter.patch('/users/:id/profile', requireAuth, validate(updateUserProfileValidation), UserController.updateProfile);

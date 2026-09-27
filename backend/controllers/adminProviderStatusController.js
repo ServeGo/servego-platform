@@ -2,6 +2,7 @@ import prisma from '../prisma/client.js';
 import { writeAuditLog } from '../services/auditLogService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
 import { invalidateServiceStatsCaches } from '../services/serviceCacheService.js';
+import { revokeAllForUser } from '../services/refreshSessionService.js';
 
 const VALID_STATUSES = ['ACTIVE', 'ON_HOLD', 'BLOCKED'];
 
@@ -32,6 +33,19 @@ export const AdminProviderStatusController = {
       await prisma.provider.update({ where: { id }, data: { accountStatus: status } });
       invalidateServiceStatsCaches();
 
+      // A blocked provider must lose its live sessions immediately, otherwise an
+      // already-issued refresh token keeps minting access tokens until it expires
+      // on its own. Best-effort: a revocation failure must not fail the block,
+      // which is the security-critical half of this request.
+      let revokedSessions = 0;
+      if (status === 'BLOCKED') {
+        try {
+          revokedSessions = await revokeAllForUser(provider.user.id, 'ACCOUNT_BLOCKED');
+        } catch (e) {
+          console.error('[adminProviderStatus] session revocation failed:', e.message);
+        }
+      }
+
       // Notify the provider's user
       const statusLabel = { ACTIVE: 'reactivated', ON_HOLD: 'placed on hold', BLOCKED: 'blocked' }[status];
       await prisma.notification.create({
@@ -50,7 +64,11 @@ export const AdminProviderStatusController = {
         targetType: 'Provider',
         targetId: id,
         oldValue: { accountStatus: oldStatus },
-        newValue: { accountStatus: status, reason: String(reason).trim() },
+        newValue: {
+          accountStatus: status,
+          reason: String(reason).trim(),
+          revokedSessions
+        },
         ip: req.ip
       });
 
@@ -58,9 +76,14 @@ export const AdminProviderStatusController = {
       const io = req.app.get('socketio');
       if (io) {
         io.to(`user:${provider.user.id}`).emit('accountStatusChanged', { status, reason });
+        // Cut the live connection too, so a blocked provider is not simply still
+        // receiving realtime events until the tab is closed.
+        if (status === 'BLOCKED' && revokedSessions > 0) {
+          io.to(`user:${provider.user.id}`).emit('forceLogout', { reason: 'account_blocked' });
+        }
       }
 
-      return sendApiSuccess(res, 200, { providerId: id, accountStatus: status });
+      return sendApiSuccess(res, 200, { providerId: id, accountStatus: status, revokedSessions });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to update provider account status', err.message);
     }
