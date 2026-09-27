@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth, useData, useUI } from '../context/AppContext';
-import { api as apiClient } from '../utils/apiClient';
-import { cachedRequest } from '../utils/requestCache';
 import { useSEO } from '../hooks/useSEO';
+import { topRatedFromCatalog } from '../utils/topRatedServices';
 
 // Components
 import Hero from '../components/Hero';
@@ -133,21 +132,13 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
   });
 
   const [inputQuery, setInputQuery] = useState(searchQuery);
-  const [topServices, setTopServices] = useState([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    // `cachedRequest` dedupes this against the identical call on the services
-    // page and keeps the chips warm across route changes.
-    cachedRequest('services-top-rated', () => apiClient.get('/services/top-rated?limit=5'))
-      .then((res) => {
-        if (!cancelled && res.ok && Array.isArray(res.data)) {
-          setTopServices(res.data);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  // The hero chips come out of the catalog that DataContext already fetched. They used
+  // to be a separate `GET /services/top-rated` fired from an effect here, which could
+  // only start after the lazy Home chunk had loaded — so the chips always trailed the
+  // hero paint by a round trip even though the API returns the ranking inputs in
+  // `GET /services` already. See utils/topRatedServices.js.
+  const topServices = useMemo(() => topRatedFromCatalog(services), [services]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -198,6 +189,7 @@ export const Home = ({ onNavigate, onBecomePartner }) => {
         onQuickSearch={handleQuickSearch}
         topServices={topServices}
         services={services}
+        catalogLoading={servicesLoading && !hasServices}
       />
 
       {servicesLoading && !hasServices ? (

@@ -484,7 +484,10 @@ export const askKnowledgeValidation = [
   body('question')
     .trim()
     .notEmpty().withMessage('Please type a question')
-    .isLength({ min: 3, max: 500 }).withMessage('Question must be between 3 and 500 characters')
+    // min 1, not 3: "hi" / "ok" are legitimate greetings that the assistant answers
+    // directly (see SMALL_TALK in chatService). Rejecting them at the router made a
+    // plain "Hi" come back as a validation error. `notEmpty()` already rejects "".
+    .isLength({ min: 1, max: 500 }).withMessage('Question must be between 1 and 500 characters')
 ];
 
 // ==================== Password Reset Validations ====================

@@ -26,8 +26,103 @@ export const NOT_IN_KNOWLEDGE_CENTER = 'NOT_IN_KNOWLEDGE_CENTER';
 
 /** What the customer actually reads when the answer is not in the Knowledge Center. */
 export const NO_KNOWLEDGE_ANSWER =
-  "That isn't in my knowledge base, so I don't want to guess.\n\n" +
-  '- Raise a support ticket from your dashboard and the ServeGo24 team will help you directly.';
+  "I'm not sure about that one, and I don't want to guess.\n\n" +
+  'Try asking me about:\n' +
+  '- **Booking** a service, or what happens while a request is open\n' +
+  '- **Prices and payments** — quotations, fees and refunds\n' +
+  '- **Cancelling** a booking, and what it costs\n' +
+  '- **Becoming a provider** on ServeGo24\n\n' +
+  'For anything else, raise a support ticket and the ServeGo24 team will help you directly.';
+
+/**
+ * Small talk that needs no Knowledge Center lookup.
+ *
+ * A greeting is not a knowledge gap, but the model is told to reply with the
+ * `NOT_IN_KNOWLEDGE_CENTER` sentinel whenever the Knowledge Center cannot answer —
+ * and "Hii" is not in it. So a user saying hello got "That isn't in my knowledge
+ * base" plus a support-ticket nudge, which reads as broken. These are answered
+ * locally instead: no model call, no latency, no billing, and no chance of the model
+ * inventing something.
+ *
+ * Matching is EXACT and exhaustive on purpose. These lists are full sentences of
+ * allowed input, not keyword sets, so a real question can never be swallowed by
+ * accident — there are negative tests for exactly that in tests/chatbot.test.js.
+ */
+const SMALL_TALK = {
+  greeting: [
+    'hi', 'hii', 'hiii', 'hiiii', 'hey', 'hey there', 'hello', 'hello there', 'helo',
+    'yo', 'hiya', 'hiyaa', 'howdy', 'sup', 'sup?', 'heya', 'heyy', 'heyyy', 'ohay',
+    'good morning', 'good morning!', 'good afternoon', 'good afternoon!', 'good evening',
+    'good evening!', 'morning', 'afternoon', 'evening', 'namaste', 'namaskar',
+    // Letter-spelled greetings ("h i i") — common on mobile keyboards.
+    'h i', 'h i i', 'h e y', 'h e l l o', 'h e y y',
+    'hii servego24', 'hello servego24', 'hi servego24'
+  ],
+  thanks: [
+    'thanks', 'thank you', 'thankyou', 'thanks a lot', 'thanks so much', 'thx',
+    'thank u', 'ty', 'ok thanks', 'okay thanks', 'great thanks', 'thanks!',
+    'thank you!', 'thanks a lot!', 'thank you so much', 'many thanks', 'cheers',
+    'ta', 'ta!', 'thx!', 'nice thanks', 'perfect thanks', 'awesome thanks'
+  ],
+  bye: [
+    'bye', 'bye!', 'byebye', 'bye bye', 'see you', 'see ya', 'later', 'goodbye',
+    'good bye', 'take care', 'that will be all', "that's all", 'thats all', 'nothing else',
+    'no more questions', "i'm done", 'im done', 'ok bye', 'okay bye', 'cya'
+  ],
+  identity: [
+    'who are you', 'whos are you', 'who r u', 'who are you?', 'what are you',
+    'what are you?', 'who is this', 'who is this?', 'who am i talking to',
+    'who am i speaking to', 'who am i talking', 'are you a bot', 'are you a robot',
+    'are you human', 'are you real', 'your name', 'whats your name', "what's your name",
+    'what is your name', 'introduce yourself', 'tell me about yourself',
+    'what can you do', 'what can you do?', 'what do you do', 'how can you help me',
+    'how can you help', 'help'
+  ]
+};
+
+const SMALL_TALK_ANSWERS = {
+  greeting:
+    "Hello! I'm the ServeGo24 assistant. Ask me about bookings, providers, prices or cancellations — " +
+    "I answer from the ServeGo24 help centre.",
+  thanks:
+    "Happy to help. Ask me anything else about bookings, providers, prices or cancellations.",
+  bye: 'Goodbye. Come back any time.',
+  identity:
+    "I'm the ServeGo24 assistant. I answer questions about the platform from the ServeGo24 help centre.\n\n" +
+    '- **Bookings** — how to book, and what happens while a request is open\n' +
+    '- **Prices and payments** — quotations, fees and refunds\n' +
+    '- **Cancelling** — how it works and what it costs\n' +
+    '- **Becoming a provider** on ServeGo24'
+};
+
+/**
+ * Reduce a message to a comparable form: lowercase, strip punctuation and emoji
+ * (users type "Hii 👋" and "hii!!!"), and collapse whitespace.
+ */
+function normalizeSmallTalk(text) {
+  return String(text || '')
+    .toLowerCase()
+    // Emoji / pictographs, then general punctuation and symbol characters.
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Classify a message as small talk, or return null to send it to the model.
+ * @returns {{kind: string, answer: string}|null}
+ */
+export function detectSmallTalk(question) {
+  const normalized = normalizeSmallTalk(question);
+  if (!normalized) return null;
+  for (const [kind, variants] of Object.entries(SMALL_TALK)) {
+    if (variants.includes(normalized)) {
+      return { kind, answer: SMALL_TALK_ANSWERS[kind] };
+    }
+  }
+  return null;
+}
 
 const SYSTEM_INSTRUCTION = `You are the ServeGo24 Knowledge Assistant. You answer questions about the ServeGo24 home services platform for customers and providers.
 
@@ -266,7 +361,7 @@ async function callGemini({ question, knowledgeText }) {
 
 /**
  * Answer a question from the Knowledge Center.
- * @returns {Promise<{answer: string, grounded: boolean}>}
+ * @returns {Promise<{answer: string, grounded: boolean, intent?: string}>}
  */
 export async function askKnowledgeAssistant({ question, knowledgeCenter }) {
   const cleanQuestion = String(question || '').trim();
@@ -277,10 +372,20 @@ export async function askKnowledgeAssistant({ question, knowledgeCenter }) {
     throw chatError('CHAT_KNOWLEDGE_UNAVAILABLE', 'Knowledge Center is unavailable.', 503);
   }
 
+  // Greetings, thanks, goodbyes and "who are you" are answered here, not by the
+  // model. Both validation checks above still run first, so the Knowledge Center
+  // still fails loudly if the files are missing, and an empty question is still a
+  // 400 — this only skips the model call for input that needs no grounding.
+  const smallTalk = detectSmallTalk(cleanQuestion);
+  if (smallTalk) {
+    return { answer: smallTalk.answer, grounded: true, intent: `smalltalk_${smallTalk.kind}` };
+  }
+
   const rawText = await callGemini({
     question: cleanQuestion,
     knowledgeText: knowledgeCenter.text
   });
 
-  return normalizeAnswer(rawText);
+  const normalized = normalizeAnswer(rawText);
+  return { ...normalized, intent: normalized.grounded ? 'knowledge' : 'no_knowledge' };
 }

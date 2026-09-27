@@ -4,12 +4,18 @@ import {
   setFeatureFlag
 } from '../services/featureFlagsService.js';
 import { sendApiError, sendApiSuccess } from '../utils/response.js';
+import { publicCache } from '../utils/httpCache.js';
 
 export const FeatureFlagController = {
   /** Public flags for unauthenticated clients (announcement banner). */
   getPublic: async (req, res) => {
     try {
       const flags = await getPublicFeatureFlags();
+      // Identical for every visitor and already served from a 30s in-memory cache,
+      // so let the browser and any CDN in front of the API answer repeat views
+      // without an origin round trip. Without this the flag read went out on the wire
+      // on every single page load.
+      publicCache(res, { maxAge: 30, sMaxAge: 60, staleWhileRevalidate: 600 });
       return sendApiSuccess(res, 200, { flags });
     } catch (err) {
       return sendApiError(res, 500, 'INTERNAL_ERROR', 'Failed to read feature flags', err.message);

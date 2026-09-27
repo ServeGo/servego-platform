@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, PackageSearch, SearchX, PlusCircle, ArrowRight, CheckCircle2, RefreshCw, WifiOff } from 'lucide-react';
 import { useAuth, useData, useUI } from '../context/AppContext';
 import { useSEO } from '../hooks/useSEO';
 import { api as apiClient } from '../utils/apiClient';
 import { cachedRequest, invalidateCache } from '../utils/requestCache';
+import { topRatedFromCatalog } from '../utils/topRatedServices';
 import { normalizeSavedAddresses } from '../utils/normalizeCustomerData';
 import { SERVICES_SEO } from '../data/seoRoutes';
 
@@ -32,7 +33,7 @@ export const Services = ({ onNavigate }) => {
     setSearchQuery,
     setCategory,
   } = useUI();
-  const { searchServices, createBooking } = useData();
+  const { searchServices, createBooking, services: catalogServices, servicesLoading: catalogLoading } = useData();
   const { currentUser } = useAuth();
 
   useSEO({
@@ -81,7 +82,6 @@ export const Services = ({ onNavigate }) => {
   // Set when the catalog request fails, so a network error renders a retry
   // action instead of the misleading "No services match ..." empty state.
   const [searchError, setSearchError] = useState(null);
-  const [topServices, setTopServices] = useState([]);
   const [page, setPage] = useState(1);
   const gridRef = useRef(null);
 
@@ -166,18 +166,12 @@ export const Services = ({ onNavigate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch top-rated services for the popular chips
-  useEffect(() => {
-    let cancelled = false;
-    cachedRequest('services-top-rated', () => apiClient.get('/services/top-rated?limit=5'))
-      .then((res) => {
-        if (!cancelled && res.ok && Array.isArray(res.data)) {
-          setTopServices(res.data);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  // The popular chips are the backend's top-rated ranking, which is a pure function of
+  // the same catalog rows `GET /services` already returns (utils/topRatedServices.js).
+  // This page used to fire a separate `GET /services/top-rated` for them, so a direct
+  // load of /services — the main SEO entry point — made two requests where one will do,
+  // and the chips only appeared a round trip after the page did.
+  const topServices = useMemo(() => topRatedFromCatalog(catalogServices), [catalogServices]);
 
   useEffect(() => {
     // Debounce the keystrokes, then cancel the previous in-flight request
@@ -536,6 +530,7 @@ export const Services = ({ onNavigate }) => {
           onSearchSubmit={handleSearchSubmit}
           onSearchChange={handleSearchChange}
           onQuick={handleIssueClick}
+          loading={catalogLoading}
         />
 
         {!isLoading && results.length > 0 && (

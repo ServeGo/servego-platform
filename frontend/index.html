@@ -2,7 +2,11 @@
 <html lang="en-IN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover enables env(safe-area-inset-*) so full-screen UI clears the notch
+         and home indicator. interactive-widget=resizes-content makes Chrome/Android shrink the
+         layout viewport when the on-screen keyboard opens; the assistant sheet additionally
+         tracks visualViewport, which covers iOS Safari where that hint is ignored. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#0f766e" />
     <link rel="icon" type="image/png" href="/favicon.png" />
 

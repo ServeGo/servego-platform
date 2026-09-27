@@ -6,7 +6,7 @@ import { useSEO } from '../hooks/useSEO';
 
 export function Login({ onNavigate }) {
   useSEO({ title: 'Login – ServeGo24', description: 'Sign in to your ServeGo24 account.', path: '/login', robots: 'noindex,nofollow' });
-  const { login } = useAuth();
+  const { login, sessionEndedReason } = useAuth();
 
   // Read redirect intent from URL query param (set by booking flow when unauthenticated)
   const redirectParam = typeof window !== 'undefined'
@@ -20,10 +20,18 @@ export function Login({ onNavigate }) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Why the app signed the user out on its own (session revoked, expired,
+  // password changed elsewhere, account blocked). Seeded into the error slot so
+  // it reads as the explanation for being back here, and cleared as soon as the
+  // user starts typing or submits so it cannot linger over a fresh attempt
+  // (rule 19: say what happened and what to do next).
+  const [noticeMsg, setNoticeMsg] = useState(sessionEndedReason);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setNoticeMsg(null);
 
     if (!email.trim()) {
       setErrorMsg('Please enter your email address.');
@@ -112,6 +120,14 @@ export function Login({ onNavigate }) {
           <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-800 text-xs font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
             <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Why the user is back here after the app signed them out */}
+        {noticeMsg && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-100 text-amber-900 text-xs font-semibold flex items-start gap-2" role="status">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-px" />
+            <span>{noticeMsg}</span>
           </div>
         )}
 

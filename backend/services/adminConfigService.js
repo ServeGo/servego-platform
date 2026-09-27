@@ -27,13 +27,43 @@ export async function getConfig(key, fallback = null, client = prisma) {
   return value;
 }
 
+/**
+ * Read several keys at once.
+ *
+ * Keys already inside the TTL are answered from memory; only the misses reach the
+ * database, and they do so in ONE `findMany` rather than one `findUnique` per key.
+ * The rows are written back into the per-key cache, so a later single-key `getConfig`
+ * for any of them is warm too.
+ *
+ * This is the read path behind `GET /feature-flags/public` — the most requested
+ * endpoint on the site — which previously queried AdminConfig directly on every
+ * single request instead of through here.
+ */
 export async function getConfigs(keys) {
+  const wanted = Array.from(new Set(keys));
   const result = {};
-  await Promise.all(
-    keys.map(async (key) => {
-      result[key] = await getConfig(key, null);
-    })
-  );
+  const missing = [];
+
+  for (const key of wanted) {
+    const cached = fromCache(key);
+    if (cached !== undefined) {
+      result[key] = cached;
+    } else {
+      missing.push(key);
+    }
+  }
+
+  if (missing.length > 0) {
+    const rows = await prisma.adminConfig.findMany({ where: { key: { in: missing } } });
+    const valueByKey = new Map(rows.map((row) => [row.key, row.value]));
+    const at = Date.now();
+    for (const key of missing) {
+      const value = valueByKey.has(key) ? valueByKey.get(key) : null;
+      cache.set(key, { value, at });
+      result[key] = value;
+    }
+  }
+
   return result;
 }
 

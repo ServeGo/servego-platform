@@ -10,7 +10,7 @@
  *     after it is activated (or last edited while active).
  */
 
-import { getConfig, setConfig } from './adminConfigService.js';
+import { getConfig, getConfigs, setConfig } from './adminConfigService.js';
 import prisma from '../prisma/client.js';
 
 /** Announcement headline lifetime: 24 hours from activation. */
@@ -121,8 +121,12 @@ export async function getAllFeatureFlags() {
 /** Flags safe to expose to unauthenticated clients (announcement banner, etc.). */
 export async function getPublicFeatureFlags() {
   const publicKeys = Object.values(FEATURE_FLAGS).filter((f) => f.public).map((f) => f.key);
-  const rows = await prisma.adminConfig.findMany({ where: { key: { in: publicKeys } } });
-  const valueMap = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  // Through the 30s-cached config path, as this module's own header promises. It used
+  // to hit `prisma.adminConfig.findMany` directly, so the single most-requested
+  // endpoint on the site queried Postgres on every page view while the value it read
+  // was already sitting in memory. `getConfigs` collapses a cold read to one query and
+  // leaves the per-key cache warm for `getFeatureFlagValue`.
+  const valueMap = await getConfigs(publicKeys);
   const result = {};
   for (const key of publicKeys) {
     const def = FEATURE_FLAGS[key];

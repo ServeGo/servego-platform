@@ -92,6 +92,23 @@ export function clearTokens() {
   }
 }
 
+/** Broadcast when the server has declared this session dead. See SESSION_DEAD_EVENT. */
+export const SESSION_DEAD_EVENT = 'servego:session-dead';
+
+/**
+ * Tell the app that the session is unrecoverable, so React state is dropped too.
+ *
+ * Wiping localStorage is not enough on its own: `AuthContext` still holds a
+ * `currentUser`, so without this the user sits on a dashboard whose every
+ * request 401s, with no explanation and no way out except a manual reload.
+ * A custom event is used rather than a direct import because `apiClient` is
+ * below `AuthContext` in the tree and must not reach up into it.
+ */
+function notifySessionDead(code) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(SESSION_DEAD_EVENT, { detail: { code } }));
+}
+
 /**
  * Sleep utility for retry delays
  */
@@ -107,40 +124,91 @@ function shouldRetry(status, config) {
 }
 
 /**
- * Refresh access token using refresh token
+ * In-flight refresh promise, shared by every caller.
+ *
+ * A dashboard fires many requests at once, so a burst of 401s used to send one
+ * /auth/refresh per request. That is wasteful, and once the server started
+ * treating a session as revocable state it also mattered for correctness: the
+ * extra calls raced each other over the same session. Collapsing them into one
+ * flight means the 2nd..Nth caller awaits the same answer instead of competing.
  */
-async function refreshAccessToken() {
-  const { refresh } = getStoredTokens();
-  if (!refresh) return null;
+let refreshInFlight = null;
 
-  try {
+/**
+ * Refresh access token using refresh token.
+ *
+ * Only a definitive rejection from the server clears the session. A network
+ * error or a 5xx leaves the tokens in place: signing someone out because their
+ * train went into a tunnel is not a security win, and the next request simply
+ * tries again.
+ */
+function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight;
+
+  const { refresh } = getStoredTokens();
+  if (!refresh) return Promise.resolve(null);
+
+  const run = async () => {
     for (const baseUrl of API_BASES) {
+      let response;
       try {
-        const response = await fetch(`${baseUrl}/auth/refresh`, {
+        response = await fetch(`${baseUrl}/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken: refresh })
         });
-        if (shouldRetry(response.status, DEFAULT_RETRY_CONFIG)) continue;
-        if (!response.ok) break;
-        const payload = await response.json();
-        const data = payload?.success === true ? payload.data : payload;
-        if (data?.accessToken) {
-          setTokens(data.accessToken, data.refreshToken);
-          return data.accessToken;
-        }
-        break;
       } catch {
-        // Try the next configured base URL if the refresh endpoint cannot be reached.
+        // Unreachable server. Try the next configured base URL, then give up
+        // WITHOUT discarding the tokens.
+        continue;
       }
+
+      if (shouldRetry(response.status, DEFAULT_RETRY_CONFIG)) continue;
+
+      if (!response.ok) {
+        // A 401 body carries the reason; read it so the sign-out notice can
+        // distinguish "you were signed out" from "your account was blocked".
+        let code = null;
+        try {
+          code = (await response.clone().json())?.code || null;
+        } catch {
+          // A non-JSON error body is fine — the generic message still applies.
+        }
+        // The server answered, and it refused this session. That is the only
+        // case where the tokens are genuinely dead: REFRESH_TOKEN_REVOKED (signed
+        // out or revoked), REFRESH_TOKEN_EXPIRED, INVALID_REFRESH_TOKEN,
+        // ACCOUNT_INACTIVE or SESSION_REVOKED.
+        clearTokens();
+        notifySessionDead(code);
+        return null;
+      }
+
+      const payload = await response.json();
+      const data = payload?.success === true ? payload.data : payload;
+      if (data?.accessToken) {
+        // The server echoes the same refresh token back; `|| refresh` is only a
+        // safety net for a response that omits it.
+        setTokens(data.accessToken, data.refreshToken || refresh);
+        return data.accessToken;
+      }
+      // A 200 we cannot use is a server bug, not a rejected session.
+      return null;
     }
-    clearTokens();
     return null;
-  } catch (err) {
-    console.error('[API] Token refresh failed:', err);
-    clearTokens();
-    return null;
-  }
+  };
+
+  const flight = run();
+  refreshInFlight = flight;
+
+  // Release the slot only if we are still the current flight, so the next caller
+  // after this one starts a fresh attempt. Attached after the assignment so the
+  // reference is always initialised.
+  const release = () => {
+    if (refreshInFlight === flight) refreshInFlight = null;
+  };
+  flight.then(release, release);
+
+  return flight;
 }
 
 /**

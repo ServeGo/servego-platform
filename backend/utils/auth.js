@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import process from 'node:process';
 import { setRequestUser } from './telemetry/requestContext.js';
+import { isAccessTokenRevoked } from './accessRevocation.js';
 
 dotenv.config();
 
@@ -24,8 +26,16 @@ function resolveSecret(key, devFallback) {
 
 export const SECRET = resolveSecret('JWT_SECRET', DEFAULT_DEV_SECRET);
 export const REFRESH_SECRET = resolveSecret('JWT_REFRESH_SECRET', `${DEFAULT_DEV_SECRET}-refresh`);
-const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRY || '15m';
-const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
+// Exported so the API can report the real access-token lifetime. Clients use
+// `expiresIn` to decide when to preemptively refresh; a value that disagreed
+// with the signing config would have them refreshing early or far too late.
+export const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRY || '15m';
+export const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
+
+// Hard ceiling on a session's life, in ms. The refresh JWT already expires on its
+// own, but `RefreshSession.absoluteExpiry` is enforced from the row so a session
+// can be capped below the token lifetime without touching signing config.
+export const REFRESH_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Generate access token with standard claims
@@ -41,24 +51,49 @@ export function generateAuthToken(user) {
 }
 
 /**
- * Generate refresh token for token renewal
+ * Generate refresh token for token renewal.
+ *
+ * The `jti` is what makes the token revocable: it is the primary key of the
+ * `RefreshSession` row, so the server can look the token up and refuse it once
+ * the row is revoked. It also fixes a real weakness of the old payload
+ * (`{ id, type, iat }`): signing is deterministic, so two refreshes inside the
+ * same second produced a byte-identical token. Callers that manage sessions pass
+ * their own `jti` so the token and the row are minted together; it is generated
+ * here only as a fallback for callers that don't.
  */
-export function generateRefreshToken(user) {
+export function generateRefreshToken(user, { jti } = {}) {
   const payload = {
     id: user.id,
     type: 'refresh',
+    jti: jti || crypto.randomBytes(32).toString('hex'),
     iat: Math.floor(Date.now() / 1000)
   };
   return jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY });
 }
 
 /**
- * Generate both access and refresh tokens
+ * Generate both access and refresh tokens.
  */
-export function generateTokenPair(user) {
+export function generateTokenPair(user, { jti } = {}) {
   return {
     accessToken: generateAuthToken(user),
-    refreshToken: generateRefreshToken(user),
+    refreshToken: generateRefreshToken(user, { jti }),
+    tokenType: 'Bearer',
+    expiresIn: ACCESS_TOKEN_EXPIRY
+  };
+}
+
+/**
+ * Build the token payload the API returns from login, register and refresh.
+ *
+ * The refresh token is supplied by the caller, never minted here: it has to be
+ * the exact token whose hash was stored in the `RefreshSession` row, so signing
+ * a second one here would persist a hash no client ever receives.
+ */
+export function buildAuthResponse(user, refreshToken) {
+  return {
+    accessToken: generateAuthToken(user),
+    refreshToken,
     tokenType: 'Bearer',
     expiresIn: ACCESS_TOKEN_EXPIRY
   };
@@ -128,6 +163,19 @@ export function requireAuth(req, res, next) {
     });
   }
 
+  // The signature is valid, but this token was issued before the account was
+  // revoked (logout-everywhere, password reset, admin block). Refusing it here
+  // is what closes the 15-minute window an already-issued access token would
+  // otherwise stay valid for. The reason is reported separately from a plain
+  // 401 so the client can say "you were signed out" instead of "please log in".
+  if (isAccessTokenRevoked(decoded)) {
+    return res.status(401).json({
+      success: false,
+      code: 'SESSION_REVOKED',
+      message: 'Your session has been ended. Please sign in again.'
+    });
+  }
+
   req.user = decoded;
   setRequestUser(decoded.id, decoded.role);
   return next();
@@ -171,7 +219,9 @@ export function optionalAuth(req, res, next) {
   
   if (token) {
     const decoded = verifyAuthToken(token);
-    if (decoded && !decoded.expired) {
+    // A revoked token is treated exactly as a missing one: `optionalAuth` must
+    // not hand a dead session to a handler as though it were authenticated.
+    if (decoded && !decoded.expired && !isAccessTokenRevoked(decoded)) {
       req.user = decoded;
       setRequestUser(decoded.id, decoded.role);
     }

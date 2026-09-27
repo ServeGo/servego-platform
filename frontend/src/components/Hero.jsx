@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, ArrowRight } from 'lucide-react';
 import { HERO_IMAGE_DESKTOP, HERO_IMAGE_MOBILE } from '../data/websiteImages';
 
-export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearch, topServices = [], services = [] }) {
+export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearch, topServices = [], services = [], catalogLoading = false }) {
   // The marquee reuses the catalog the app already loaded. It used to fire its
   // own `GET /services` on mount, doubling the public catalog traffic on every
   // home page view and racing the context's copy.
@@ -83,14 +83,27 @@ export default function Hero({ onSearch, inputQuery, setInputQuery, onQuickSearc
             </form>
           </div>
 
-          {topServices.length > 0 && (
+          {topServices.length > 0 ? (
             <div className="mt-3.5 flex flex-wrap items-center gap-2 text-[11px] text-white/80 font-medium md:mt-6 md:text-xs">
               <span>Popular:</span>
               {topServices.slice(0, 5).map((s) => (
                 <button type="button" key={s.id || s.name} onClick={() => onQuickSearch?.(s.name)} className="rounded-full border border-white/25 bg-white/15 px-2.5 py-0.5 hover:bg-white/25">{s.name}</button>
               ))}
             </div>
-          )}
+          ) : catalogLoading ? (
+            // The chips are derived from the catalog, so there is a real window where
+            // they are unknown. Reserve the row as a shimmer instead of letting the
+            // hero grow by ~30px when the chips land — a layout shift that reads as
+            // "still loading" even on a fast connection (rule 15). Only while the
+            // catalog is genuinely in flight, so a service-less catalog collapses the
+            // row instead of shimmering forever.
+            <div aria-hidden="true" className="mt-3.5 flex flex-wrap items-center gap-2 md:mt-6">
+              <span className="h-4 w-14 rounded-full bg-white/20 animate-pulse" />
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span key={i} className="h-6 w-20 rounded-full bg-white/15 animate-pulse" />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>
